@@ -66,22 +66,28 @@
             }
             
             // Connect to WebSocket
+            const hostToken = window.liveQuizHostData.hostToken || '';
+            
+            console.log('Host connecting with token:', {
+                hasToken: !!hostToken,
+                tokenLength: hostToken.length,
+                sessionId: self.sessionId
+            });
+            
             this.socket = io(liveQuizPlayer.wsUrl, {
                 auth: {
-                    secret: liveQuizPlayer.wsSecret
+                    token: hostToken
                 },
                 transports: ['websocket', 'polling']
             });
             
             this.socket.on('connect', function() {
-                console.log('WebSocket connected');
+                console.log('Host WebSocket connected');
                 self.showConnectionStatus('Đã kết nối', true);
                 
-                // Join host room
-                self.socket.emit('host:join', {
-                    session_id: self.sessionId,
-                    room_code: self.roomCode
-                });
+                // No need to emit host:join, server automatically handles it
+                // Load participants immediately
+                self.fetchPlayers();
             });
             
             this.socket.on('disconnect', function() {
@@ -90,12 +96,14 @@
             });
             
             // Listen for player join events
-            this.socket.on('player:joined', function(data) {
+            this.socket.on('participant_joined', function(data) {
+                console.log('Participant joined event received:', data);
                 self.handlePlayerJoined(data);
             });
             
             // Listen for player leave events
-            this.socket.on('player:left', function(data) {
+            this.socket.on('participant_left', function(data) {
+                console.log('Participant left event received:', data);
                 self.handlePlayerLeft(data);
             });
             
@@ -123,6 +131,9 @@
         startPolling: function() {
             const self = this;
             
+            // Fetch players immediately on load
+            self.fetchPlayers();
+            
             // Poll for players every 2 seconds
             setInterval(function() {
                 self.fetchPlayers();
@@ -139,9 +150,13 @@
                     'X-WP-Nonce': liveQuizPlayer.nonce
                 },
                 success: function(response) {
+                    console.log('Fetched players:', response);
                     if (response.success && response.players) {
                         self.updatePlayersList(response.players);
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error fetching players:', error, xhr.responseJSON);
                 }
             });
         },
@@ -159,6 +174,7 @@
         },
         
         updatePlayersList: function(players) {
+            const self = this;
             const $list = $('#players-list');
             const $count = $('#player-count');
             
@@ -180,9 +196,11 @@
             
             let html = '';
             players.forEach(function(player) {
+                // Support both user_id and player_id for backward compatibility
+                const playerId = player.user_id || player.player_id;
                 const initial = player.display_name ? player.display_name.charAt(0).toUpperCase() : '?';
                 html += `
-                    <div class="player-item" data-player-id="${player.player_id}">
+                    <div class="player-item" data-player-id="${playerId}">
                         <div class="player-avatar">${initial}</div>
                         <div class="player-name">${self.escapeHtml(player.display_name)}</div>
                         <div class="player-status">✓ Sẵn sàng</div>

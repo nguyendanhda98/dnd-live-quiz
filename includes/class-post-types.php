@@ -736,11 +736,6 @@ class Live_Quiz_Post_Types {
      * Add permalink settings section
      */
     public static function add_permalink_settings() {
-        // Hook to flush rewrite rules when permalink settings are updated
-        if (isset($_POST['permalink_structure']) || isset($_POST['live_quiz_play_base'])) {
-            add_action('update_option_live_quiz_play_base', array(__CLASS__, 'flush_rewrite_rules_on_change'), 10, 2);
-        }
-        
         // Register setting
         register_setting('permalink', 'live_quiz_play_base', array(
             'type' => 'string',
@@ -748,22 +743,13 @@ class Live_Quiz_Post_Types {
             'default' => 'play'
         ));
         
-        // Add settings section
-        add_settings_section(
-            'live-quiz-permalink',
-            __('DND Live Quiz Permalinks', 'live-quiz'),
-            array(__CLASS__, 'permalink_settings_section'),
-            'permalink'
-        );
+        // Hook to show our settings in permalink page
+        add_action('admin_print_footer_scripts', array(__CLASS__, 'render_permalink_settings'), 10);
         
-        // Add settings field
-        add_settings_field(
-            'live_quiz_play_base',
-            __('Host Room Base', 'live-quiz'),
-            array(__CLASS__, 'play_base_field'),
-            'permalink',
-            'live-quiz-permalink'  // Đúng section ID
-        );
+        // Hook to flush rewrite rules when settings saved
+        if (isset($_POST['live_quiz_play_base'])) {
+            add_action('update_option_live_quiz_play_base', array(__CLASS__, 'flush_rewrite_rules_on_change'), 10, 2);
+        }
     }
     
     /**
@@ -781,36 +767,43 @@ class Live_Quiz_Post_Types {
     }
     
     /**
-     * Permalink settings section callback
+     * Render permalink settings directly in the page
      */
-    public static function permalink_settings_section() {
-        echo '<p>' . __('Cài đặt cấu trúc URL cho Live Quiz.', 'live-quiz') . '</p>';
-    }
-    
-    /**
-     * Play base field callback
-     */
-    public static function play_base_field() {
+    public static function render_permalink_settings() {
+        // Only show on permalink settings page
+        $screen = get_current_screen();
+        if (!$screen || $screen->id !== 'options-permalink') {
+            return;
+        }
+        
         $value = get_option('live_quiz_play_base', 'play');
         ?>
-        <input type="text" 
-               name="live_quiz_play_base" 
-               id="live_quiz_play_base" 
-               value="<?php echo esc_attr($value); ?>" 
-               class="regular-text code"
-               placeholder="play" />
-        <p class="description">
-            <?php 
-            printf(
-                __('URL để host truy cập phòng. Mặc định: <code>%s</code>', 'live-quiz'),
-                home_url('/play/123')
-            ); 
-            ?>
-            <br>
-            <?php _e('Ví dụ: nếu bạn nhập "room", URL sẽ là <code>/room/123</code>', 'live-quiz'); ?>
-        </p>
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            // Add our section after LearnDash or at the end
+            var html = '<h2><?php echo esc_js(__('DND Live Quiz Permalinks', 'live-quiz')); ?></h2>' +
+                '<p><?php echo esc_js(__('Cấu hình cấu trúc URL cho DND Live Quiz. Bạn có thể tùy chỉnh base URL cho phòng host.', 'live-quiz')); ?></p>' +
+                '<table class="form-table" role="presentation">' +
+                '<tbody>' +
+                '<tr>' +
+                '<th scope="row"><label for="live_quiz_play_base"><?php echo esc_js(__('Host Room Base', 'live-quiz')); ?></label></th>' +
+                '<td>' +
+                '<input type="text" name="live_quiz_play_base" id="live_quiz_play_base" value="<?php echo esc_attr($value); ?>" class="regular-text code" placeholder="play" />' +
+                '<p class="description"><?php echo esc_js(sprintf(__('URL để host truy cập phòng. Mặc định: <code>%s</code>', 'live-quiz'), home_url('/' . $value . '/123'))); ?><br>' +
+                '<?php echo esc_js(__('Ví dụ: nếu bạn nhập "room", URL sẽ là <code>/room/123</code>', 'live-quiz')); ?></p>' +
+                '</td>' +
+                '</tr>' +
+                '</tbody>' +
+                '</table>';
+            
+            // Insert before the submit button
+            $('.permalink-structure').closest('.wrap').find('.submit').before(html);
+        });
+        </script>
         <?php
     }
+    
+
     
     /**
      * Get play base

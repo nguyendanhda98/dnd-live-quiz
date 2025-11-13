@@ -381,14 +381,21 @@ class Live_Quiz_Session_Manager {
             }
         }
         
-        // Save to post meta (Phase 1 fallback)
-        $participants[] = $participant;
-        update_post_meta($session_id, '_session_participants', $participants);
+        // Always save to post meta for persistence and fallback
+        // Get fresh participants list from post_meta to avoid race conditions
+        $stored_participants = get_post_meta($session_id, '_session_participants', true);
+        if (!is_array($stored_participants)) {
+            $stored_participants = array();
+        }
+        
+        // Add new participant
+        $stored_participants[] = $participant;
+        update_post_meta($session_id, '_session_participants', $stored_participants);
         
         // Clear cache and immediately set new cache to avoid race condition
         $cache_key = "live_quiz_participants_{$session_id}";
         delete_transient($cache_key);
-        set_transient($cache_key, $participants, 60);
+        set_transient($cache_key, $stored_participants, 60);
         
         // Broadcast join event (SSE fallback)
         self::broadcast_event($session_id, 'participant_join', array(
@@ -410,21 +417,23 @@ class Live_Quiz_Session_Manager {
         // Try Redis first (Phase 2)
         if (self::is_redis_enabled()) {
             $participants = self::$redis->get_participants($session_id);
-            if ($participants !== false) {
+            if ($participants !== false && is_array($participants) && !empty($participants)) {
                 return $participants;
             }
         }
         
-        // Fallback to transients (Phase 1)
+        // Fallback to transients and post_meta (Phase 1)
         $cache_key = "live_quiz_participants_{$session_id}";
         $participants = get_transient($cache_key);
         
-        if ($participants === false) {
+        if ($participants === false || !is_array($participants)) {
             $participants = get_post_meta($session_id, '_session_participants', true);
             if (!is_array($participants)) {
                 $participants = array();
             }
-            set_transient($cache_key, $participants, 60);
+            if (!empty($participants)) {
+                set_transient($cache_key, $participants, 60);
+            }
         }
         
         return $participants;

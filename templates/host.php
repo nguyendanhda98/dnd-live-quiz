@@ -163,13 +163,28 @@ $total_questions = is_array($questions) ? count($questions) : 0;
     </div>
 
     <script>
+        // Generate JWT token for host
+        <?php
+        $host_user_id = 'host_' . get_current_user_id() . '_' . time();
+        $host_token = '';
+        if (class_exists('Live_Quiz_JWT_Helper')) {
+            $host_token = Live_Quiz_JWT_Helper::generate_token(
+                $host_user_id,
+                $session_id,
+                'Host - ' . wp_get_current_user()->display_name
+            );
+        }
+        ?>
+        
         // Pass session data to JavaScript
         window.liveQuizHostData = {
             sessionId: <?php echo json_encode($session_id); ?>,
             roomCode: <?php echo json_encode($room_code); ?>,
             quizTitle: <?php echo json_encode($quiz_title); ?>,
             totalQuestions: <?php echo json_encode($total_questions); ?>,
-            session: <?php echo json_encode($session); ?>
+            session: <?php echo json_encode($session); ?>,
+            hostToken: <?php echo json_encode($host_token); ?>,
+            hostUserId: <?php echo json_encode($host_user_id); ?>
         };
     </script>
     

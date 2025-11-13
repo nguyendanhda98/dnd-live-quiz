@@ -349,12 +349,23 @@ class Live_Quiz_REST_API {
         
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         
+        // Generate JWT token for WebSocket authentication
+        $jwt_token = '';
+        if (class_exists('Live_Quiz_JWT_Helper')) {
+            $jwt_token = Live_Quiz_JWT_Helper::generate_token(
+                $participant['user_id'],
+                $session_id,
+                $participant['display_name']
+            );
+        }
+        
         // Build response
         $response = array(
             'success' => true,
             'session_id' => $session_id,
             'user_id' => $participant['user_id'],
             'display_name' => $participant['display_name'],
+            'websocket_token' => $jwt_token,
             'session' => array(
                 'id' => $session['id'],
                 'status' => $session['status'],
@@ -912,10 +923,15 @@ class Live_Quiz_REST_API {
         
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         
+        // Generate host URL with dynamic base
+        $play_base = Live_Quiz_Post_Types::get_play_base();
+        $host_url = home_url('/' . $play_base . '/' . $session_id);
+        
         return rest_ensure_response(array(
             'success' => true,
             'session_id' => $session_id,
             'room_code' => $room_code,
+            'host_url' => $host_url,
             'question_count' => count($all_questions),
             'session' => $session,
         ));

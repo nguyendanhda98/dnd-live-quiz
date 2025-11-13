@@ -16,6 +16,7 @@
         userId: null,
         displayName: null,
         roomCode: null,
+        websocketToken: null,
         currentQuestion: null,
         questionStartTime: null,
         timerInterval: null,
@@ -100,6 +101,7 @@
                 state.userId = data.user_id;
                 state.displayName = data.display_name;
                 state.roomCode = roomCode;
+                state.websocketToken = data.websocket_token || '';
                 
                 // Show waiting screen
                 showScreen('quiz-waiting');
@@ -132,18 +134,28 @@
         }
         
         console.log('[Live Quiz] Connecting to WebSocket:', config.websocket.url);
+        console.log('[Live Quiz] WebSocket token:', {
+            hasToken: !!state.websocketToken,
+            tokenLength: state.websocketToken ? state.websocketToken.length : 0,
+            userId: state.userId,
+            sessionId: state.sessionId
+        });
         
-        // Initialize Socket.io connection
+        if (!state.websocketToken) {
+            console.error('[Live Quiz] No WebSocket token available!');
+            showError('join-error', 'Không thể kết nối WebSocket. Vui lòng thử lại.');
+            return;
+        }
+        
+        // Initialize Socket.io connection with JWT token
         state.socket = io(config.websocket.url, {
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
             reconnectionAttempts: state.maxReconnectAttempts,
-            query: {
-                session_id: state.sessionId,
-                user_id: state.userId,
-                display_name: state.displayName
+            auth: {
+                token: state.websocketToken
             }
         });
         

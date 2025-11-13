@@ -325,17 +325,17 @@ if (!defined('ABSPATH')) {
             
             <tr>
                 <th scope="row">
-                    <label for="live_quiz_jwt_secret"><?php _e('JWT Secret', 'live-quiz'); ?></label>
+                    <label for="live_quiz_websocket_jwt_secret"><?php _e('JWT Secret', 'live-quiz'); ?></label>
                 </th>
                 <td>
                     <input type="text" 
-                           name="live_quiz_jwt_secret" 
-                           id="live_quiz_jwt_secret" 
-                           value="<?php echo esc_attr(get_option('live_quiz_jwt_secret', '')); ?>"
+                           name="live_quiz_websocket_jwt_secret" 
+                           id="live_quiz_websocket_jwt_secret" 
+                           value="<?php echo esc_attr(get_option('live_quiz_websocket_jwt_secret', '')); ?>"
                            class="regular-text">
                     <button type="button" class="button" id="generate_jwt_secret"><?php _e('Tạo Secret', 'live-quiz'); ?></button>
                     <p class="description">
-                        <?php _e('Secret dùng để tạo JWT token cho người chơi. Phải giống với JWT_SECRET trong file .env', 'live-quiz'); ?>
+                        <?php _e('Secret dùng để tạo JWT token cho người chơi. Phải giống với JWT_SECRET trong file .env của WebSocket server', 'live-quiz'); ?>
                     </p>
                 </td>
             </tr>
@@ -513,7 +513,7 @@ if (!defined('ABSPATH')) {
             // Generate JWT Secret
             $('#generate_jwt_secret').on('click', function() {
                 const secret = generateSecret();
-                $('#live_quiz_jwt_secret').val(secret);
+                $('#live_quiz_websocket_jwt_secret').val(secret);
             });
             
             // Test Phase 2 Connection

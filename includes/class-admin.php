@@ -70,7 +70,7 @@ class Live_Quiz_Admin {
         register_setting('live_quiz_settings', 'live_quiz_websocket_enabled');
         register_setting('live_quiz_settings', 'live_quiz_websocket_url');
         register_setting('live_quiz_settings', 'live_quiz_websocket_secret');
-        register_setting('live_quiz_settings', 'live_quiz_jwt_secret');
+        register_setting('live_quiz_settings', 'live_quiz_websocket_jwt_secret');
         register_setting('live_quiz_settings', 'live_quiz_redis_enabled');
         register_setting('live_quiz_settings', 'live_quiz_redis_host');
         register_setting('live_quiz_settings', 'live_quiz_redis_port');
@@ -175,7 +175,7 @@ class Live_Quiz_Admin {
             update_option('live_quiz_websocket_enabled', !empty($_POST['live_quiz_websocket_enabled']));
             update_option('live_quiz_websocket_url', sanitize_text_field($_POST['live_quiz_websocket_url']));
             update_option('live_quiz_websocket_secret', sanitize_text_field($_POST['live_quiz_websocket_secret']));
-            update_option('live_quiz_jwt_secret', sanitize_text_field($_POST['live_quiz_jwt_secret']));
+            update_option('live_quiz_websocket_jwt_secret', sanitize_text_field($_POST['live_quiz_websocket_jwt_secret']));
             update_option('live_quiz_redis_enabled', !empty($_POST['live_quiz_redis_enabled']));
             update_option('live_quiz_redis_host', sanitize_text_field($_POST['live_quiz_redis_host']));
             update_option('live_quiz_redis_port', intval($_POST['live_quiz_redis_port']));

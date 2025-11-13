@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('LIVE_QUIZ_VERSION', '2.0.0');
+define('LIVE_QUIZ_VERSION', '2.0.6');
 define('LIVE_QUIZ_PLUGIN_FILE', __FILE__);
 define('LIVE_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('LIVE_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -74,6 +74,9 @@ final class Live_Quiz {
         if (file_exists(LIVE_QUIZ_PLUGIN_DIR . 'includes/class-websocket-adapter.php')) {
             require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-websocket-adapter.php';
         }
+        
+        // JWT Helper for WebSocket authentication
+        require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-jwt-helper.php';
     }
     
     /**
@@ -205,6 +208,7 @@ final class Live_Quiz {
         
         // WebSocket configuration
         $websocket_url = get_option('live_quiz_websocket_url', 'http://localhost:3000');
+        $websocket_secret = get_option('live_quiz_websocket_secret', '');
         
         $config = array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
@@ -213,6 +217,7 @@ final class Live_Quiz {
             'websocket' => array(
                 'enabled' => true,
                 'url' => $websocket_url,
+                'secret' => $websocket_secret,
             ),
             'i18n' => array(
                 'enterName' => __('Nhập tên hiển thị', 'live-quiz'),
@@ -368,7 +373,7 @@ register_activation_hook(__FILE__, function() {
     add_option('live_quiz_websocket_enabled', false);
     add_option('live_quiz_websocket_url', 'http://localhost:3000');
     add_option('live_quiz_websocket_secret', '');
-    add_option('live_quiz_jwt_secret', '');
+    add_option('live_quiz_websocket_jwt_secret', '');
     add_option('live_quiz_redis_enabled', false);
     add_option('live_quiz_redis_host', '127.0.0.1');
     add_option('live_quiz_redis_port', 6379);

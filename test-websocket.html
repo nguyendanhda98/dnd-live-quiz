@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test WebSocket Connection</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+        h1 { color: #333; }
+        .warning { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
+        .warning h3 { margin-top: 0; color: #856404; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 8px; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+        textarea { width: 100%; padding: 8px; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #result { margin-top: 20px; padding: 15px; border: 1px solid #ccc; min-height: 100px; font-family: monospace; white-space: pre-wrap; background: #f5f5f5; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>🔌 Test WebSocket Connection</h1>
+    
+    <div class="warning">
+        <h3>⚠️ Lưu ý quan trọng!</h3>
+        <p><strong>Bạn phải nhập JWT TOKEN (đã được ký), KHÔNG PHẢI JWT SECRET!</strong></p>
+        <p>Token có dạng: <code>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ey...</code></p>
+        <p>Để tạo token, chạy lệnh sau trên server:</p>
+        <pre style="background: #f9f9f9; padding: 10px; border-radius: 4px; overflow-x: auto;">cd /home/websocket-server && node -e "
+const jwt = require('jsonwebtoken');
+const secret = 'ae996777b77d44f056a302891b67f4c79ca4f25346aebe2c4d5f5e08a219bf48';
+const token = jwt.sign({
+  user_id: 'test_user',
+  session_id: 123,
+  display_name: 'Test User',
+  iat: Math.floor(Date.now()/1000),
+  exp: Math.floor(Date.now()/1000) + 86400
+}, secret);
+console.log(token);"</pre>
+    </div>
+    
+    <div>
+        <label>WebSocket URL:</label>
+        <input type="text" id="wsUrl" value="https://ws.dndenglish.com"><br><br>
+        
+        <label>JWT Token (NOT Secret!):</label>
+        <textarea id="secret" rows="4" placeholder="Paste JWT token here (eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....)"></textarea><br><br>
+        
+        <button onclick="testConnection()">🔐 Test with Token</button>
+        <button onclick="testNoAuth()">❌ Test without Auth</button>
+        <button onclick="generateSampleToken()">🔧 Show Sample Token Command</button>
+    </div>
+    <div id="result"></div>
+
+    <script>
+        let socket = null;
+        
+        function log(message, type = 'info') {
+            const result = document.getElementById('result');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'blue';
+            result.innerHTML += `<span style="color: ${color};">[${timestamp}] ${message}</span>\n`;
+        }
+        
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+        
+        function generateSampleToken() {
+            document.getElementById('result').innerHTML = '';
+            log('To generate a valid JWT token, run this on your server:', 'info');
+            log('', 'info');
+            log('cd /home/websocket-server && node -e "', 'info');
+            log('const jwt = require(\'jsonwebtoken\');', 'info');
+            log('const secret = \'ae996777b77d44f056a302891b67f4c79ca4f25346aebe2c4d5f5e08a219bf48\';', 'info');
+            log('const token = jwt.sign({', 'info');
+            log('  user_id: \'test_user\',', 'info');
+            log('  session_id: 123,', 'info');
+            log('  display_name: \'Test User\',', 'info');
+            log('  iat: Math.floor(Date.now()/1000),', 'info');
+            log('  exp: Math.floor(Date.now()/1000) + 86400', 'info');
+            log('}, secret);', 'info');
+            log('console.log(token);"', 'info');
+            log('', 'info');
+            log('Then copy the generated token and paste it above.', 'info');
+        }
+        
+        function testConnection() {
+            document.getElementById('result').innerHTML = '';
+            disconnect();
+            
+            const wsUrl = document.getElementById('wsUrl').value;
+            const token = document.getElementById('secret').value.trim();
+            
+            if (!token) {
+                log('❌ Error: Please enter a JWT token!', 'error');
+                log('Click "Show Sample Token Command" for help.', 'error');
+                return;
+            }
+            
+            log(`Connecting to: ${wsUrl}`, 'info');
+            log(`Token length: ${token.length} characters`, 'info');
+            log(`Token preview: ${token.substring(0, 50)}...`, 'info');
+            
+            socket = io(wsUrl, {
+                transports: ['websocket', 'polling'],
+                reconnection: false,
+                auth: {
+                    token: token
+                }
+            });
+            
+            socket.on('connect', () => {
+                log('✅ Connected successfully!', 'success');
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`❌ Connection error: ${error.message}`, 'error');
+                log(`Error details: ${JSON.stringify(error, null, 2)}`, 'error');
+            });
+            
+            socket.on('disconnect', (reason) => {
+                log(`Disconnected: ${reason}`, 'info');
+            });
+            
+            socket.on('error', (error) => {
+                log(`Error event: ${error}`, 'error');
+            });
+        }
+        
+        function testNoAuth() {
+            document.getElementById('result').innerHTML = '';
+            disconnect();
+            
+            const wsUrl = document.getElementById('wsUrl').value;
+            
+            log(`Connecting to: ${wsUrl} (NO AUTH)`, 'info');
+            
+            socket = io(wsUrl, {
+                transports: ['websocket', 'polling'],
+                reconnection: false
+            });
+            
+            socket.on('connect', () => {
+                log('✅ Connected successfully WITHOUT auth!', 'success');
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`❌ Connection error: ${error.message}`, 'error');
+            });
+            
+            socket.on('disconnect', (reason) => {
+                log(`Disconnected: ${reason}`, 'info');
+            });
+        }
+    </script>
+</body>
+</html>
