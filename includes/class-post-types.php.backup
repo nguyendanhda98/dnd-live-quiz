@@ -1,0 +1,1048 @@
+<?php
+/**
+ * Register Custom Post Types
+ *
+ * @package LiveQuiz
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class Live_Quiz_Post_Types {
+    
+    /**
+     * Initialize
+     */
+    public static function init() {
+        add_action('init', array(__CLASS__, 'register'), 5);
+        add_action('add_meta_boxes', array(__CLASS__, 'add_meta_boxes'));
+        add_action('save_post', array(__CLASS__, 'save_meta_boxes'), 10, 2);
+    }
+    
+    /**
+     * Register custom post types
+     */
+    public static function register() {
+        // Register Quiz (Question Set) CPT
+        register_post_type('live_quiz', array(
+            'labels' => array(
+                'name' => __('Quizzes', 'live-quiz'),
+                'singular_name' => __('Quiz', 'live-quiz'),
+                'add_new' => __('Thêm Quiz', 'live-quiz'),
+                'add_new_item' => __('Thêm Quiz mới', 'live-quiz'),
+                'edit_item' => __('Chỉnh sửa Quiz', 'live-quiz'),
+                'new_item' => __('Quiz mới', 'live-quiz'),
+                'view_item' => __('Xem Quiz', 'live-quiz'),
+                'search_items' => __('Tìm Quiz', 'live-quiz'),
+                'not_found' => __('Không tìm thấy Quiz', 'live-quiz'),
+                'all_items' => __('Tất cả Quizzes', 'live-quiz'),
+            ),
+            'public' => false,
+            'show_ui' => true,
+            'show_in_menu' => true,
+            'menu_icon' => 'dashicons-welcome-learn-more',
+            'menu_position' => 25,
+            'capability_type' => 'post',
+            'capabilities' => array(
+                'edit_post' => 'manage_options',
+                'delete_post' => 'manage_options',
+                'edit_posts' => 'manage_options',
+                'edit_others_posts' => 'manage_options',
+                'publish_posts' => 'manage_options',
+                'read_private_posts' => 'manage_options',
+            ),
+            'supports' => array('title'),
+            'has_archive' => false,
+            'rewrite' => false,
+        ));
+        
+        // Register Session CPT
+        register_post_type('live_quiz_session', array(
+            'labels' => array(
+                'name' => __('Quiz Sessions', 'live-quiz'),
+                'singular_name' => __('Session', 'live-quiz'),
+                'add_new' => __('Tạo phiên', 'live-quiz'),
+                'add_new_item' => __('Tạo phiên mới', 'live-quiz'),
+                'edit_item' => __('Quản lý phiên', 'live-quiz'),
+            ),
+            'public' => false,
+            'show_ui' => true,
+            'show_in_menu' => 'edit.php?post_type=live_quiz',
+            'capability_type' => 'post',
+            'capabilities' => array(
+                'create_posts' => 'manage_options',
+                'edit_post' => 'manage_options',
+                'delete_post' => 'manage_options',
+                'edit_posts' => 'manage_options',
+            ),
+            'supports' => array('title'),
+            'has_archive' => false,
+            'rewrite' => false,
+        ));
+    }
+    
+    /**
+     * Add meta boxes
+     */
+    public static function add_meta_boxes() {
+        // Questions meta box (chứa câu hỏi trong quiz)
+        add_meta_box(
+            'live_quiz_questions',
+            __('Câu hỏi Quiz', 'live-quiz'),
+            array(__CLASS__, 'render_questions_meta_box'),
+            'live_quiz',
+            'normal',
+            'high'
+        );
+        
+        // Quiz settings meta box
+        add_meta_box(
+            'live_quiz_settings',
+            __('Cài đặt Quiz', 'live-quiz'),
+            array(__CLASS__, 'render_settings_meta_box'),
+            'live_quiz',
+            'side',
+            'default'
+        );
+        
+        // Session meta box
+        add_meta_box(
+            'live_quiz_session_info',
+            __('Thông tin phiên', 'live-quiz'),
+            array(__CLASS__, 'render_session_meta_box'),
+            'live_quiz_session',
+            'normal',
+            'high'
+        );
+    }
+    
+    /**
+     * Render questions meta box
+     */
+    public static function render_questions_meta_box($post) {
+        wp_nonce_field('live_quiz_save_questions', 'live_quiz_questions_nonce');
+        
+        $questions = get_post_meta($post->ID, '_live_quiz_questions', true);
+        if (!is_array($questions)) {
+            $questions = array();
+        }
+        
+        ?>
+        <div id="quiz-questions-selector">
+            <p class="description">
+                <?php _e('Chọn các Questions để thêm vào Quiz này. Bạn có thể sắp xếp thứ tự bằng cách kéo thả.', 'live-quiz'); ?>
+            </p>
+            
+            <div class="questions-actions" style="margin-bottom: 15px;">
+                <a href="<?php echo admin_url('post-new.php?post_type=live_question'); ?>" class="button button-primary">
+                    <span class="dashicons dashicons-plus-alt" style="margin-top: 3px;"></span>
+                    <?php _e('Tạo Question mới', 'live-quiz'); ?>
+                </a>
+            </div>
+            
+            <div id="selected-questions-list" class="sortable-questions">
+                <h4><?php _e('Questions đã chọn:', 'live-quiz'); ?></h4>
+                <?php if (empty($selected_questions)): ?>
+                    <p class="no-questions"><?php _e('Chưa có question nào. Chọn từ danh sách bên dưới.', 'live-quiz'); ?></p>
+                <?php else: ?>
+                    <?php foreach ($selected_questions as $q_id): 
+                        $question = get_post($q_id);
+                        if (!$question) continue;
+                        $q_data = get_post_meta($q_id, '_question_data', true);
+                        $q_type = isset($q_data['type']) ? $q_data['type'] : 'single_choice';
+                    ?>
+                        <div class="selected-question-item" data-id="<?php echo esc_attr($q_id); ?>">
+                            <span class="dashicons dashicons-menu handle"></span>
+                            <strong><?php echo esc_html($question->post_title); ?></strong>
+                            <span class="question-type-badge"><?php echo esc_html($q_type); ?></span>
+                            <button type="button" class="button button-small remove-question-from-quiz">
+                                <span class="dashicons dashicons-no-alt"></span>
+                            </button>
+                            <input type="hidden" name="live_quiz_selected_questions[]" value="<?php echo esc_attr($q_id); ?>">
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+            
+            <hr style="margin: 20px 0;">
+            
+            <div id="available-questions-list">
+                <h4><?php _e('Questions có sẵn:', 'live-quiz'); ?></h4>
+                <?php if (empty($all_questions)): ?>
+                    <p><?php _e('Chưa có question nào. Hãy tạo question mới.', 'live-quiz'); ?></p>
+                <?php else: ?>
+                    <?php foreach ($all_questions as $question):
+                        if (in_array($question->ID, $selected_questions)) continue;
+                        $q_data = get_post_meta($question->ID, '_question_data', true);
+                        $q_type = isset($q_data['type']) ? $q_data['type'] : 'single_choice';
+                    ?>
+                        <div class="available-question-item" data-id="<?php echo esc_attr($question->ID); ?>">
+                            <strong><?php echo esc_html($question->post_title); ?></strong>
+                            <span class="question-type-badge"><?php echo esc_html($q_type); ?></span>
+                            <button type="button" class="button button-small add-question-to-quiz">
+                                <span class="dashicons dashicons-plus-alt"></span>
+                                <?php _e('Thêm', 'live-quiz'); ?>
+                            </button>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        
+        <style>
+            .sortable-questions .selected-question-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px;
+                background: #f0f0f1;
+                border: 1px solid #c3c4c7;
+                margin-bottom: 5px;
+                cursor: move;
+            }
+            .sortable-questions .handle {
+                cursor: move;
+                color: #888;
+            }
+            .sortable-questions .selected-question-item strong {
+                flex: 1;
+            }
+            .question-type-badge {
+                background: #2271b1;
+                color: white;
+                padding: 3px 8px;
+                border-radius: 3px;
+                font-size: 11px;
+            }
+            .available-question-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px;
+                border-bottom: 1px solid #ddd;
+            }
+            .available-question-item strong {
+                flex: 1;
+            }
+            .no-questions {
+                color: #888;
+                font-style: italic;
+            }
+        </style>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            // Make sortable
+            $('#selected-questions-list').sortable({
+                handle: '.handle',
+                placeholder: 'sortable-placeholder',
+                update: function(event, ui) {
+                    console.log('Questions reordered');
+                }
+            });
+            
+            // Add question to quiz
+            $(document).on('click', '.add-question-to-quiz', function() {
+                const $item = $(this).closest('.available-question-item');
+                const questionId = $item.data('id');
+                const title = $item.find('strong').text();
+                const type = $item.find('.question-type-badge').text();
+                
+                // Remove from available
+                $item.remove();
+                
+                // Add to selected
+                const html = `
+                    <div class="selected-question-item" data-id="${questionId}">
+                        <span class="dashicons dashicons-menu handle"></span>
+                        <strong>${title}</strong>
+                        <span class="question-type-badge">${type}</span>
+                        <button type="button" class="button button-small remove-question-from-quiz">
+                            <span class="dashicons dashicons-no-alt"></span>
+                        </button>
+                        <input type="hidden" name="live_quiz_selected_questions[]" value="${questionId}">
+                    </div>
+                `;
+                
+                $('.no-questions').remove();
+                $('#selected-questions-list').append(html);
+            });
+            
+            // Remove question from quiz
+            $(document).on('click', '.remove-question-from-quiz', function() {
+                const $item = $(this).closest('.selected-question-item');
+                const questionId = $item.data('id');
+                const title = $item.find('strong').text();
+                const type = $item.find('.question-type-badge').text();
+                
+                // Remove from selected
+                $item.remove();
+                
+                // Add back to available
+                const html = `
+                    <div class="available-question-item" data-id="${questionId}">
+                        <strong>${title}</strong>
+                        <span class="question-type-badge">${type}</span>
+                        <button type="button" class="button button-small add-question-to-quiz">
+                            <span class="dashicons dashicons-plus-alt"></span>
+                            Thêm
+                        </button>
+                    </div>
+                `;
+                
+                $('#available-questions-list').append(html);
+                
+                // Check if no questions
+                if ($('#selected-questions-list .selected-question-item').length === 0) {
+                    $('#selected-questions-list').append('<p class="no-questions">Chưa có question nào. Chọn từ danh sách bên dưới.</p>');
+                }
+            });
+        });
+        </script>
+        <?php
+    }
+    
+    /**
+     * Render question content meta box (NEW)
+     */
+    public static function render_question_content_meta_box($post) {
+        wp_nonce_field('live_question_save', 'live_question_nonce');
+        
+        $question_data = get_post_meta($post->ID, '_question_data', true);
+        if (!is_array($question_data)) {
+            $question_data = array(
+                'type' => 'single_choice',
+                'text' => '',
+                'choices' => array(
+                    array('text' => '', 'is_correct' => false),
+                    array('text' => '', 'is_correct' => false),
+                    array('text' => '', 'is_correct' => false),
+                    array('text' => '', 'is_correct' => false),
+                ),
+                'time_limit' => 20,
+                'base_points' => 1000,
+            );
+        }
+        
+        $is_multiple = $question_data['type'] === 'multiple_choice';
+        ?>
+        <div class="question-content-editor">
+            <table class="form-table">
+                <tr>
+                    <th><label><?php _e('Loại Question:', 'live-quiz'); ?></label></th>
+                    <td>
+                        <select name="question_type" id="question_type" class="question-type-selector">
+                            <option value="single_choice" <?php selected($question_data['type'], 'single_choice'); ?>>
+                                <?php _e('Single Choice (1 đáp án đúng)', 'live-quiz'); ?>
+                            </option>
+                            <option value="multiple_choice" <?php selected($question_data['type'], 'multiple_choice'); ?>>
+                                <?php _e('Multiple Choice (nhiều đáp án đúng)', 'live-quiz'); ?>
+                            </option>
+                        </select>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th><label><?php _e('Nội dung câu hỏi:', 'live-quiz'); ?></label></th>
+                    <td>
+                        <textarea name="question_text" rows="3" class="large-text" required><?php echo esc_textarea($question_data['text']); ?></textarea>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th><label><?php echo $is_multiple ? __('Đáp án (chọn nhiều):', 'live-quiz') : __('Đáp án:', 'live-quiz'); ?></label></th>
+                    <td>
+                        <div id="question-choices">
+                            <?php foreach ($question_data['choices'] as $index => $choice): ?>
+                                <div class="choice-item" style="margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+                                    <?php if ($is_multiple): ?>
+                                        <input type="checkbox" 
+                                               name="question_correct[]" 
+                                               value="<?php echo $index; ?>"
+                                               <?php checked(!empty($choice['is_correct'])); ?>>
+                                    <?php else: ?>
+                                        <input type="radio" 
+                                               name="question_correct" 
+                                               value="<?php echo $index; ?>"
+                                               <?php checked(!empty($choice['is_correct'])); ?>>
+                                    <?php endif; ?>
+                                    <input type="text" 
+                                           name="question_choices[]" 
+                                           value="<?php echo esc_attr($choice['text']); ?>"
+                                           placeholder="<?php echo sprintf(__('Đáp án %d', 'live-quiz'), $index + 1); ?>"
+                                           class="regular-text"
+                                           required>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th><label><?php _e('Thời gian (giây):', 'live-quiz'); ?></label></th>
+                    <td>
+                        <input type="number" 
+                               name="question_time_limit" 
+                               value="<?php echo esc_attr($question_data['time_limit']); ?>"
+                               min="5" max="120" step="1" required>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th><label><?php _e('Điểm cơ bản:', 'live-quiz'); ?></label></th>
+                    <td>
+                        <input type="number" 
+                               name="question_base_points" 
+                               value="<?php echo esc_attr($question_data['base_points']); ?>"
+                               min="100" max="10000" step="100" required>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render question AI generation meta box (NEW)
+     */
+    public static function render_question_ai_meta_box($post) {
+        ?>
+        <div class="question-ai-generator">
+            <p class="description">
+                <?php _e('Sử dụng AI để tạo nội dung question tự động.', 'live-quiz'); ?>
+            </p>
+            
+            <label>
+                <strong><?php _e('Loại Question:', 'live-quiz'); ?></strong>
+                <select id="ai-gen-question-type">
+                    <option value="single_choice"><?php _e('Single Choice', 'live-quiz'); ?></option>
+                    <option value="multiple_choice"><?php _e('Multiple Choice', 'live-quiz'); ?></option>
+                </select>
+            </label>
+            
+            <label style="margin-top: 10px; display: block;">
+                <strong><?php _e('Nội dung/Topic:', 'live-quiz'); ?></strong>
+                <textarea id="ai-gen-content" rows="6" style="width: 100%;" placeholder="Nhập nội dung hoặc topic để AI tạo câu hỏi..."></textarea>
+            </label>
+            
+            <button type="button" class="button button-primary" id="generate-single-question" style="width: 100%; margin-top: 10px;">
+                <span class="dashicons dashicons-admin-generic"></span>
+                <?php _e('Tạo Question bằng AI', 'live-quiz'); ?>
+            </button>
+            
+            <div id="ai-gen-progress" style="display: none; margin-top: 10px;">
+                <p><?php _e('Đang tạo...', 'live-quiz'); ?></p>
+            </div>
+        </div>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            $('#generate-single-question').on('click', function() {
+                const type = $('#ai-gen-question-type').val();
+                const content = $('#ai-gen-content').val();
+                
+                if (!content) {
+                    alert('Vui lòng nhập nội dung!');
+                    return;
+                }
+                
+                $(this).prop('disabled', true);
+                $('#ai-gen-progress').show();
+                
+                $.ajax({
+                    url: liveQuizAdmin.restUrl + '/ai/generate',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WP-Nonce': liveQuizAdmin.nonce
+                    },
+                    data: JSON.stringify({
+                        type: type,
+                        content: content,
+                        count: 1
+                    }),
+                    success: function(response) {
+                        if (response.success && response.data.questions && response.data.questions[0]) {
+                            const q = response.data.questions[0];
+                            
+                            // Fill form
+                            $('#question_type').val(q.type).trigger('change');
+                            $('textarea[name="question_text"]').val(q.text);
+                            $('input[name="question_time_limit"]').val(q.time_limit);
+                            $('input[name="question_base_points"]').val(q.base_points);
+                            
+                            // Fill choices
+                            q.choices.forEach((choice, index) => {
+                                $('input[name="question_choices[]"]').eq(index).val(choice.text);
+                                if (q.type === 'multiple_choice') {
+                                    $('input[name="question_correct[]"][value="' + index + '"]').prop('checked', choice.is_correct);
+                                } else {
+                                    if (choice.is_correct) {
+                                        $('input[name="question_correct"][value="' + index + '"]').prop('checked', true);
+                                    }
+                                }
+                            });
+                            
+                            alert('Đã tạo question bằng AI! Hãy kiểm tra và lưu.');
+                        } else {
+                            alert('Lỗi: ' + (response.message || 'Không thể tạo question'));
+                        }
+                    },
+                    error: function(xhr) {
+                        alert('Lỗi: ' + xhr.responseText);
+                    },
+                    complete: function() {
+                        $('#generate-single-question').prop('disabled', false);
+                        $('#ai-gen-progress').hide();
+                    }
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+    
+    /**
+     * Render questions meta box (OLD - for backward compatibility)
+     */
+    public static function render_questions_meta_box($post) {
+        wp_nonce_field('live_quiz_save_questions', 'live_quiz_questions_nonce');
+        
+        $questions = get_post_meta($post->ID, '_live_quiz_questions', true);
+        if (!is_array($questions)) {
+            $questions = array();
+        }
+        ?>
+        <div id="live-quiz-questions-container">
+            <div class="question-creation-mode">
+                <div class="creation-buttons">
+                    <button type="button" class="button button-primary" id="add-question-manual">
+                        <span class="dashicons dashicons-edit"></span>
+                        <?php _e('Tạo câu hỏi', 'live-quiz'); ?>
+                    </button>
+                    <button type="button" class="button button-secondary" id="add-question-ai">
+                        <span class="dashicons dashicons-admin-generic"></span>
+                        <?php _e('Tạo câu hỏi bằng AI', 'live-quiz'); ?>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- AI Generation Modal -->
+            <div id="ai-generation-modal" style="display: none;">
+                <div class="ai-modal-content">
+                    <h3><?php _e('Tạo câu hỏi bằng AI', 'live-quiz'); ?></h3>
+                    
+                    <label>
+                        <strong><?php _e('Loại câu hỏi:', 'live-quiz'); ?></strong>
+                        <select id="ai-question-type">
+                            <option value="single_choice"><?php _e('Single Choice (1 đáp án đúng)', 'live-quiz'); ?></option>
+                            <option value="multiple_choice"><?php _e('Multiple Choice (nhiều đáp án đúng)', 'live-quiz'); ?></option>
+                        </select>
+                    </label>
+                    
+                    <label>
+                        <strong><?php _e('Số lượng câu hỏi:', 'live-quiz'); ?></strong>
+                        <input type="number" id="ai-question-count" value="1" min="1" max="10">
+                    </label>
+                    
+                    <label>
+                        <strong><?php _e('Nội dung/Topic:', 'live-quiz'); ?></strong>
+                        <textarea id="ai-question-content" rows="10" placeholder="Nhập nội dung bài học, topic, hoặc đoạn text để AI tạo câu hỏi..."></textarea>
+                    </label>
+                    
+                    <div class="ai-modal-buttons">
+                        <button type="button" class="button button-primary" id="generate-ai-questions">
+                            <span class="dashicons dashicons-admin-generic"></span>
+                            <?php _e('Tạo câu hỏi', 'live-quiz'); ?>
+                        </button>
+                        <button type="button" class="button" id="cancel-ai-generation">
+                            <?php _e('Hủy', 'live-quiz'); ?>
+                        </button>
+                    </div>
+                    
+                    <div id="ai-generation-progress" style="display: none;">
+                        <p><?php _e('Đang tạo câu hỏi...', 'live-quiz'); ?></p>
+                        <div class="progress-bar">
+                            <div class="progress-bar-fill"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="questions-list">
+                <?php foreach ($questions as $index => $question): ?>
+                    <?php self::render_question_item($index, $question); ?>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        
+        <script type="text/template" id="question-template">
+            <?php self::render_question_item('{{INDEX}}', array()); ?>
+        </script>
+        
+        <style>
+            .question-creation-mode {
+                background: #f0f0f1;
+                padding: 15px;
+                margin-bottom: 20px;
+                border: 1px solid #c3c4c7;
+                border-radius: 4px;
+            }
+            .creation-buttons {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+            .creation-buttons .button {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                padding: 8px 15px;
+                height: auto;
+            }
+            .creation-buttons .button .dashicons {
+                font-size: 16px;
+                width: 16px;
+                height: 16px;
+            }
+            
+            #ai-generation-modal {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.7);
+                z-index: 100000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .ai-modal-content {
+                background: white;
+                padding: 30px;
+                border-radius: 8px;
+                max-width: 600px;
+                width: 90%;
+                max-height: 90vh;
+                overflow-y: auto;
+            }
+            .ai-modal-content h3 {
+                margin-top: 0;
+            }
+            .ai-modal-content label {
+                display: block;
+                margin-bottom: 15px;
+            }
+            .ai-modal-content label strong {
+                display: block;
+                margin-bottom: 5px;
+            }
+            .ai-modal-content select,
+            .ai-modal-content input,
+            .ai-modal-content textarea {
+                width: 100%;
+                padding: 8px;
+            }
+            .ai-modal-buttons {
+                display: flex;
+                gap: 10px;
+                margin-top: 20px;
+            }
+            #ai-generation-progress {
+                margin-top: 20px;
+            }
+            .progress-bar {
+                height: 20px;
+                background: #f0f0f1;
+                border-radius: 10px;
+                overflow: hidden;
+            }
+            .progress-bar-fill {
+                height: 100%;
+                background: #2271b1;
+                animation: progress 2s infinite;
+            }
+            @keyframes progress {
+                0% { width: 0%; }
+                50% { width: 70%; }
+                100% { width: 100%; }
+            }
+            
+            .question-item {
+                border: 1px solid #ddd;
+                padding: 15px;
+                margin-bottom: 15px;
+                background: #f9f9f9;
+                position: relative;
+            }
+            .question-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            }
+            .question-header > div {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .question-type-selector {
+                padding: 5px;
+                font-size: 12px;
+            }
+            .question-text {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            .choices-container {
+                margin-left: 20px;
+            }
+            .choice-item {
+                display: flex;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+            .choice-item input[type="text"] {
+                flex: 1;
+                margin: 0 10px;
+            }
+            .remove-question {
+                color: #a00;
+                cursor: pointer;
+            }
+            .question-settings {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                margin-top: 10px;
+            }
+        </style>
+        <?php
+    }
+    
+    /**
+     * Render single question item
+     */
+    private static function render_question_item($index, $question = array()) {
+        $question = wp_parse_args($question, array(
+            'type' => 'single_choice',
+            'text' => '',
+            'choices' => array(
+                array('text' => '', 'is_correct' => false),
+                array('text' => '', 'is_correct' => false),
+                array('text' => '', 'is_correct' => false),
+                array('text' => '', 'is_correct' => false),
+            ),
+            'time_limit' => 20,
+            'base_points' => 1000,
+        ));
+        
+        $is_multiple = $question['type'] === 'multiple_choice';
+        ?>
+        <div class="question-item" data-index="<?php echo esc_attr($index); ?>">
+            <div class="question-header">
+                <div>
+                    <h3><?php printf(__('Câu hỏi #%s', 'live-quiz'), '<span class="question-number">' . ($index + 1) . '</span>'); ?></h3>
+                    <select name="live_quiz_questions[<?php echo esc_attr($index); ?>][type]" class="question-type-selector">
+                        <option value="single_choice" <?php selected($question['type'], 'single_choice'); ?>><?php _e('Single Choice', 'live-quiz'); ?></option>
+                        <option value="multiple_choice" <?php selected($question['type'], 'multiple_choice'); ?>><?php _e('Multiple Choice', 'live-quiz'); ?></option>
+                    </select>
+                </div>
+                <span class="remove-question dashicons dashicons-trash"></span>
+            </div>
+            
+            <input type="text" 
+                   name="live_quiz_questions[<?php echo esc_attr($index); ?>][text]" 
+                   class="question-text widefat"
+                   placeholder="<?php esc_attr_e('Nhập nội dung câu hỏi...', 'live-quiz'); ?>"
+                   value="<?php echo esc_attr($question['text']); ?>"
+                   required>
+            
+            <div class="choices-container">
+                <strong><?php echo $is_multiple ? __('Đáp án (có thể chọn nhiều):', 'live-quiz') : __('Đáp án:', 'live-quiz'); ?></strong>
+                <?php foreach ($question['choices'] as $choice_index => $choice): ?>
+                    <div class="choice-item">
+                        <?php if ($is_multiple): ?>
+                            <input type="checkbox" 
+                                   name="live_quiz_questions[<?php echo esc_attr($index); ?>][correct][]"
+                                   value="<?php echo esc_attr($choice_index); ?>"
+                                   <?php checked(!empty($choice['is_correct'])); ?>>
+                        <?php else: ?>
+                            <input type="radio" 
+                                   name="live_quiz_questions[<?php echo esc_attr($index); ?>][correct]"
+                                   value="<?php echo esc_attr($choice_index); ?>"
+                                   <?php checked(!empty($choice['is_correct'])); ?>>
+                        <?php endif; ?>
+                        <input type="text"
+                               name="live_quiz_questions[<?php echo esc_attr($index); ?>][choices][<?php echo esc_attr($choice_index); ?>]"
+                               placeholder="<?php echo esc_attr(sprintf(__('Đáp án %d', 'live-quiz'), $choice_index + 1)); ?>"
+                               value="<?php echo esc_attr($choice['text'] ?? ''); ?>"
+                               required>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            
+            <div class="question-settings">
+                <label>
+                    <?php _e('Thời gian (giây):', 'live-quiz'); ?>
+                    <input type="number" 
+                           name="live_quiz_questions[<?php echo esc_attr($index); ?>][time_limit]"
+                           value="<?php echo esc_attr($question['time_limit']); ?>"
+                           min="5" max="120" step="1" required>
+                </label>
+                
+                <label>
+                    <?php _e('Điểm cơ bản:', 'live-quiz'); ?>
+                    <input type="number" 
+                           name="live_quiz_questions[<?php echo esc_attr($index); ?>][base_points]"
+                           value="<?php echo esc_attr($question['base_points']); ?>"
+                           min="100" max="10000" step="100" required>
+                </label>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render settings meta box
+     */
+    public static function render_settings_meta_box($post) {
+        wp_nonce_field('live_quiz_save_settings', 'live_quiz_settings_nonce');
+        
+        $alpha = get_post_meta($post->ID, '_live_quiz_alpha', true) ?: 0.3;
+        $max_players = get_post_meta($post->ID, '_live_quiz_max_players', true) ?: 500;
+        ?>
+        <p>
+            <label>
+                <strong><?php _e('Hệ số Alpha (α):', 'live-quiz'); ?></strong><br>
+                <input type="number" 
+                       name="live_quiz_alpha" 
+                       value="<?php echo esc_attr($alpha); ?>"
+                       min="0" max="1" step="0.1" 
+                       style="width: 100%;">
+                <small><?php _e('Điểm tối thiểu khi trả lời đúng (0-1)', 'live-quiz'); ?></small>
+            </label>
+        </p>
+        
+        <p>
+            <label>
+                <strong><?php _e('Số người tối đa:', 'live-quiz'); ?></strong><br>
+                <input type="number" 
+                       name="live_quiz_max_players" 
+                       value="<?php echo esc_attr($max_players); ?>"
+                       min="1" max="1000" 
+                       style="width: 100%;">
+            </label>
+        </p>
+        <?php
+    }
+    
+    /**
+     * Render session meta box
+     */
+    public static function render_session_meta_box($post) {
+        $quiz_id = get_post_meta($post->ID, '_session_quiz_id', true);
+        $room_code = get_post_meta($post->ID, '_session_room_code', true);
+        $status = get_post_meta($post->ID, '_session_status', true) ?: 'lobby';
+        
+        ?>
+        <p>
+            <label>
+                <strong><?php _e('Chọn Quiz:', 'live-quiz'); ?></strong><br>
+                <?php
+                wp_dropdown_pages(array(
+                    'post_type' => 'live_quiz',
+                    'selected' => $quiz_id,
+                    'name' => 'session_quiz_id',
+                    'show_option_none' => __('-- Chọn Quiz --', 'live-quiz'),
+                ));
+                ?>
+            </label>
+        </p>
+        
+        <p>
+            <strong><?php _e('Mã phòng:', 'live-quiz'); ?></strong>
+            <code style="font-size: 20px; display: block; padding: 10px; background: #f0f0f0;">
+                <?php echo esc_html($room_code ?: __('Tự động tạo', 'live-quiz')); ?>
+            </code>
+        </p>
+        
+        <p>
+            <strong><?php _e('Trạng thái:', 'live-quiz'); ?></strong>
+            <span class="status-badge status-<?php echo esc_attr($status); ?>">
+                <?php echo esc_html(ucfirst($status)); ?>
+            </span>
+        </p>
+        <?php
+    }
+    
+    /**
+     * Save meta boxes
+     */
+    public static function save_meta_boxes($post_id, $post) {
+        // Check autosave
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return;
+        }
+        
+        // Check permissions
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+        
+        // Save quiz selected questions (NEW)
+        if ($post->post_type === 'live_quiz') {
+            if (isset($_POST['live_quiz_selected_questions_nonce']) && 
+                wp_verify_nonce($_POST['live_quiz_selected_questions_nonce'], 'live_quiz_save_selected_questions')) {
+                
+                $selected_questions = array();
+                if (isset($_POST['live_quiz_selected_questions']) && is_array($_POST['live_quiz_selected_questions'])) {
+                    $selected_questions = array_map('intval', $_POST['live_quiz_selected_questions']);
+                }
+                
+                update_post_meta($post_id, '_live_quiz_selected_questions', $selected_questions);
+            }
+        }
+        
+        // Save question content (NEW)
+        if ($post->post_type === 'live_question') {
+            if (isset($_POST['live_question_nonce']) && 
+                wp_verify_nonce($_POST['live_question_nonce'], 'live_question_save')) {
+                
+                $question_type = isset($_POST['question_type']) ? sanitize_text_field($_POST['question_type']) : 'single_choice';
+                $is_multiple = $question_type === 'multiple_choice';
+                
+                $choices = array();
+                if (isset($_POST['question_choices']) && is_array($_POST['question_choices'])) {
+                    $correct_answers = array();
+                    
+                    if ($is_multiple && isset($_POST['question_correct']) && is_array($_POST['question_correct'])) {
+                        $correct_answers = array_map('intval', $_POST['question_correct']);
+                    } elseif (!$is_multiple && isset($_POST['question_correct'])) {
+                        $correct_answers = array((int)$_POST['question_correct']);
+                    }
+                    
+                    foreach ($_POST['question_choices'] as $index => $choice_text) {
+                        if (empty($choice_text)) continue;
+                        $choices[] = array(
+                            'text' => sanitize_text_field($choice_text),
+                            'is_correct' => in_array((int)$index, $correct_answers),
+                        );
+                    }
+                }
+                
+                $question_data = array(
+                    'type' => $question_type,
+                    'text' => isset($_POST['question_text']) ? sanitize_textarea_field($_POST['question_text']) : '',
+                    'choices' => $choices,
+                    'time_limit' => isset($_POST['question_time_limit']) ? max(5, min(120, (int)$_POST['question_time_limit'])) : 20,
+                    'base_points' => isset($_POST['question_base_points']) ? max(100, min(10000, (int)$_POST['question_base_points'])) : 1000,
+                );
+                
+                update_post_meta($post_id, '_question_data', $question_data);
+            }
+        }
+        
+        // Save questions (OLD - backward compatibility)
+        if ($post->post_type === 'live_quiz') {
+            if (isset($_POST['live_quiz_questions_nonce']) && 
+                wp_verify_nonce($_POST['live_quiz_questions_nonce'], 'live_quiz_save_questions')) {
+                
+                $questions = array();
+                if (isset($_POST['live_quiz_questions']) && is_array($_POST['live_quiz_questions'])) {
+                    foreach ($_POST['live_quiz_questions'] as $q) {
+                        if (empty($q['text'])) continue;
+                        
+                        $question_type = isset($q['type']) ? sanitize_text_field($q['type']) : 'single_choice';
+                        $is_multiple = $question_type === 'multiple_choice';
+                        
+                        $choices = array();
+                        if (isset($q['choices']) && is_array($q['choices'])) {
+                            $correct_answers = array();
+                            
+                            // Handle multiple choice (array of correct answers)
+                            if ($is_multiple && isset($q['correct']) && is_array($q['correct'])) {
+                                $correct_answers = array_map('intval', $q['correct']);
+                            }
+                            // Handle single choice (single correct answer)
+                            elseif (!$is_multiple && isset($q['correct'])) {
+                                $correct_answers = array((int)$q['correct']);
+                            }
+                            
+                            foreach ($q['choices'] as $choice_index => $choice_text) {
+                                if (empty($choice_text)) continue;
+                                $choices[] = array(
+                                    'text' => sanitize_text_field($choice_text),
+                                    'is_correct' => in_array((int)$choice_index, $correct_answers),
+                                );
+                            }
+                        }
+                        
+                        if (count($choices) < 2) continue; // Need at least 2 choices
+                        
+                        $questions[] = array(
+                            'type' => $question_type,
+                            'text' => sanitize_textarea_field($q['text']),
+                            'choices' => $choices,
+                            'time_limit' => max(5, min(120, (int)($q['time_limit'] ?? 20))),
+                            'base_points' => max(100, min(10000, (int)($q['base_points'] ?? 1000))),
+                        );
+                    }
+                }
+                
+                update_post_meta($post_id, '_live_quiz_questions', $questions);
+            }
+            
+            // Save settings
+            if (isset($_POST['live_quiz_settings_nonce']) && 
+                wp_verify_nonce($_POST['live_quiz_settings_nonce'], 'live_quiz_save_settings')) {
+                
+                if (isset($_POST['live_quiz_alpha'])) {
+                    update_post_meta($post_id, '_live_quiz_alpha', floatval($_POST['live_quiz_alpha']));
+                }
+                
+                if (isset($_POST['live_quiz_max_players'])) {
+                    update_post_meta($post_id, '_live_quiz_max_players', intval($_POST['live_quiz_max_players']));
+                }
+            }
+        }
+        
+        // Save session info
+        if ($post->post_type === 'live_quiz_session') {
+            if (isset($_POST['session_quiz_id'])) {
+                update_post_meta($post_id, '_session_quiz_id', intval($_POST['session_quiz_id']));
+            }
+            
+            // Generate room code if new
+            if (!get_post_meta($post_id, '_session_room_code', true)) {
+                update_post_meta($post_id, '_session_room_code', self::generate_room_code());
+                update_post_meta($post_id, '_session_status', 'lobby');
+            }
+        }
+    }
+    
+    /**
+     * Generate unique room code
+     */
+    private static function generate_room_code() {
+        $characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusing chars
+        do {
+            $code = '';
+            for ($i = 0; $i < 6; $i++) {
+                $code .= $characters[random_int(0, strlen($characters) - 1)];
+            }
+            
+            // Check if code exists
+            $existing = get_posts(array(
+                'post_type' => 'live_quiz_session',
+                'meta_key' => '_session_room_code',
+                'meta_value' => $code,
+                'posts_per_page' => 1,
+            ));
+        } while (!empty($existing));
+        
+        return $code;
+    }
+}

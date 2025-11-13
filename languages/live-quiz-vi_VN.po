@@ -1,0 +1,340 @@
+# Copyright (C) 2025 DND English Group
+# This file is distributed under the GPL v2 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: DND Live Quiz 1.0.0\n"
+"Report-Msgid-Bugs-To: https://example.com/support\n"
+"POT-Creation-Date: 2025-11-09 00:00:00+00:00\n"
+"PO-Revision-Date: 2025-11-09 00:00:00+00:00\n"
+"Last-Translator: DND English Group\n"
+"Language-Team: Vietnamese\n"
+"Language: vi_VN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: includes/class-post-types.php
+msgid "Quiz Questions"
+msgstr "Câu hỏi Quiz"
+
+msgid "Quiz"
+msgstr "Quiz"
+
+msgid "Thêm mới"
+msgstr "Thêm mới"
+
+msgid "Thêm Quiz mới"
+msgstr "Thêm Quiz mới"
+
+msgid "Chỉnh sửa Quiz"
+msgstr "Chỉnh sửa Quiz"
+
+msgid "Quiz mới"
+msgstr "Quiz mới"
+
+msgid "Xem Quiz"
+msgstr "Xem Quiz"
+
+msgid "Tìm Quiz"
+msgstr "Tìm Quiz"
+
+msgid "Không tìm thấy"
+msgstr "Không tìm thấy"
+
+msgid "Quiz Sessions"
+msgstr "Phiên Quiz"
+
+msgid "Session"
+msgstr "Phiên"
+
+msgid "Tạo phiên"
+msgstr "Tạo phiên"
+
+msgid "Tạo phiên mới"
+msgstr "Tạo phiên mới"
+
+msgid "Quản lý phiên"
+msgstr "Quản lý phiên"
+
+msgid "Câu hỏi Quiz"
+msgstr "Câu hỏi Quiz"
+
+msgid "Cài đặt Quiz"
+msgstr "Cài đặt Quiz"
+
+msgid "Thông tin phiên"
+msgstr "Thông tin phiên"
+
+msgid "Hệ số Alpha (α):"
+msgstr "Hệ số Alpha (α):"
+
+msgid "Điểm tối thiểu khi trả lời đúng (0-1)"
+msgstr "Điểm tối thiểu khi trả lời đúng (0-1)"
+
+msgid "Số người tối đa:"
+msgstr "Số người tối đa:"
+
+msgid "Chọn Quiz:"
+msgstr "Chọn Quiz:"
+
+msgid "-- Chọn Quiz --"
+msgstr "-- Chọn Quiz --"
+
+msgid "Mã phòng:"
+msgstr "Mã phòng:"
+
+msgid "Tự động tạo"
+msgstr "Tự động tạo"
+
+msgid "Trạng thái:"
+msgstr "Trạng thái:"
+
+#: templates/player.php
+msgid "Tham gia Live Quiz"
+msgstr "Tham gia Live Quiz"
+
+msgid "Tên hiển thị"
+msgstr "Tên hiển thị"
+
+msgid "Nhập tên của bạn..."
+msgstr "Nhập tên của bạn..."
+
+msgid "Mã phòng"
+msgstr "Mã phòng"
+
+msgid "Nhập mã 6 ký tự..."
+msgstr "Nhập mã 6 ký tự..."
+
+msgid "Tham gia"
+msgstr "Tham gia"
+
+msgid "Đang chờ bắt đầu..."
+msgstr "Đang chờ bắt đầu..."
+
+msgid "Mã phòng:"
+msgstr "Mã phòng:"
+
+msgid "Bảng xếp hạng"
+msgstr "Bảng xếp hạng"
+
+msgid "Thứ hạng của bạn:"
+msgstr "Thứ hạng của bạn:"
+
+msgid "Điểm của bạn:"
+msgstr "Điểm của bạn:"
+
+msgid "🎉 Quiz đã kết thúc!"
+msgstr "🎉 Quiz đã kết thúc!"
+
+msgid "Kết quả cuối cùng"
+msgstr "Kết quả cuối cùng"
+
+msgid "Thứ hạng"
+msgstr "Thứ hạng"
+
+msgid "Điểm"
+msgstr "Điểm"
+
+msgid "Top 10"
+msgstr "Top 10"
+
+msgid "Tham gia phiên mới"
+msgstr "Tham gia phiên mới"
+
+#: includes/class-session-manager.php
+msgid "Phiên không tồn tại"
+msgstr "Phiên không tồn tại"
+
+msgid "Phiên đã kết thúc"
+msgstr "Phiên đã kết thúc"
+
+msgid "Phòng đã đầy"
+msgstr "Phòng đã đầy"
+
+msgid "Không nhận câu trả lời lúc này"
+msgstr "Không nhận câu trả lời lúc này"
+
+msgid "Đã trả lời câu hỏi này"
+msgstr "Đã trả lời câu hỏi này"
+
+#: includes/class-security.php
+msgid "Nonce không hợp lệ"
+msgstr "Nonce không hợp lệ"
+
+msgid "Vượt quá giới hạn. Vui lòng thử lại sau %d giây."
+msgstr "Vượt quá giới hạn. Vui lòng thử lại sau %d giây."
+
+msgid "Bạn không phải thành viên của phiên này"
+msgstr "Bạn không phải thành viên của phiên này"
+
+msgid "Quá nhiều người chơi từ cùng một địa chỉ IP"
+msgstr "Quá nhiều người chơi từ cùng một địa chỉ IP"
+
+msgid "Lựa chọn không hợp lệ"
+msgstr "Lựa chọn không hợp lệ"
+
+msgid "Lựa chọn không tồn tại"
+msgstr "Lựa chọn không tồn tại"
+
+#: includes/class-rest-api.php
+msgid "Thiếu ID quiz"
+msgstr "Thiếu ID quiz"
+
+msgid "Phiên Quiz %s"
+msgstr "Phiên Quiz %s"
+
+msgid "Không thể bắt đầu phiên"
+msgstr "Không thể bắt đầu phiên"
+
+msgid "Không thể chuyển câu hỏi"
+msgstr "Không thể chuyển câu hỏi"
+
+msgid "Không thể kết thúc phiên"
+msgstr "Không thể kết thúc phiên"
+
+msgid "Không tìm thấy phiên"
+msgstr "Không tìm thấy phiên"
+
+msgid "Thiếu thông tin"
+msgstr "Thiếu thông tin"
+
+msgid "Tên không hợp lệ"
+msgstr "Tên không hợp lệ"
+
+msgid "Không tìm thấy phòng"
+msgstr "Không tìm thấy phòng"
+
+msgid "Không thể xóa"
+msgstr "Không thể xóa"
+
+#: templates/admin-sessions.php
+msgid "Quản lý Phiên Quiz"
+msgstr "Quản lý Phiên Quiz"
+
+msgid "Tạo phiên mới"
+msgstr "Tạo phiên mới"
+
+msgid "Chọn Quiz"
+msgstr "Chọn Quiz"
+
+msgid "Chưa có quiz nào."
+msgstr "Chưa có quiz nào."
+
+msgid "Tạo quiz mới"
+msgstr "Tạo quiz mới"
+
+msgid "Các phiên hiện có"
+msgstr "Các phiên hiện có"
+
+msgid "Người chơi"
+msgstr "Người chơi"
+
+msgid "Thời gian"
+msgstr "Thời gian"
+
+msgid "Thao tác"
+msgstr "Thao tác"
+
+msgid "Chưa có phiên nào."
+msgstr "Chưa có phiên nào."
+
+msgid "(Đã xóa)"
+msgstr "(Đã xóa)"
+
+msgid "Chờ bắt đầu"
+msgstr "Chờ bắt đầu"
+
+msgid "Đang chơi"
+msgstr "Đang chơi"
+
+msgid "Xem kết quả"
+msgstr "Xem kết quả"
+
+msgid "Đã kết thúc"
+msgstr "Đã kết thúc"
+
+msgid "Bắt đầu"
+msgstr "Bắt đầu"
+
+msgid "Câu tiếp theo"
+msgstr "Câu tiếp theo"
+
+msgid "Tiếp tục"
+msgstr "Tiếp tục"
+
+msgid "Kết thúc"
+msgstr "Kết thúc"
+
+msgid "Chi tiết"
+msgstr "Chi tiết"
+
+msgid "Đã tạo phiên mới!"
+msgstr "Đã tạo phiên mới!"
+
+#: templates/admin-settings.php
+msgid "Cài đặt Live Quiz"
+msgstr "Cài đặt Live Quiz"
+
+msgid "Hệ số Alpha (α)"
+msgstr "Hệ số Alpha (α)"
+
+msgid "Hệ số điểm tối thiểu khi trả lời đúng (0-1). Ví dụ: 0.3 = ít nhất 30% điểm khi trả lời đúng cuối giờ."
+msgstr "Hệ số điểm tối thiểu khi trả lời đúng (0-1). Ví dụ: 0.3 = ít nhất 30% điểm khi trả lời đúng cuối giờ."
+
+msgid "Điểm cơ bản mặc định"
+msgstr "Điểm cơ bản mặc định"
+
+msgid "Điểm cơ bản cho mỗi câu hỏi mới."
+msgstr "Điểm cơ bản cho mỗi câu hỏi mới."
+
+msgid "Thời gian mặc định (giây)"
+msgstr "Thời gian mặc định (giây)"
+
+msgid "Thời gian mặc định cho mỗi câu hỏi mới."
+msgstr "Thời gian mặc định cho mỗi câu hỏi mới."
+
+msgid "Số người chơi tối đa"
+msgstr "Số người chơi tối đa"
+
+msgid "Số lượng người chơi tối đa trong một phiên."
+msgstr "Số lượng người chơi tối đa trong một phiên."
+
+msgid "Thông tin công thức tính điểm"
+msgstr "Thông tin công thức tính điểm"
+
+msgid "Công thức:"
+msgstr "Công thức:"
+
+msgid "Giải thích:"
+msgstr "Giải thích:"
+
+msgid "Điểm cơ bản của câu hỏi"
+msgstr "Điểm cơ bản của câu hỏi"
+
+msgid "Hệ số điểm tối thiểu"
+msgstr "Hệ số điểm tối thiểu"
+
+msgid "Thời gian còn lại khi trả lời"
+msgstr "Thời gian còn lại khi trả lời"
+
+msgid "Tổng thời gian cho câu hỏi"
+msgstr "Tổng thời gian cho câu hỏi"
+
+msgid "Ví dụ:"
+msgstr "Ví dụ:"
+
+msgid "Lưu cài đặt"
+msgstr "Lưu cài đặt"
+
+msgid "Đã lưu cài đặt!"
+msgstr "Đã lưu cài đặt!"
+
+msgid "Shortcode"
+msgstr "Shortcode"
+
+msgid "Để hiển thị giao diện người chơi, thêm shortcode sau vào trang:"
+msgstr "Để hiển thị giao diện người chơi, thêm shortcode sau vào trang:"
+
+msgid "Người chơi sẽ nhập tên và mã phòng để tham gia quiz."
+msgstr "Người chơi sẽ nhập tên và mã phòng để tham gia quiz."
