@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('LIVE_QUIZ_VERSION', '2.0.7');
+define('LIVE_QUIZ_VERSION', '2.0.8');
 define('LIVE_QUIZ_PLUGIN_FILE', __FILE__);
 define('LIVE_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('LIVE_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -203,6 +203,7 @@ final class Live_Quiz {
             $frontend_config = array(
                 'apiUrl' => rest_url('live-quiz/v1'),
                 'adminUrl' => admin_url(),
+                'pluginUrl' => LIVE_QUIZ_PLUGIN_URL,
                 'nonce' => wp_create_nonce('wp_rest'),
                 'i18n' => array(
                     'selectQuizError' => __('Vui lòng chọn ít nhất một bộ câu hỏi', 'live-quiz'),

@@ -11,7 +11,8 @@ if (!defined('ABSPATH')) {
 ?>
 
 <div class="live-quiz-create-room" data-theme="<?php echo esc_attr($atts['theme']); ?>">
-    <div class="create-room-container">
+    <!-- Form tạo phòng -->
+    <div class="create-room-container" id="create-room-form-container">
         <h2><?php _e('Tạo phòng Quiz mới', 'live-quiz'); ?></h2>
         
         <form id="live-quiz-create-room-form">
@@ -140,5 +141,10 @@ if (!defined('ABSPATH')) {
                 </div>
             </div>
         </div>
+    </div>
+    
+    <!-- Host Interface Container (sẽ hiển thị sau khi tạo phòng) -->
+    <div class="host-interface-container" id="host-interface-container" style="display: none;">
+        <!-- Host interface sẽ được load động vào đây -->
     </div>
 </div>

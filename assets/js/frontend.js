@@ -238,23 +238,61 @@
         },
         
         showSuccess: function(response) {
-            // Redirect to host page
-            if (response.host_url) {
-                window.location.href = response.host_url;
-                return;
+            // Update URL without reload using History API
+            if (response.room_code) {
+                const hostUrl = '/host/' + response.room_code;
+                window.history.pushState({ 
+                    sessionId: response.session_id, 
+                    roomCode: response.room_code 
+                }, '', hostUrl);
             }
             
-            // Fallback to old behavior if host_url not available
-            $('#created-room-code').text(response.room_code);
-            $('#created-question-count').text(response.question_count);
+            // Hide form container
+            $('#create-room-form-container').hide();
             
-            // Set manage room link
-            const adminUrl = liveQuizFrontend.adminUrl;
-            const manageUrl = `${adminUrl}post.php?post=${response.session_id}&action=edit`;
-            $('#btn-manage-room').attr('href', manageUrl);
+            // Show host interface container với iframe
+            const $hostContainer = $('#host-interface-container');
+            const hostPageUrl = response.host_url || (window.location.origin + '/host/' + response.room_code);
             
-            // Show modal
-            $('#room-created-modal').show();
+            $hostContainer.html(`
+                <div class="host-iframe-wrapper">
+                    <div class="host-iframe-header">
+                        <h3>Quản lý phòng: ${response.room_code}</h3>
+                        <div class="host-iframe-actions">
+                            <button class="btn-open-new-tab" id="btn-open-host-new-tab">
+                                Mở trong tab mới
+                            </button>
+                            <button class="btn-close-host" id="btn-close-host">
+                                Đóng
+                            </button>
+                        </div>
+                    </div>
+                    <iframe 
+                        src="${hostPageUrl}" 
+                        class="host-iframe"
+                        frameborder="0"
+                        width="100%"
+                        height="800px"
+                    ></iframe>
+                </div>
+            `);
+            
+            $hostContainer.show();
+            
+            // Bind events
+            $('#btn-open-host-new-tab').on('click', function() {
+                window.open(hostPageUrl, '_blank');
+            });
+            
+            $('#btn-close-host').on('click', function() {
+                if (confirm('Bạn có chắc muốn đóng? Phòng vẫn đang hoạt động.')) {
+                    $hostContainer.hide();
+                    $('#create-room-form-container').show();
+                    self.resetForm();
+                    // Restore original URL
+                    window.history.pushState({}, '', window.location.pathname);
+                }
+            });
         },
         
         showError: function(message) {

@@ -195,9 +195,17 @@
                     timestamp: Date.now()
                 }));
                 
-                // Redirect to /play/{code}
-                const playUrl = window.location.origin + '/play/' + roomCode;
-                window.location.href = playUrl;
+                // Update URL without reload using History API
+                const playUrl = '/play/' + roomCode;
+                window.history.pushState({ roomCode: roomCode }, '', playUrl);
+                
+                // Show waiting screen (không redirect, chỉ thay đổi UI trong block)
+                showScreen('quiz-waiting');
+                document.getElementById('waiting-player-name').textContent = displayName;
+                document.getElementById('waiting-room-code').textContent = roomCode;
+                
+                // Connect to WebSocket
+                connectWebSocket();
             }
         } catch (error) {
             console.error('Join error:', error);
