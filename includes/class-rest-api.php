@@ -72,6 +72,13 @@ class Live_Quiz_REST_API {
             'permission_callback' => '__return_true',
         ));
         
+        // Leave session
+        register_rest_route(self::NAMESPACE, '/leave', array(
+            'methods' => 'POST',
+            'callback' => array(__CLASS__, 'leave_session'),
+            'permission_callback' => '__return_true',
+        ));
+        
         // Get leaderboard
         register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/leaderboard', array(
             'methods' => 'GET',
@@ -207,16 +214,19 @@ class Live_Quiz_REST_API {
         
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         
-        // Generate host URL with dynamic base
+        // Generate URLs
+        $host_base = Live_Quiz_Post_Types::get_host_base();
         $play_base = Live_Quiz_Post_Types::get_play_base();
-        $host_url = home_url('/' . $play_base . '/' . $session_id);
+        $host_url = home_url('/' . $host_base . '/' . $room_code);
+        $player_url = home_url('/' . $play_base . '/' . $room_code);
         
         return rest_ensure_response(array(
             'success' => true,
             'session_id' => $session_id,
             'room_code' => $room_code,
-            'host_url' => $host_url,
             'pin_code' => $room_code, // Alias for clarity
+            'host_url' => $host_url,
+            'player_url' => $player_url,
             'session' => $session,
         ));
     }
@@ -386,6 +396,36 @@ class Live_Quiz_REST_API {
         }
         
         return rest_ensure_response($response);
+    }
+    
+    /**
+     * Leave session
+     */
+    public static function leave_session($request) {
+        $session_id = $request->get_param('session_id');
+        $user_id = $request->get_param('user_id');
+        
+        if (!$session_id || !$user_id) {
+            return new WP_Error('missing_params', __('Thiếu thông tin', 'live-quiz'), array('status' => 400));
+        }
+        
+        // Sanitize
+        $session_id = absint($session_id);
+        $user_id = sanitize_text_field($user_id);
+        
+        // Remove participant from session
+        $result = Live_Quiz_Session_Manager::remove_participant($session_id, $user_id);
+        
+        if (is_wp_error($result)) {
+            // Even if there's an error, return success to allow client to clean up
+            // This prevents stuck states
+            error_log('Leave session error: ' . $result->get_error_message());
+        }
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => __('Đã rời khỏi phòng', 'live-quiz'),
+        ));
     }
     
     /**
@@ -923,15 +963,19 @@ class Live_Quiz_REST_API {
         
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         
-        // Generate host URL with dynamic base
+        // Generate URLs
+        $host_base = Live_Quiz_Post_Types::get_host_base();
         $play_base = Live_Quiz_Post_Types::get_play_base();
-        $host_url = home_url('/' . $play_base . '/' . $session_id);
+        $host_url = home_url('/' . $host_base . '/' . $room_code);
+        $player_url = home_url('/' . $play_base . '/' . $room_code);
         
         return rest_ensure_response(array(
             'success' => true,
             'session_id' => $session_id,
             'room_code' => $room_code,
+            'pin_code' => $room_code,
             'host_url' => $host_url,
+            'player_url' => $player_url,
             'question_count' => count($all_questions),
             'session' => $session,
         ));

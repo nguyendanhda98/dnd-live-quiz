@@ -408,6 +408,58 @@ class Live_Quiz_Session_Manager {
     }
     
     /**
+     * Remove participant from session
+     * 
+     * @param int $session_id Session ID
+     * @param string $user_id User ID to remove
+     * @return bool|WP_Error True on success, WP_Error on failure
+     */
+    public static function remove_participant($session_id, $user_id) {
+        $session = self::get_session($session_id);
+        if (!$session) {
+            return new WP_Error('invalid_session', __('Phiên không tồn tại', 'live-quiz'));
+        }
+        
+        // Remove from Redis if enabled
+        if (self::is_redis_enabled()) {
+            self::$redis->remove_participant($session_id, $user_id);
+            
+            // Remove from WebSocket if available
+            if (class_exists('Live_Quiz_WebSocket_Adapter')) {
+                $adapter = Live_Quiz_WebSocket_Adapter::get_instance();
+                $adapter->remove_participant($session_id, $user_id);
+            }
+        }
+        
+        // Remove from post meta
+        $stored_participants = get_post_meta($session_id, '_session_participants', true);
+        if (is_array($stored_participants)) {
+            // Filter out the participant
+            $stored_participants = array_filter($stored_participants, function($p) use ($user_id) {
+                return $p['user_id'] !== $user_id;
+            });
+            
+            // Re-index array
+            $stored_participants = array_values($stored_participants);
+            
+            update_post_meta($session_id, '_session_participants', $stored_participants);
+            
+            // Clear cache and set new cache
+            $cache_key = "live_quiz_participants_{$session_id}";
+            delete_transient($cache_key);
+            set_transient($cache_key, $stored_participants, 60);
+        }
+        
+        // Broadcast leave event (optional - can notify other participants)
+        self::broadcast_event($session_id, 'participant_leave', array(
+            'user_id' => $user_id,
+            'total_participants' => count($stored_participants),
+        ));
+        
+        return true;
+    }
+    
+    /**
      * Get participants
      * 
      * @param int $session_id Session ID

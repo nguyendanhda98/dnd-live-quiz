@@ -33,12 +33,22 @@
     // Config from WordPress
     const config = window.liveQuizConfig || {};
     
+    // BroadcastChannel for multi-tab communication
+    let roomChannel = null;
+    const STORAGE_KEY = 'live_quiz_session';
+    
     // Initialize
     document.addEventListener('DOMContentLoaded', init);
     
     function init() {
         setupEventListeners();
         detectSocketIOLibrary();
+        
+        // Try to restore session from localStorage
+        restoreSession();
+        
+        // Setup multi-tab communication
+        setupBroadcastChannel();
     }
     
     /**
@@ -65,6 +75,210 @@
             roomCodeInput.addEventListener('input', (e) => {
                 e.target.value = e.target.value.toUpperCase();
             });
+        }
+        
+        // Leave room buttons
+        const leaveButtons = document.querySelectorAll('.leave-room-btn');
+        leaveButtons.forEach(btn => {
+            btn.addEventListener('click', handleLeaveRoom);
+        });
+    }
+    
+    /**
+     * Setup BroadcastChannel for multi-tab communication
+     */
+    function setupBroadcastChannel() {
+        if (typeof BroadcastChannel === 'undefined') {
+            console.warn('[Live Quiz] BroadcastChannel not supported');
+            return;
+        }
+        
+        // Create unique channel per room (or general if no room)
+        const channelName = state.roomCode ? `live_quiz_${state.roomCode}` : 'live_quiz_general';
+        roomChannel = new BroadcastChannel(channelName);
+        
+        // Listen for messages from other tabs
+        roomChannel.onmessage = (event) => {
+            const { type, roomCode, timestamp } = event.data;
+            
+            if (type === 'tab_opened' && roomCode === state.roomCode && state.sessionId) {
+                // Another tab opened the same room
+                // This is the old tab, redirect to home
+                console.log('[Live Quiz] Another tab opened, redirecting to home...');
+                
+                // Clear session
+                clearSession();
+                
+                // Redirect to home
+                const homeUrl = window.location.origin;
+                window.location.href = homeUrl;
+            }
+        };
+        
+        // Broadcast that this tab has opened
+        if (state.roomCode && state.sessionId) {
+            roomChannel.postMessage({
+                type: 'tab_opened',
+                roomCode: state.roomCode,
+                timestamp: Date.now()
+            });
+        }
+    }
+    
+    /**
+     * Save session to localStorage
+     */
+    function saveSession() {
+        if (!state.sessionId || !state.userId) return;
+        
+        const session = {
+            sessionId: state.sessionId,
+            userId: state.userId,
+            displayName: state.displayName,
+            roomCode: state.roomCode,
+            timestamp: Date.now()
+        };
+        
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+        } catch (error) {
+            console.error('[Live Quiz] Failed to save session:', error);
+        }
+    }
+    
+    /**
+     * Restore session from localStorage
+     */
+    function restoreSession() {
+        try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (!stored) return;
+            
+            const session = JSON.parse(stored);
+            
+            // Check if session is not too old (30 minutes)
+            const MAX_AGE = 30 * 60 * 1000;
+            if (Date.now() - session.timestamp > MAX_AGE) {
+                console.log('[Live Quiz] Session expired');
+                clearSession();
+                return;
+            }
+            
+            // Restore state
+            state.sessionId = session.sessionId;
+            state.userId = session.userId;
+            state.displayName = session.displayName;
+            state.roomCode = session.roomCode;
+            
+            console.log('[Live Quiz] Session restored:', state.roomCode);
+            
+            // Show waiting screen
+            showScreen('quiz-waiting');
+            document.getElementById('waiting-player-name').textContent = state.displayName;
+            document.getElementById('waiting-room-code').textContent = state.roomCode;
+            
+            // Verify session with server and reconnect
+            verifyAndReconnect();
+            
+            // Broadcast to other tabs
+            if (roomChannel) {
+                roomChannel.postMessage({
+                    type: 'tab_opened',
+                    roomCode: state.roomCode,
+                    timestamp: Date.now()
+                });
+            }
+            
+        } catch (error) {
+            console.error('[Live Quiz] Failed to restore session:', error);
+            clearSession();
+        }
+    }
+    
+    /**
+     * Verify session with server and reconnect
+     */
+    async function verifyAndReconnect() {
+        try {
+            // Connect to SSE first - server will validate session
+            connectSSE();
+            
+            showConnectionStatus('Đang khôi phục kết nối...', 'info');
+            
+        } catch (error) {
+            console.error('[Live Quiz] Failed to verify session:', error);
+            clearSession();
+            showScreen('quiz-lobby');
+            showError('join-error', 'Không thể khôi phục phiên. Vui lòng tham gia lại.');
+        }
+    }
+    
+    /**
+     * Clear session from localStorage
+     */
+    function clearSession() {
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+        } catch (error) {
+            console.error('[Live Quiz] Failed to clear session:', error);
+        }
+        
+        // Clear state
+        state.sessionId = null;
+        state.userId = null;
+        state.displayName = null;
+        state.roomCode = null;
+    }
+    
+    /**
+     * Handle leave room
+     */
+    async function handleLeaveRoom(e) {
+        e.preventDefault();
+        
+        if (!confirm('Bạn có chắc muốn rời khỏi phòng?')) {
+            return;
+        }
+        
+        try {
+            // Close SSE connection
+            if (state.sseConnection) {
+                state.sseConnection.close();
+            }
+            
+            // Clear timer
+            clearInterval(state.timerInterval);
+            
+            // Call leave API
+            if (state.sessionId && state.userId) {
+                await fetch(config.restUrl + '/leave', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        session_id: state.sessionId,
+                        user_id: state.userId,
+                    }),
+                });
+            }
+            
+            // Clear session
+            clearSession();
+            
+            // Close broadcast channel
+            if (roomChannel) {
+                roomChannel.close();
+            }
+            
+            // Reload page to show join form
+            location.reload();
+            
+        } catch (error) {
+            console.error('[Live Quiz] Leave error:', error);
+            // Still clear and reload on error
+            clearSession();
+            location.reload();
         }
     }
     
@@ -103,6 +317,15 @@
                 state.displayName = data.display_name;
                 state.roomCode = roomCode;
                 
+                // Save session to localStorage
+                saveSession();
+                
+                // Setup broadcast channel for this room
+                if (roomChannel) {
+                    roomChannel.close();
+                }
+                setupBroadcastChannel();
+                
                 // Show waiting screen
                 showScreen('quiz-waiting');
                 document.getElementById('waiting-player-name').textContent = displayName;
@@ -129,6 +352,7 @@
         state.sseConnection.addEventListener('connected', (e) => {
             console.log('SSE connected');
             state.reconnectAttempts = 0;
+            state.isConnected = true;
             hideConnectionStatus();
         });
         
@@ -445,12 +669,22 @@
         statusElem.style.display = 'none';
     }
     
-    // Cleanup on page unload
+    // Cleanup on page unload (but keep session in localStorage for restore)
     window.addEventListener('beforeunload', () => {
         if (state.sseConnection) {
             state.sseConnection.close();
         }
         clearInterval(state.timerInterval);
+        
+        // Don't clear session - allow restore on page reload
+        // Session will be cleared only on explicit leave or expiry
+    });
+    
+    // Close broadcast channel when page is hidden/closed
+    window.addEventListener('pagehide', () => {
+        if (roomChannel) {
+            roomChannel.close();
+        }
     });
     
 })();

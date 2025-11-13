@@ -66,6 +66,7 @@ final class Live_Quiz {
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-admin.php';
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-security.php';
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-ai-generator.php';
+        require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-blocks.php';
         
         // Phase 2: WebSocket + Redis support
         if (file_exists(LIVE_QUIZ_PLUGIN_DIR . 'includes/class-redis-manager.php')) {
@@ -92,6 +93,32 @@ final class Live_Quiz {
         // Enqueue assets
         add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
         add_action('admin_enqueue_scripts', array($this, 'admin_enqueue_scripts'));
+        
+        // Admin notices
+        add_action('admin_notices', array($this, 'admin_notices'));
+    }
+    
+    /**
+     * Show admin notices
+     */
+    public function admin_notices() {
+        // Check if we need to flush rewrite rules
+        $need_flush = get_transient('live_quiz_need_flush_rewrite');
+        if ($need_flush) {
+            ?>
+            <div class="notice notice-warning is-dismissible">
+                <p>
+                    <strong><?php _e('DND Live Quiz:', 'live-quiz'); ?></strong> 
+                    <?php _e('Rewrite rules đã được cập nhật. Vui lòng vào ', 'live-quiz'); ?>
+                    <a href="<?php echo admin_url('options-permalink.php'); ?>">
+                        <?php _e('Settings > Permalinks', 'live-quiz'); ?>
+                    </a>
+                    <?php _e(' và nhấn "Save Changes" để áp dụng.', 'live-quiz'); ?>
+                </p>
+            </div>
+            <?php
+            delete_transient('live_quiz_need_flush_rewrite');
+        }
     }
     
     /**
@@ -117,6 +144,9 @@ final class Live_Quiz {
         
         // Register shortcodes
         Live_Quiz_Shortcodes::init();
+        
+        // Register Gutenberg blocks
+        Live_Quiz_Blocks::init();
         
         // Initialize admin
         if (is_admin()) {
@@ -360,8 +390,9 @@ live_quiz();
  * Activation hook
  */
 register_activation_hook(__FILE__, function() {
-    // Register post types and rewrite rules
+    // Register post types and rewrite rules first
     Live_Quiz_Post_Types::register();
+    Live_Quiz_Post_Types::add_rewrite_rules();
     
     // Set default options - Phase 1
     add_option('live_quiz_alpha', 0.3);
@@ -381,10 +412,14 @@ register_activation_hook(__FILE__, function() {
     add_option('live_quiz_redis_database', 0);
     
     // Permalink settings
+    add_option('live_quiz_host_base', 'host');
     add_option('live_quiz_play_base', 'play');
     
-    // Flush rewrite rules
+    // Flush rewrite rules AFTER registering
     flush_rewrite_rules();
+    
+    // Set notice to remind user
+    set_transient('live_quiz_need_flush_rewrite', true, 60 * 60 * 24); // 24 hours
 });
 
 /**

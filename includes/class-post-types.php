@@ -678,14 +678,23 @@ class Live_Quiz_Post_Types {
     }
     
     /**
-     * Add rewrite rules for /{base}/{session_id}
+     * Add rewrite rules for host and play
      */
     public static function add_rewrite_rules() {
+        $host_base = self::get_host_base();
         $play_base = self::get_play_base();
         
+        // Host route: /host/code only
         add_rewrite_rule(
-            '^' . $play_base . '/([0-9]+)/?$',
-            'index.php?live_quiz_play=1&session_id=$matches[1]',
+            '^' . $host_base . '/([0-9]{6})/?$',
+            'index.php?live_quiz_host_manage=1&room_code=$matches[1]',
+            'top'
+        );
+        
+        // Player route: /play/code only
+        add_rewrite_rule(
+            '^' . $play_base . '/([0-9]{6})/?$',
+            'index.php?live_quiz_player_join=1&room_code=$matches[1]',
             'top'
         );
     }
@@ -694,41 +703,88 @@ class Live_Quiz_Post_Types {
      * Add custom query vars
      */
     public static function add_query_vars($vars) {
-        $vars[] = 'live_quiz_play';
-        $vars[] = 'session_id';
+        $vars[] = 'live_quiz_host_manage';
+        $vars[] = 'live_quiz_player_join';
+        $vars[] = 'room_code';
         return $vars;
     }
     
     /**
-     * Handle /play/{session_id} template
+     * Handle routing templates
      */
     public static function handle_play_template() {
-        if (!get_query_var('live_quiz_play')) {
+        // Debug: Check current URL
+        // error_log('Current URL: ' . $_SERVER['REQUEST_URI']);
+        // error_log('Query var live_quiz_host_manage: ' . get_query_var('live_quiz_host_manage'));
+        // error_log('Query var live_quiz_player_join: ' . get_query_var('live_quiz_player_join'));
+        
+        // IMPORTANT: Only handle if query vars are set
+        // This ensures /host and /play without code are left alone
+        
+        // Handle /host/code (manage room)
+        if (get_query_var('live_quiz_host_manage')) {
+            self::handle_host_manage();
             return;
         }
         
-        $session_id = get_query_var('session_id');
-        
-        if (!$session_id) {
-            wp_die(__('Session không hợp lệ', 'live-quiz'));
+        // Handle /play/code (join room)
+        if (get_query_var('live_quiz_player_join')) {
+            self::handle_player_join();
+            return;
         }
         
-        // Kiểm tra session tồn tại
-        $session = get_post($session_id);
-        if (!$session || $session->post_type !== 'live_quiz_session') {
+        // If we reach here, it means:
+        // - /host or /play without code
+        // - WordPress will handle it normally (page/post/404)
+    }
+    
+    /**
+     * Handle host manage room page (/host/code)
+     */
+    private static function handle_host_manage() {
+        $room_code = get_query_var('room_code');
+        
+        if (!$room_code) {
+            wp_die(__('Mã phòng không hợp lệ', 'live-quiz'));
+        }
+        
+        // Find session by room code
+        $session_id = Live_Quiz_Session_Manager::find_session_by_code($room_code);
+        
+        if (!$session_id) {
             wp_die(__('Phòng không tồn tại', 'live-quiz'));
         }
         
-        // Kiểm tra quyền: chỉ host hoặc admin mới được truy cập
+        // Check permission: only host or admin
+        $session = get_post($session_id);
         $host_id = $session->post_author;
         $current_user_id = get_current_user_id();
         
         if ($current_user_id !== $host_id && !current_user_can('manage_options')) {
-            wp_die(__('Bạn không có quyền truy cập phòng này. Vui lòng sử dụng PIN code để tham gia.', 'live-quiz'));
+            wp_die(__('Bạn không có quyền truy cập phòng này.', 'live-quiz'));
         }
         
-        // Load template
+        // Set session_id for template
+        set_query_var('session_id', $session_id);
+        
+        // Load host template
         include LIVE_QUIZ_PLUGIN_DIR . 'templates/host.php';
+        exit;
+    }
+    
+    /**
+     * Handle player join page (/play hoặc /play/code)
+     */
+    private static function handle_player_join() {
+        $room_code = get_query_var('room_code');
+        
+        // If has room code, pre-fill it
+        if ($room_code) {
+            set_query_var('prefill_code', $room_code);
+        }
+        
+        // Load player template
+        include LIVE_QUIZ_PLUGIN_DIR . 'templates/player.php';
         exit;
     }
     
@@ -736,10 +792,16 @@ class Live_Quiz_Post_Types {
      * Add permalink settings section
      */
     public static function add_permalink_settings() {
-        // Register setting
+        // Register settings
+        register_setting('permalink', 'live_quiz_host_base', array(
+            'type' => 'string',
+            'sanitize_callback' => array(__CLASS__, 'sanitize_base_slug'),
+            'default' => 'host'
+        ));
+        
         register_setting('permalink', 'live_quiz_play_base', array(
             'type' => 'string',
-            'sanitize_callback' => array(__CLASS__, 'sanitize_play_base'),
+            'sanitize_callback' => array(__CLASS__, 'sanitize_base_slug'),
             'default' => 'play'
         ));
         
@@ -747,15 +809,16 @@ class Live_Quiz_Post_Types {
         add_action('admin_print_footer_scripts', array(__CLASS__, 'render_permalink_settings'), 10);
         
         // Hook to flush rewrite rules when settings saved
-        if (isset($_POST['live_quiz_play_base'])) {
+        if (isset($_POST['live_quiz_host_base']) || isset($_POST['live_quiz_play_base'])) {
+            add_action('update_option_live_quiz_host_base', array(__CLASS__, 'flush_rewrite_rules_on_change'), 10, 2);
             add_action('update_option_live_quiz_play_base', array(__CLASS__, 'flush_rewrite_rules_on_change'), 10, 2);
         }
     }
     
     /**
-     * Sanitize play base
+     * Sanitize base slug
      */
-    public static function sanitize_play_base($value) {
+    public static function sanitize_base_slug($value) {
         $value = trim($value);
         $value = sanitize_title($value);
         
@@ -776,21 +839,32 @@ class Live_Quiz_Post_Types {
             return;
         }
         
-        $value = get_option('live_quiz_play_base', 'play');
+        $host_base = get_option('live_quiz_host_base', 'host');
+        $play_base = get_option('live_quiz_play_base', 'play');
         ?>
         <script type="text/javascript">
         jQuery(document).ready(function($) {
             // Add our section after LearnDash or at the end
             var html = '<h2><?php echo esc_js(__('DND Live Quiz Permalinks', 'live-quiz')); ?></h2>' +
-                '<p><?php echo esc_js(__('Cấu hình cấu trúc URL cho DND Live Quiz. Bạn có thể tùy chỉnh base URL cho phòng host.', 'live-quiz')); ?></p>' +
+                '<p><?php echo esc_js(__('Cấu hình cấu trúc URL cho DND Live Quiz.', 'live-quiz')); ?></p>' +
                 '<table class="form-table" role="presentation">' +
                 '<tbody>' +
                 '<tr>' +
-                '<th scope="row"><label for="live_quiz_play_base"><?php echo esc_js(__('Host Room Base', 'live-quiz')); ?></label></th>' +
+                '<th scope="row"><label for="live_quiz_host_base"><?php echo esc_js(__('Host Base', 'live-quiz')); ?></label></th>' +
                 '<td>' +
-                '<input type="text" name="live_quiz_play_base" id="live_quiz_play_base" value="<?php echo esc_attr($value); ?>" class="regular-text code" placeholder="play" />' +
-                '<p class="description"><?php echo esc_js(sprintf(__('URL để host truy cập phòng. Mặc định: <code>%s</code>', 'live-quiz'), home_url('/' . $value . '/123'))); ?><br>' +
-                '<?php echo esc_js(__('Ví dụ: nếu bạn nhập "room", URL sẽ là <code>/room/123</code>', 'live-quiz')); ?></p>' +
+                '<input type="text" name="live_quiz_host_base" id="live_quiz_host_base" value="<?php echo esc_attr($host_base); ?>" class="regular-text code" placeholder="host" />' +
+                '<p class="description"><?php echo esc_js(__('URL để host tạo và quản lý phòng.', 'live-quiz')); ?><br>' +
+                '<?php echo esc_js(__('Tạo phòng: <code>' . home_url('/' . $host_base) . '</code>', 'live-quiz')); ?><br>' +
+                '<?php echo esc_js(__('Quản lý phòng: <code>' . home_url('/' . $host_base . '/123456') . '</code>', 'live-quiz')); ?></p>' +
+                '</td>' +
+                '</tr>' +
+                '<tr>' +
+                '<th scope="row"><label for="live_quiz_play_base"><?php echo esc_js(__('Player Base', 'live-quiz')); ?></label></th>' +
+                '<td>' +
+                '<input type="text" name="live_quiz_play_base" id="live_quiz_play_base" value="<?php echo esc_attr($play_base); ?>" class="regular-text code" placeholder="play" />' +
+                '<p class="description"><?php echo esc_js(__('URL để player tham gia phòng.', 'live-quiz')); ?><br>' +
+                '<?php echo esc_js(__('Nhập code: <code>' . home_url('/' . $play_base) . '</code>', 'live-quiz')); ?><br>' +
+                '<?php echo esc_js(__('Join trực tiếp: <code>' . home_url('/' . $play_base . '/123456') . '</code>', 'live-quiz')); ?></p>' +
                 '</td>' +
                 '</tr>' +
                 '</tbody>' +
@@ -804,6 +878,13 @@ class Live_Quiz_Post_Types {
     }
     
 
+    
+    /**
+     * Get host base
+     */
+    public static function get_host_base() {
+        return get_option('live_quiz_host_base', 'host');
+    }
     
     /**
      * Get play base
