@@ -169,10 +169,19 @@ final class Live_Quiz {
             return;
         }
         
-        // Check for any live quiz shortcode
-        $has_player = is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'live_quiz');
-        $has_create_room = is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'live_quiz_create_room');
-        $has_quiz_list = is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'live_quiz_list');
+        // Check for any live quiz shortcode or block
+        $has_player = is_a($post, 'WP_Post') && (
+            has_shortcode($post->post_content, 'live_quiz') || 
+            has_block('live-quiz/join-room', $post)
+        );
+        $has_create_room = is_a($post, 'WP_Post') && (
+            has_shortcode($post->post_content, 'live_quiz_create_room') || 
+            has_block('live-quiz/create-room', $post)
+        );
+        $has_quiz_list = is_a($post, 'WP_Post') && (
+            has_shortcode($post->post_content, 'live_quiz_list') || 
+            has_block('live-quiz/quiz-list', $post)
+        );
         
         // Load frontend assets for create room and quiz list
         if ($has_create_room || $has_quiz_list) {

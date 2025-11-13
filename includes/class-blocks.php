@@ -52,6 +52,33 @@ class Live_Quiz_Blocks {
                 )
             )
         ));
+        
+        // Register Quiz List block
+        register_block_type('live-quiz/quiz-list', array(
+            'render_callback' => array(__CLASS__, 'render_quiz_list_block'),
+            'attributes' => array(
+                'perPage' => array(
+                    'type' => 'number',
+                    'default' => 10
+                ),
+                'showTitle' => array(
+                    'type' => 'boolean',
+                    'default' => true
+                ),
+                'title' => array(
+                    'type' => 'string',
+                    'default' => 'Danh sách Quiz'
+                ),
+                'orderBy' => array(
+                    'type' => 'string',
+                    'default' => 'date'
+                ),
+                'order' => array(
+                    'type' => 'string',
+                    'default' => 'DESC'
+                )
+            )
+        ));
     }
     
     /**
@@ -100,6 +127,34 @@ class Live_Quiz_Blocks {
         
         ob_start();
         include LIVE_QUIZ_PLUGIN_DIR . 'templates/player.php';
+        return ob_get_clean();
+    }
+    
+    /**
+     * Render Quiz List block
+     */
+    public static function render_quiz_list_block($attributes) {
+        $per_page = isset($attributes['perPage']) ? intval($attributes['perPage']) : 10;
+        $show_title = isset($attributes['showTitle']) ? $attributes['showTitle'] : true;
+        $title = isset($attributes['title']) ? $attributes['title'] : 'Danh sách Quiz';
+        $orderby = isset($attributes['orderBy']) ? $attributes['orderBy'] : 'date';
+        $order = isset($attributes['order']) ? $attributes['order'] : 'DESC';
+        
+        // Prepare attributes array for template
+        $atts = array(
+            'per_page' => $per_page,
+            'orderby' => $orderby,
+            'order' => $order
+        );
+        
+        ob_start();
+        
+        // Show title if enabled
+        if ($show_title && !empty($title)) {
+            echo '<h2 class="live-quiz-list-title">' . esc_html($title) . '</h2>';
+        }
+        
+        include LIVE_QUIZ_PLUGIN_DIR . 'templates/quiz-list.php';
         return ob_get_clean();
     }
 }
