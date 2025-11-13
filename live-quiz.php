@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('LIVE_QUIZ_VERSION', '2.0.6');
+define('LIVE_QUIZ_VERSION', '2.0.7');
 define('LIVE_QUIZ_PLUGIN_FILE', __FILE__);
 define('LIVE_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('LIVE_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -228,7 +228,7 @@ final class Live_Quiz {
             LIVE_QUIZ_VERSION
         );
         
-        // WebSocket only - always load Socket.io and player-v2.js
+        // WebSocket only - always load Socket.io and player.js
         wp_enqueue_script(
             'socketio',
             'https://cdn.socket.io/4.7.2/socket.io.min.js',
@@ -239,7 +239,7 @@ final class Live_Quiz {
         
         wp_enqueue_script(
             'live-quiz-player',
-            LIVE_QUIZ_PLUGIN_URL . 'assets/js/player-v2.js',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/player.js',
             array('socketio'),
             LIVE_QUIZ_VERSION,
             true

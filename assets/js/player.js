@@ -1,7 +1,7 @@
 /**
- * Live Quiz Player JavaScript - Phase 2
+ * Live Quiz Player JavaScript - Phase 2 (WebSocket Only)
  * 
- * Supports WebSocket (Socket.io) with automatic fallback to SSE
+ * Uses WebSocket (Socket.io) for real-time communication
  * 
  * @package LiveQuiz
  * @version 2.0.0
@@ -16,15 +16,13 @@
         userId: null,
         displayName: null,
         roomCode: null,
+        websocketToken: null,
         currentQuestion: null,
         questionStartTime: null,
         timerInterval: null,
         
-        // Connection state
-        connectionType: null, // 'websocket' or 'sse'
-        socket: null, // Socket.io instance
-        sseConnection: null, // SSE EventSource
-        
+        // WebSocket connection
+        socket: null,
         reconnectAttempts: 0,
         maxReconnectAttempts: 5,
         isConnected: false,
@@ -33,32 +31,105 @@
     // Config from WordPress
     const config = window.liveQuizConfig || {};
     
-    // BroadcastChannel for multi-tab communication
-    let roomChannel = null;
-    const STORAGE_KEY = 'live_quiz_session';
-    
     // Initialize
     document.addEventListener('DOMContentLoaded', init);
     
     function init() {
         setupEventListeners();
-        detectSocketIOLibrary();
+        checkSocketIOLibrary();
         
-        // Try to restore session from localStorage
-        restoreSession();
-        
-        // Setup multi-tab communication
-        setupBroadcastChannel();
+        // Check if URL has room code and try to restore session
+        const urlRoomCode = extractRoomCodeFromUrl();
+        if (urlRoomCode) {
+            restoreSession(urlRoomCode);
+        }
     }
     
     /**
-     * Detect if Socket.io library is loaded
+     * Extract room code from URL (/play/{code})
      */
-    function detectSocketIOLibrary() {
-        if (typeof io !== 'undefined') {
-            console.log('[Live Quiz] Socket.io library detected');
-        } else if (config.websocket && config.websocket.enabled) {
-            console.warn('[Live Quiz] Socket.io library not loaded, will use SSE fallback');
+    function extractRoomCodeFromUrl() {
+        const pathParts = window.location.pathname.split('/');
+        const playIndex = pathParts.findIndex(part => part === 'play');
+        if (playIndex !== -1 && pathParts[playIndex + 1]) {
+            const code = pathParts[playIndex + 1];
+            // Validate 6-digit code
+            if (/^\d{6}$/.test(code)) {
+                return code;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Restore session from sessionStorage
+     */
+    function restoreSession(urlRoomCode) {
+        try {
+            const stored = sessionStorage.getItem('live_quiz_session');
+            if (!stored) {
+                // No session, pre-fill room code if in URL
+                const roomCodeInput = document.getElementById('room-code');
+                if (roomCodeInput && urlRoomCode) {
+                    roomCodeInput.value = urlRoomCode;
+                }
+                return;
+            }
+            
+            const session = JSON.parse(stored);
+            
+            // Check if session is not too old (30 minutes)
+            const MAX_AGE = 30 * 60 * 1000;
+            if (Date.now() - session.timestamp > MAX_AGE) {
+                console.log('[Live Quiz] Session expired');
+                sessionStorage.removeItem('live_quiz_session');
+                return;
+            }
+            
+            // Check if room code matches URL
+            if (session.roomCode !== urlRoomCode) {
+                console.log('[Live Quiz] Room code mismatch');
+                sessionStorage.removeItem('live_quiz_session');
+                // Pre-fill with URL code
+                const roomCodeInput = document.getElementById('room-code');
+                if (roomCodeInput && urlRoomCode) {
+                    roomCodeInput.value = urlRoomCode;
+                }
+                return;
+            }
+            
+            // Restore state
+            state.sessionId = session.sessionId;
+            state.userId = session.userId;
+            state.displayName = session.displayName;
+            state.roomCode = session.roomCode;
+            state.websocketToken = session.websocketToken;
+            
+            console.log('[Live Quiz] Session restored:', state.roomCode);
+            
+            // Show waiting screen
+            showScreen('quiz-waiting');
+            document.getElementById('waiting-player-name').textContent = state.displayName;
+            document.getElementById('waiting-room-code').textContent = state.roomCode;
+            
+            // Connect to WebSocket
+            connectWebSocket();
+            
+        } catch (error) {
+            console.error('[Live Quiz] Failed to restore session:', error);
+            sessionStorage.removeItem('live_quiz_session');
+        }
+    }
+    
+    /**
+     * Check if Socket.io library is loaded
+     */
+    function checkSocketIOLibrary() {
+        if (typeof io === 'undefined') {
+            console.error('[Live Quiz] Socket.io library not loaded!');
+            showError('join-error', 'Socket.io library không được tải. Vui lòng tải lại trang.');
+        } else {
+            console.log('[Live Quiz] Socket.io library ready');
         }
     }
     
@@ -75,210 +146,6 @@
             roomCodeInput.addEventListener('input', (e) => {
                 e.target.value = e.target.value.toUpperCase();
             });
-        }
-        
-        // Leave room buttons
-        const leaveButtons = document.querySelectorAll('.leave-room-btn');
-        leaveButtons.forEach(btn => {
-            btn.addEventListener('click', handleLeaveRoom);
-        });
-    }
-    
-    /**
-     * Setup BroadcastChannel for multi-tab communication
-     */
-    function setupBroadcastChannel() {
-        if (typeof BroadcastChannel === 'undefined') {
-            console.warn('[Live Quiz] BroadcastChannel not supported');
-            return;
-        }
-        
-        // Create unique channel per room (or general if no room)
-        const channelName = state.roomCode ? `live_quiz_${state.roomCode}` : 'live_quiz_general';
-        roomChannel = new BroadcastChannel(channelName);
-        
-        // Listen for messages from other tabs
-        roomChannel.onmessage = (event) => {
-            const { type, roomCode, timestamp } = event.data;
-            
-            if (type === 'tab_opened' && roomCode === state.roomCode && state.sessionId) {
-                // Another tab opened the same room
-                // This is the old tab, redirect to home
-                console.log('[Live Quiz] Another tab opened, redirecting to home...');
-                
-                // Clear session
-                clearSession();
-                
-                // Redirect to home
-                const homeUrl = window.location.origin;
-                window.location.href = homeUrl;
-            }
-        };
-        
-        // Broadcast that this tab has opened
-        if (state.roomCode && state.sessionId) {
-            roomChannel.postMessage({
-                type: 'tab_opened',
-                roomCode: state.roomCode,
-                timestamp: Date.now()
-            });
-        }
-    }
-    
-    /**
-     * Save session to localStorage
-     */
-    function saveSession() {
-        if (!state.sessionId || !state.userId) return;
-        
-        const session = {
-            sessionId: state.sessionId,
-            userId: state.userId,
-            displayName: state.displayName,
-            roomCode: state.roomCode,
-            timestamp: Date.now()
-        };
-        
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-        } catch (error) {
-            console.error('[Live Quiz] Failed to save session:', error);
-        }
-    }
-    
-    /**
-     * Restore session from localStorage
-     */
-    function restoreSession() {
-        try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (!stored) return;
-            
-            const session = JSON.parse(stored);
-            
-            // Check if session is not too old (30 minutes)
-            const MAX_AGE = 30 * 60 * 1000;
-            if (Date.now() - session.timestamp > MAX_AGE) {
-                console.log('[Live Quiz] Session expired');
-                clearSession();
-                return;
-            }
-            
-            // Restore state
-            state.sessionId = session.sessionId;
-            state.userId = session.userId;
-            state.displayName = session.displayName;
-            state.roomCode = session.roomCode;
-            
-            console.log('[Live Quiz] Session restored:', state.roomCode);
-            
-            // Show waiting screen
-            showScreen('quiz-waiting');
-            document.getElementById('waiting-player-name').textContent = state.displayName;
-            document.getElementById('waiting-room-code').textContent = state.roomCode;
-            
-            // Verify session with server and reconnect
-            verifyAndReconnect();
-            
-            // Broadcast to other tabs
-            if (roomChannel) {
-                roomChannel.postMessage({
-                    type: 'tab_opened',
-                    roomCode: state.roomCode,
-                    timestamp: Date.now()
-                });
-            }
-            
-        } catch (error) {
-            console.error('[Live Quiz] Failed to restore session:', error);
-            clearSession();
-        }
-    }
-    
-    /**
-     * Verify session with server and reconnect
-     */
-    async function verifyAndReconnect() {
-        try {
-            // Connect to SSE first - server will validate session
-            connectSSE();
-            
-            showConnectionStatus('Đang khôi phục kết nối...', 'info');
-            
-        } catch (error) {
-            console.error('[Live Quiz] Failed to verify session:', error);
-            clearSession();
-            showScreen('quiz-lobby');
-            showError('join-error', 'Không thể khôi phục phiên. Vui lòng tham gia lại.');
-        }
-    }
-    
-    /**
-     * Clear session from localStorage
-     */
-    function clearSession() {
-        try {
-            localStorage.removeItem(STORAGE_KEY);
-        } catch (error) {
-            console.error('[Live Quiz] Failed to clear session:', error);
-        }
-        
-        // Clear state
-        state.sessionId = null;
-        state.userId = null;
-        state.displayName = null;
-        state.roomCode = null;
-    }
-    
-    /**
-     * Handle leave room
-     */
-    async function handleLeaveRoom(e) {
-        e.preventDefault();
-        
-        if (!confirm('Bạn có chắc muốn rời khỏi phòng?')) {
-            return;
-        }
-        
-        try {
-            // Close SSE connection
-            if (state.sseConnection) {
-                state.sseConnection.close();
-            }
-            
-            // Clear timer
-            clearInterval(state.timerInterval);
-            
-            // Call leave API
-            if (state.sessionId && state.userId) {
-                await fetch(config.restUrl + '/leave', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        session_id: state.sessionId,
-                        user_id: state.userId,
-                    }),
-                });
-            }
-            
-            // Clear session
-            clearSession();
-            
-            // Close broadcast channel
-            if (roomChannel) {
-                roomChannel.close();
-            }
-            
-            // Reload page to show join form
-            location.reload();
-            
-        } catch (error) {
-            console.error('[Live Quiz] Leave error:', error);
-            // Still clear and reload on error
-            clearSession();
-            location.reload();
         }
     }
     
@@ -316,23 +183,21 @@
                 state.userId = data.user_id;
                 state.displayName = data.display_name;
                 state.roomCode = roomCode;
+                state.websocketToken = data.websocket_token || '';
                 
-                // Save session to localStorage
-                saveSession();
+                // Save to sessionStorage for restore after redirect
+                sessionStorage.setItem('live_quiz_session', JSON.stringify({
+                    sessionId: state.sessionId,
+                    userId: state.userId,
+                    displayName: state.displayName,
+                    roomCode: state.roomCode,
+                    websocketToken: state.websocketToken,
+                    timestamp: Date.now()
+                }));
                 
-                // Setup broadcast channel for this room
-                if (roomChannel) {
-                    roomChannel.close();
-                }
-                setupBroadcastChannel();
-                
-                // Show waiting screen
-                showScreen('quiz-waiting');
-                document.getElementById('waiting-player-name').textContent = displayName;
-                document.getElementById('waiting-room-code').textContent = roomCode;
-                
-                // Connect to SSE
-                connectSSE();
+                // Redirect to /play/{code}
+                const playUrl = window.location.origin + '/play/' + roomCode;
+                window.location.href = playUrl;
             }
         } catch (error) {
             console.error('Join error:', error);
@@ -340,75 +205,101 @@
         }
     }
     
-    function connectSSE() {
-        if (state.sseConnection) {
-            state.sseConnection.close();
+    /**
+     * Connect to WebSocket server
+     */
+    function connectWebSocket() {
+        if (!config.websocket || !config.websocket.url) {
+            console.error('[Live Quiz] WebSocket URL not configured');
+            showError('join-error', 'WebSocket chưa được cấu hình. Vui lòng liên hệ quản trị viên.');
+            return;
         }
         
-        const sseUrl = config.sseUrl + '&session_id=' + state.sessionId + '&user_id=' + state.userId + '&last_event_time=' + (state.lastEventTime || 0);
+        if (typeof io === 'undefined') {
+            console.error('[Live Quiz] Socket.io library not available');
+            showError('join-error', 'Socket.io không khả dụng. Vui lòng tải lại trang.');
+            return;
+        }
         
-        state.sseConnection = new EventSource(sseUrl);
+        console.log('[Live Quiz] Connecting to WebSocket:', config.websocket.url);
+        console.log('[Live Quiz] WebSocket token:', {
+            hasToken: !!state.websocketToken,
+            tokenLength: state.websocketToken ? state.websocketToken.length : 0,
+            userId: state.userId,
+            sessionId: state.sessionId
+        });
         
-        state.sseConnection.addEventListener('connected', (e) => {
-            console.log('SSE connected');
-            state.reconnectAttempts = 0;
+        if (!state.websocketToken) {
+            console.error('[Live Quiz] No WebSocket token available!');
+            showError('join-error', 'Không thể kết nối WebSocket. Vui lòng thử lại.');
+            return;
+        }
+        
+        // Initialize Socket.io connection with JWT token
+        state.socket = io(config.websocket.url, {
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            reconnectionAttempts: state.maxReconnectAttempts,
+            auth: {
+                token: state.websocketToken
+            }
+        });
+        
+        // Connection events
+        state.socket.on('connect', () => {
+            console.log('[Live Quiz] WebSocket connected');
             state.isConnected = true;
+            state.reconnectAttempts = 0;
             hideConnectionStatus();
+            
+            // Join the session room
+            state.socket.emit('join_session', {
+                session_id: state.sessionId,
+                user_id: state.userId,
+                display_name: state.displayName
+            });
         });
         
-        state.sseConnection.addEventListener('session_state', (e) => {
-            const data = JSON.parse(e.data);
-            handleSessionState(data);
+        state.socket.on('disconnect', (reason) => {
+            console.log('[Live Quiz] WebSocket disconnected:', reason);
+            state.isConnected = false;
+            showConnectionStatus(config.i18n.connection_lost, 'warning');
         });
         
-        state.sseConnection.addEventListener('question_start', (e) => {
-            const data = JSON.parse(e.data);
-            handleQuestionStart(data);
+        state.socket.on('connect_error', (error) => {
+            console.error('[Live Quiz] Connection error:', error);
+            state.reconnectAttempts++;
+            
+            if (state.reconnectAttempts >= state.maxReconnectAttempts) {
+                showConnectionStatus('Không thể kết nối. Vui lòng tải lại trang.', 'error');
+            }
         });
         
-        state.sseConnection.addEventListener('question_end', (e) => {
-            const data = JSON.parse(e.data);
-            handleQuestionEnd(data);
+        state.socket.on('reconnect', (attemptNumber) => {
+            console.log('[Live Quiz] Reconnected after', attemptNumber, 'attempts');
+            showConnectionStatus(config.i18n.connection_restored, 'success');
+            setTimeout(() => hideConnectionStatus(), 2000);
         });
         
-        state.sseConnection.addEventListener('session_end', (e) => {
-            const data = JSON.parse(e.data);
-            handleSessionEnd(data);
-        });
-        
-        state.sseConnection.addEventListener('participant_join', (e) => {
-            const data = JSON.parse(e.data);
+        // Quiz events
+        state.socket.on('session_state', handleSessionState);
+        state.socket.on('question_start', handleQuestionStart);
+        state.socket.on('question_end', handleQuestionEnd);
+        state.socket.on('session_end', handleSessionEnd);
+        state.socket.on('participant_joined', (data) => {
             updateParticipantCount(data.total_participants);
         });
-        
-        state.sseConnection.addEventListener('heartbeat', (e) => {
-            // Keep connection alive
-        });
-        
-        state.sseConnection.onerror = (error) => {
-            console.error('SSE error:', error);
-            state.sseConnection.close();
-            
-            // Attempt reconnection
-            if (state.reconnectAttempts < state.maxReconnectAttempts) {
-                showConnectionStatus(config.i18n.connection_lost, 'warning');
-                state.reconnectAttempts++;
-                setTimeout(() => {
-                    connectSSE();
-                }, 2000 * state.reconnectAttempts);
-            } else {
-                showConnectionStatus('Mất kết nối. Vui lòng tải lại trang.', 'error');
-            }
-        };
     }
     
     function handleSessionState(data) {
-        console.log('Session state:', data);
+        console.log('[Live Quiz] Session state:', data);
         
         if (data.status === 'lobby') {
             showScreen('quiz-waiting');
-        } else if (data.status === 'question') {
-            // Question already started, will receive question_start event
+        } else if (data.status === 'playing' || data.status === 'question') {
+            // Quiz has started or question in progress
         } else if (data.status === 'ended') {
             showScreen('quiz-final');
         }
@@ -669,22 +560,12 @@
         statusElem.style.display = 'none';
     }
     
-    // Cleanup on page unload (but keep session in localStorage for restore)
+    // Cleanup on page unload
     window.addEventListener('beforeunload', () => {
-        if (state.sseConnection) {
-            state.sseConnection.close();
+        if (state.socket && state.socket.connected) {
+            state.socket.disconnect();
         }
         clearInterval(state.timerInterval);
-        
-        // Don't clear session - allow restore on page reload
-        // Session will be cleared only on explicit leave or expiry
-    });
-    
-    // Close broadcast channel when page is hidden/closed
-    window.addEventListener('pagehide', () => {
-        if (roomChannel) {
-            roomChannel.close();
-        }
     });
     
 })();
