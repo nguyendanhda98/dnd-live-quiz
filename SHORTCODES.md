@@ -62,13 +62,16 @@ Plugin không còn tự động tạo các trang `/host` và `/play` nữa. Bạ
 ```
 
 **Chức năng:**
-- Tạo phòng quiz mới
-- Quản lý phiên quiz
+- Tự động tạo phòng quiz mới khi load trang
+- Hiển thị mã PIN để học viên tham gia
+- Quản lý phiên quiz realtime
 - Hiển thị danh sách người chơi
 - Điều khiển câu hỏi
 - Xem bảng xếp hạng
 
 **Yêu cầu:** Người dùng phải có quyền `edit_posts`
+
+**Lưu ý:** Shortcode này sẽ tự động tạo một phiên quiz mới mỗi khi trang được load. Mỗi lần load trang sẽ tạo một mã PIN mới.
 
 ---
 

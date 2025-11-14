@@ -823,7 +823,7 @@ class Live_Quiz_REST_API {
         
         return rest_ensure_response(array(
             'success' => true,
-            'quizzes' => $quizzes,
+            'data' => $quizzes,
         ));
     }
     
@@ -883,8 +883,9 @@ class Live_Quiz_REST_API {
      */
     public static function create_session_frontend($request) {
         $quiz_ids = $request->get_param('quiz_ids');
-        $question_mode = $request->get_param('question_mode'); // 'all' or 'random'
+        $quiz_type = $request->get_param('quiz_type'); // 'all' or 'random'
         $question_count = $request->get_param('question_count'); // Only for random mode
+        $session_name = $request->get_param('session_name'); // Optional custom name
         
         if (empty($quiz_ids) || !is_array($quiz_ids)) {
             return new WP_Error('missing_quiz_ids', __('Phải chọn ít nhất một bộ câu hỏi', 'live-quiz'), array('status' => 400));
@@ -919,19 +920,23 @@ class Live_Quiz_REST_API {
         }
         
         // Handle question mode
-        if ($question_mode === 'random' && $question_count > 0) {
+        if ($quiz_type === 'random' && $question_count > 0) {
             if ($question_count < count($all_questions)) {
                 shuffle($all_questions);
                 $all_questions = array_slice($all_questions, 0, $question_count);
             }
         }
         
-        // Create session post
-        $session_title = sprintf(
-            __('Phiên: %s - %s', 'live-quiz'),
-            implode(', ', $quiz_titles),
-            date('Y-m-d H:i')
-        );
+        // Create session title
+        if (!empty($session_name)) {
+            $session_title = $session_name;
+        } else {
+            $session_title = sprintf(
+                __('Phiên: %s - %s', 'live-quiz'),
+                implode(', ', array_slice($quiz_titles, 0, 2)) . (count($quiz_titles) > 2 ? '...' : ''),
+                date('Y-m-d H:i')
+            );
+        }
         
         $session_id = wp_insert_post(array(
             'post_type' => 'live_quiz_session',
@@ -944,24 +949,43 @@ class Live_Quiz_REST_API {
             return $session_id;
         }
         
-        // Save session meta
+        // Save first quiz_id for compatibility (use first selected quiz)
+        update_post_meta($session_id, '_session_quiz_id', $quiz_ids[0]);
+        
+        // Save all quiz IDs and merged questions
         update_post_meta($session_id, '_session_quiz_ids', $quiz_ids);
-        update_post_meta($session_id, '_session_questions', json_encode($all_questions));
         
         // Generate room code
         $room_code = self::generate_room_code();
         update_post_meta($session_id, '_session_room_code', $room_code);
         update_post_meta($session_id, '_session_status', 'lobby');
+        update_post_meta($session_id, '_session_current_question', 0);
         
-        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        // Save the merged questions to the session's quiz (create a temporary quiz post or save directly)
+        // For simplicity, we'll create a temporary merged quiz
+        $merged_quiz_id = wp_insert_post(array(
+            'post_type' => 'live_quiz',
+            'post_title' => $session_title . ' (Merged)',
+            'post_status' => 'private',
+            'post_author' => get_current_user_id(),
+        ));
+        
+        if (!is_wp_error($merged_quiz_id)) {
+            update_post_meta($merged_quiz_id, '_live_quiz_questions', $all_questions);
+            update_post_meta($session_id, '_session_quiz_id', $merged_quiz_id);
+            update_post_meta($session_id, '_session_is_merged', true);
+        }
+        
+        // Clear cache
+        Live_Quiz_Session_Manager::clear_session_cache($session_id);
         
         return rest_ensure_response(array(
             'success' => true,
-            'session_id' => $session_id,
-            'room_code' => $room_code,
-            'pin_code' => $room_code,
-            'question_count' => count($all_questions),
-            'session' => $session,
+            'data' => array(
+                'session_id' => $session_id,
+                'room_code' => $room_code,
+                'question_count' => count($all_questions),
+            ),
         ));
     }
 }

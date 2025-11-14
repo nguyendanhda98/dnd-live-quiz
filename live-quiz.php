@@ -214,14 +214,57 @@ final class Live_Quiz {
         }
         
         $atts = shortcode_atts(array(
-            'quiz_id' => 0,
+            'session_id' => 0,
         ), $atts, 'live_quiz_host');
         
-        $quiz_id = intval($atts['quiz_id']);
+        $session_id = intval($atts['session_id']);
         
+        // If session_id is provided, show the host interface directly
+        if ($session_id > 0) {
+            // Verify session exists and user has permission
+            $session_post = get_post($session_id);
+            if (!$session_post || $session_post->post_type !== 'live_quiz_session') {
+                return '<p>' . __('Phòng không tồn tại.', 'live-quiz') . '</p>';
+            }
+            
+            // Check if user is the host
+            if ($session_post->post_author != get_current_user_id() && !current_user_can('manage_options')) {
+                return '<p>' . __('Bạn không có quyền truy cập phòng này.', 'live-quiz') . '</p>';
+            }
+            
+            // Set the session_id as query var for the template
+            set_query_var('session_id', $session_id);
+            
+            ob_start();
+            include LIVE_QUIZ_PLUGIN_DIR . 'templates/host.php';
+            return ob_get_clean();
+        }
+        
+        // Otherwise, show the setup form
         ob_start();
-        include LIVE_QUIZ_PLUGIN_DIR . 'templates/host.php';
+        include LIVE_QUIZ_PLUGIN_DIR . 'templates/host-setup.php';
         return ob_get_clean();
+    }
+    
+    /**
+     * Generate unique room code
+     */
+    private function generate_room_code() {
+        global $wpdb;
+        
+        do {
+            $code = str_pad(mt_rand(0, 999999), 6, '0', STR_PAD_LEFT);
+            
+            // Check if code exists
+            $exists = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->postmeta} 
+                WHERE meta_key = '_session_room_code' 
+                AND meta_value = %s",
+                $code
+            ));
+        } while ($exists > 0);
+        
+        return $code;
     }
     
     /**
@@ -394,6 +437,14 @@ final class Live_Quiz {
             LIVE_QUIZ_VERSION
         );
         
+        // Enqueue host setup CSS
+        wp_enqueue_style(
+            'live-quiz-host-setup',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/css/host-setup.css',
+            array(),
+            LIVE_QUIZ_VERSION
+        );
+        
         // WebSocket - load Socket.io
         wp_enqueue_script(
             'socketio',
@@ -408,6 +459,15 @@ final class Live_Quiz {
             'live-quiz-host',
             LIVE_QUIZ_PLUGIN_URL . 'assets/js/host.js',
             array('jquery', 'socketio'),
+            LIVE_QUIZ_VERSION,
+            true
+        );
+        
+        // Enqueue host setup JS
+        wp_enqueue_script(
+            'live-quiz-host-setup',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/host-setup.js',
+            array('jquery'),
             LIVE_QUIZ_VERSION,
             true
         );
