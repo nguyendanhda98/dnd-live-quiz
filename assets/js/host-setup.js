@@ -24,7 +24,7 @@
                 clearTimeout(self.searchTimeout);
                 const searchTerm = $(this).val().trim();
                 
-                if (searchTerm.length >= 2) {
+                if (searchTerm.length >= 1) {
                     self.searchTimeout = setTimeout(function() {
                         self.searchQuizzes(searchTerm);
                     }, 300);
@@ -152,7 +152,7 @@
             
             // Update the search results to show checkmarks
             const $searchInput = $('#quiz-search-input');
-            if ($searchInput.val().trim().length >= 2) {
+            if ($searchInput.val().trim().length >= 1) {
                 this.searchQuizzes($searchInput.val().trim());
             }
         },
@@ -260,9 +260,8 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        // Redirect to host interface with session_id
-                        const currentUrl = window.location.href.split('?')[0];
-                        window.location.href = currentUrl + '?session_id=' + response.data.session_id;
+                        // Reload page - shortcode will auto-open the new session
+                        window.location.reload();
                     } else {
                         $error.text(response.message || 'Lỗi tạo phòng').show();
                         $btn.prop('disabled', false).html('🚀 Tạo phòng');
@@ -280,12 +279,6 @@
                 }
             });
         }
-    };
-    
-    // Global function to reopen session
-    window.reopenSession = function(sessionId) {
-        const currentUrl = window.location.href.split('?')[0];
-        window.location.href = currentUrl + '?session_id=' + sessionId;
     };
     
     // Initialize on document ready

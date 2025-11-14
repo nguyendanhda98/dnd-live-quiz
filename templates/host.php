@@ -16,6 +16,12 @@ $has_session = !empty($session_id);
 // If has session, get session data
 if ($has_session) {
     $session = Live_Quiz_Session_Manager::get_session($session_id);
+    
+    if (!$session) {
+        echo '<div class="live-quiz-error"><p>' . __('Phòng không tồn tại hoặc đã kết thúc.', 'live-quiz') . '</p></div>';
+        return;
+    }
+    
     $room_code = get_post_meta($session_id, '_session_room_code', true);
     $quiz_id = get_post_meta($session_id, '_session_quiz_id', true);
     $quiz_title = get_the_title($quiz_id);
@@ -23,23 +29,10 @@ if ($has_session) {
     // Get quiz questions
     $questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
     $total_questions = is_array($questions) ? count($questions) : 0;
-    
-    $page_title = $quiz_title . ' - Host';
-} else {
-    $page_title = __('Quản lý phòng Quiz', 'live-quiz');
 }
 
 ?>
-<!DOCTYPE html>
-<html <?php language_attributes(); ?>>
-<head>
-    <meta charset="<?php bloginfo('charset'); ?>">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo esc_html($page_title); ?></title>
-    <?php wp_head(); ?>
-</head>
-<body class="live-quiz-host-body">
-    
+<div class="live-quiz-host-wrapper">
 <?php if ($has_session): ?>
     <!-- Host Interface với session -->
     <div id="live-quiz-host" class="live-quiz-host-container">
@@ -256,7 +249,4 @@ if ($has_session) {
     </script>
     
 <?php endif; ?>
-    
-    <?php wp_footer(); ?>
-</body>
-</html>
+</div>

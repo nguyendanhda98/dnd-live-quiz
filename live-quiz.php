@@ -240,6 +240,33 @@ final class Live_Quiz {
             return ob_get_clean();
         }
         
+        // Check if user has any active session (auto-open the room)
+        $user_id = get_current_user_id();
+        
+        // Always query directly - simple and fast enough
+        global $wpdb;
+        $session_id = $wpdb->get_var($wpdb->prepare(
+            "SELECT p.ID FROM {$wpdb->posts} p
+            INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+            WHERE p.post_type = 'live_quiz_session'
+            AND p.post_author = %d
+            AND p.post_status = 'publish'
+            AND pm.meta_key = '_session_status'
+            AND pm.meta_value IN ('lobby', 'playing', 'question', 'results')
+            ORDER BY p.post_date DESC
+            LIMIT 1",
+            $user_id
+        ));
+        
+        // If user has an active session, open it automatically
+        if ($session_id) {
+            set_query_var('session_id', $session_id);
+            
+            ob_start();
+            include LIVE_QUIZ_PLUGIN_DIR . 'templates/host.php';
+            return ob_get_clean();
+        }
+        
         // Otherwise, show the setup form
         ob_start();
         include LIVE_QUIZ_PLUGIN_DIR . 'templates/host-setup.php';
