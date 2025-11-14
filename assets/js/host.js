@@ -430,6 +430,12 @@
                 },
                 success: function(response) {
                     console.log('Session ended');
+                    // Reload page to show setup form
+                    window.location.reload();
+                },
+                error: function(xhr, status, error) {
+                    console.error('Failed to end session:', error);
+                    alert('Không thể kết thúc phiên. Vui lòng thử lại.');
                 }
             });
         },

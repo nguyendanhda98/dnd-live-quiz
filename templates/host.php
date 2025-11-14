@@ -43,8 +43,8 @@ if ($has_session) {
                 <p class="question-count"><?php printf(__('%d câu hỏi', 'live-quiz'), $total_questions); ?></p>
             </div>
             <div class="host-controls">
-                <button id="end-session-btn" class="btn btn-danger" style="display:none;">
-                    <?php _e('Kết thúc', 'live-quiz'); ?>
+                <button id="end-session-btn" class="btn btn-danger">
+                    <?php _e('Kết thúc phiên', 'live-quiz'); ?>
                 </button>
             </div>
         </div>
