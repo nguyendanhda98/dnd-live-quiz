@@ -9,16 +9,25 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Get session data
+// Get session data if room code exists
 $session_id = get_query_var('session_id');
-$session = Live_Quiz_Session_Manager::get_session($session_id);
-$room_code = get_post_meta($session_id, '_session_room_code', true);
-$quiz_id = get_post_meta($session_id, '_session_quiz_id', true);
-$quiz_title = get_the_title($quiz_id);
+$has_session = !empty($session_id);
 
-// Get quiz questions
-$questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
-$total_questions = is_array($questions) ? count($questions) : 0;
+// If has session, get session data
+if ($has_session) {
+    $session = Live_Quiz_Session_Manager::get_session($session_id);
+    $room_code = get_post_meta($session_id, '_session_room_code', true);
+    $quiz_id = get_post_meta($session_id, '_session_quiz_id', true);
+    $quiz_title = get_the_title($quiz_id);
+    
+    // Get quiz questions
+    $questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
+    $total_questions = is_array($questions) ? count($questions) : 0;
+    
+    $page_title = $quiz_title . ' - Host';
+} else {
+    $page_title = __('Quản lý phòng Quiz', 'live-quiz');
+}
 
 ?>
 <!DOCTYPE html>
@@ -26,10 +35,13 @@ $total_questions = is_array($questions) ? count($questions) : 0;
 <head>
     <meta charset="<?php bloginfo('charset'); ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo esc_html($quiz_title); ?> - Host</title>
+    <title><?php echo esc_html($page_title); ?></title>
     <?php wp_head(); ?>
 </head>
 <body class="live-quiz-host-body">
+    
+<?php if ($has_session): ?>
+    <!-- Host Interface với session -->
     <div id="live-quiz-host" class="live-quiz-host-container">
         <!-- Header -->
         <div class="host-header">
@@ -187,6 +199,63 @@ $total_questions = is_array($questions) ? count($questions) : 0;
             hostUserId: <?php echo json_encode($host_user_id); ?>
         };
     </script>
+    
+<?php else: ?>
+    <!-- Form nhập mã phòng để quản lý -->
+    <div class="live-quiz-host-login">
+        <div class="host-login-card">
+            <h1><?php _e('Quản lý phòng Quiz', 'live-quiz'); ?></h1>
+            <p class="subtitle"><?php _e('Nhập mã phòng để quản lý', 'live-quiz'); ?></p>
+            
+            <form id="host-login-form" class="host-form">
+                <div class="form-group">
+                    <label for="host-room-code"><?php _e('Mã phòng (PIN 6 số)', 'live-quiz'); ?></label>
+                    <input 
+                        type="text" 
+                        id="host-room-code" 
+                        name="room_code"
+                        placeholder="<?php esc_attr_e('Nhập mã phòng...', 'live-quiz'); ?>"
+                        required
+                        maxlength="6"
+                        pattern="[0-9]{6}"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        class="room-code-input">
+                </div>
+                
+                <button type="submit" class="btn btn-primary btn-large">
+                    <?php _e('Vào phòng', 'live-quiz'); ?>
+                </button>
+                
+                <div id="host-login-error" class="error-message" style="display: none;"></div>
+            </form>
+            
+            <div class="host-info">
+                <p><?php _e('💡 Mã phòng được tạo khi bạn tạo phòng quiz trong admin.', 'live-quiz'); ?></p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('host-login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const roomCode = document.getElementById('host-room-code').value.trim();
+            if (roomCode && /^[0-9]{6}$/.test(roomCode)) {
+                window.location.href = '/host/' + roomCode;
+            } else {
+                const errorEl = document.getElementById('host-login-error');
+                errorEl.textContent = '<?php esc_js(_e('Vui lòng nhập mã phòng hợp lệ (6 số)', 'live-quiz')); ?>';
+                errorEl.style.display = 'block';
+            }
+        });
+        
+        // Auto uppercase
+        document.getElementById('host-room-code').addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+    </script>
+    
+<?php endif; ?>
     
     <?php wp_footer(); ?>
 </body>

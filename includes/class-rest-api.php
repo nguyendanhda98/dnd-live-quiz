@@ -214,19 +214,11 @@ class Live_Quiz_REST_API {
         
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         
-        // Generate URLs
-        $host_base = Live_Quiz_Post_Types::get_host_base();
-        $play_base = Live_Quiz_Post_Types::get_play_base();
-        $host_url = home_url('/' . $host_base . '/' . $room_code);
-        $player_url = home_url('/' . $play_base . '/' . $room_code);
-        
         return rest_ensure_response(array(
             'success' => true,
             'session_id' => $session_id,
             'room_code' => $room_code,
             'pin_code' => $room_code, // Alias for clarity
-            'host_url' => $host_url,
-            'player_url' => $player_url,
             'session' => $session,
         ));
     }
@@ -963,19 +955,11 @@ class Live_Quiz_REST_API {
         
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         
-        // Generate URLs
-        $host_base = Live_Quiz_Post_Types::get_host_base();
-        $play_base = Live_Quiz_Post_Types::get_play_base();
-        $host_url = home_url('/' . $host_base . '/' . $room_code);
-        $player_url = home_url('/' . $play_base . '/' . $room_code);
-        
         return rest_ensure_response(array(
             'success' => true,
             'session_id' => $session_id,
             'room_code' => $room_code,
             'pin_code' => $room_code,
-            'host_url' => $host_url,
-            'player_url' => $player_url,
             'question_count' => count($all_questions),
             'session' => $session,
         ));

@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('LIVE_QUIZ_VERSION', '2.0.8');
+define('LIVE_QUIZ_VERSION', '2.1.0');
 define('LIVE_QUIZ_PLUGIN_FILE', __FILE__);
 define('LIVE_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('LIVE_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -62,11 +62,9 @@ final class Live_Quiz {
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-rest-api.php';
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-scoring.php';
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-session-manager.php';
-        require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-shortcodes.php';
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-admin.php';
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-security.php';
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-ai-generator.php';
-        require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-blocks.php';
         
         // Phase 2: WebSocket + Redis support
         if (file_exists(LIVE_QUIZ_PLUGIN_DIR . 'includes/class-redis-manager.php')) {
@@ -96,29 +94,48 @@ final class Live_Quiz {
         
         // Admin notices
         add_action('admin_notices', array($this, 'admin_notices'));
+        
+        // AJAX handler for dismissing notice
+        add_action('wp_ajax_live_quiz_dismiss_notice', array($this, 'dismiss_notice'));
     }
     
     /**
      * Show admin notices
      */
     public function admin_notices() {
-        // Check if we need to flush rewrite rules
-        $need_flush = get_transient('live_quiz_need_flush_rewrite');
-        if ($need_flush) {
+        // Check if need to show permalink flush notice
+        $dismissed = get_option('live_quiz_dismissed_flush_notice', false);
+        if (!$dismissed) {
             ?>
-            <div class="notice notice-warning is-dismissible">
+            <div class="notice notice-warning is-dismissible" data-dismissible="live-quiz-flush-notice">
                 <p>
                     <strong><?php _e('DND Live Quiz:', 'live-quiz'); ?></strong> 
-                    <?php _e('Rewrite rules đã được cập nhật. Vui lòng vào ', 'live-quiz'); ?>
+                    <?php _e('Các routes /host và /play đã được xóa. Vui lòng vào ', 'live-quiz'); ?>
                     <a href="<?php echo admin_url('options-permalink.php'); ?>">
                         <?php _e('Settings > Permalinks', 'live-quiz'); ?>
                     </a>
-                    <?php _e(' và nhấn "Save Changes" để áp dụng.', 'live-quiz'); ?>
+                    <?php _e(' và nhấn "Save Changes" để làm mới rewrite rules. Sau đó bạn có thể tự tạo các trang player và host bằng shortcodes.', 'live-quiz'); ?>
                 </p>
             </div>
+            <script>
+            jQuery(document).ready(function($) {
+                $(document).on('click', '.notice[data-dismissible="live-quiz-flush-notice"] .notice-dismiss', function() {
+                    $.post(ajaxurl, {
+                        action: 'live_quiz_dismiss_notice'
+                    });
+                });
+            });
+            </script>
             <?php
-            delete_transient('live_quiz_need_flush_rewrite');
         }
+    }
+    
+    /**
+     * Dismiss admin notice
+     */
+    public function dismiss_notice() {
+        update_option('live_quiz_dismissed_flush_notice', true);
+        wp_die();
     }
     
     /**
@@ -142,12 +159,6 @@ final class Live_Quiz {
         // Initialize REST API
         Live_Quiz_REST_API::init();
         
-        // Register shortcodes
-        Live_Quiz_Shortcodes::init();
-        
-        // Register Gutenberg blocks
-        Live_Quiz_Blocks::init();
-        
         // Initialize admin
         if (is_admin()) {
             Live_Quiz_Admin::init();
@@ -155,6 +166,133 @@ final class Live_Quiz {
         
         // Security
         Live_Quiz_Security::init();
+        
+        // Register shortcodes
+        $this->register_shortcodes();
+    }
+    
+    /**
+     * Register shortcodes
+     */
+    private function register_shortcodes() {
+        add_shortcode('live_quiz_player', array($this, 'shortcode_player'));
+        add_shortcode('live_quiz_host', array($this, 'shortcode_host'));
+        add_shortcode('live_quiz_sessions', array($this, 'shortcode_sessions'));
+        
+        // Backward compatibility
+        add_shortcode('live_quiz', array($this, 'shortcode_player'));
+    }
+    
+    /**
+     * Player shortcode
+     */
+    public function shortcode_player($atts) {
+        $atts = shortcode_atts(array(
+            'title' => __('Tham gia Live Quiz', 'live-quiz'),
+            'show_title' => 'yes',
+        ), $atts, 'live_quiz_player');
+        
+        ob_start();
+        ?>
+        <div class="live-quiz-player-wrapper">
+            <?php if ($atts['show_title'] === 'yes') : ?>
+                <h2><?php echo esc_html($atts['title']); ?></h2>
+            <?php endif; ?>
+            <div id="live-quiz-player"></div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+    
+    /**
+     * Host shortcode
+     */
+    public function shortcode_host($atts) {
+        // Check permission
+        if (!current_user_can('edit_posts')) {
+            return '<p>' . __('Bạn không có quyền truy cập tính năng này.', 'live-quiz') . '</p>';
+        }
+        
+        $atts = shortcode_atts(array(
+            'quiz_id' => 0,
+        ), $atts, 'live_quiz_host');
+        
+        $quiz_id = intval($atts['quiz_id']);
+        
+        ob_start();
+        include LIVE_QUIZ_PLUGIN_DIR . 'templates/host.php';
+        return ob_get_clean();
+    }
+    
+    /**
+     * Sessions shortcode
+     */
+    public function shortcode_sessions($atts) {
+        // Check permission
+        if (!current_user_can('edit_posts')) {
+            return '<p>' . __('Bạn không có quyền truy cập tính năng này.', 'live-quiz') . '</p>';
+        }
+        
+        $atts = shortcode_atts(array(
+            'per_page' => 10,
+        ), $atts, 'live_quiz_sessions');
+        
+        ob_start();
+        ?>
+        <div class="live-quiz-sessions-wrapper">
+            <h2><?php _e('Phiên Quiz', 'live-quiz'); ?></h2>
+            <div id="live-quiz-sessions-list">
+                <?php
+                // Query sessions
+                $args = array(
+                    'post_type' => 'live_session',
+                    'posts_per_page' => intval($atts['per_page']),
+                    'post_status' => array('publish', 'draft'),
+                    'orderby' => 'date',
+                    'order' => 'DESC',
+                );
+                
+                $sessions = get_posts($args);
+                
+                if ($sessions) {
+                    echo '<table class="live-quiz-sessions-table">';
+                    echo '<thead><tr>';
+                    echo '<th>' . __('Mã PIN', 'live-quiz') . '</th>';
+                    echo '<th>' . __('Quiz', 'live-quiz') . '</th>';
+                    echo '<th>' . __('Trạng thái', 'live-quiz') . '</th>';
+                    echo '<th>' . __('Người chơi', 'live-quiz') . '</th>';
+                    echo '<th>' . __('Ngày tạo', 'live-quiz') . '</th>';
+                    echo '<th>' . __('Hành động', 'live-quiz') . '</th>';
+                    echo '</tr></thead>';
+                    echo '<tbody>';
+                    
+                    foreach ($sessions as $session) {
+                        $pin = get_post_meta($session->ID, '_pin_code', true);
+                        $quiz_id = get_post_meta($session->ID, '_quiz_id', true);
+                        $quiz = get_post($quiz_id);
+                        $status = get_post_meta($session->ID, '_status', true);
+                        $player_count = get_post_meta($session->ID, '_player_count', true);
+                        
+                        echo '<tr>';
+                        echo '<td><strong>' . esc_html($pin) . '</strong></td>';
+                        echo '<td>' . ($quiz ? esc_html($quiz->post_title) : '-') . '</td>';
+                        echo '<td>' . esc_html($status) . '</td>';
+                        echo '<td>' . intval($player_count) . '</td>';
+                        echo '<td>' . get_the_date('', $session) . '</td>';
+                        echo '<td><a href="' . get_permalink($session) . '">' . __('Xem', 'live-quiz') . '</a></td>';
+                        echo '</tr>';
+                    }
+                    
+                    echo '</tbody>';
+                    echo '</table>';
+                } else {
+                    echo '<p>' . __('Chưa có phiên nào.', 'live-quiz') . '</p>';
+                }
+                ?>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
     }
     
     /**
@@ -163,65 +301,27 @@ final class Live_Quiz {
     public function enqueue_scripts() {
         global $post;
         
-        // Check if we're on the host page (/play/{session_id})
-        if (get_query_var('live_quiz_play')) {
+        // Check if shortcodes are being used on current page
+        if (!is_singular() || !isset($post->post_content)) {
+            return;
+        }
+        
+        // Check for player shortcode
+        if (has_shortcode($post->post_content, 'live_quiz_player') || has_shortcode($post->post_content, 'live_quiz')) {
+            $this->enqueue_player_scripts();
+        }
+        
+        // Check for host shortcode
+        if (has_shortcode($post->post_content, 'live_quiz_host')) {
             $this->enqueue_host_scripts();
-            return;
         }
-        
-        // Check for any live quiz shortcode or block
-        $has_player = is_a($post, 'WP_Post') && (
-            has_shortcode($post->post_content, 'live_quiz') || 
-            has_block('live-quiz/join-room', $post)
-        );
-        $has_create_room = is_a($post, 'WP_Post') && (
-            has_shortcode($post->post_content, 'live_quiz_create_room') || 
-            has_block('live-quiz/create-room', $post)
-        );
-        $has_quiz_list = is_a($post, 'WP_Post') && (
-            has_shortcode($post->post_content, 'live_quiz_list') || 
-            has_block('live-quiz/quiz-list', $post)
-        );
-        
-        // Load frontend assets for create room and quiz list
-        if ($has_create_room || $has_quiz_list) {
-            wp_enqueue_style(
-                'live-quiz-frontend',
-                LIVE_QUIZ_PLUGIN_URL . 'assets/css/frontend.css',
-                array(),
-                LIVE_QUIZ_VERSION
-            );
-            
-            wp_enqueue_script(
-                'live-quiz-frontend',
-                LIVE_QUIZ_PLUGIN_URL . 'assets/js/frontend.js',
-                array('jquery'),
-                LIVE_QUIZ_VERSION,
-                true
-            );
-            
-            $frontend_config = array(
-                'apiUrl' => rest_url('live-quiz/v1'),
-                'adminUrl' => admin_url(),
-                'pluginUrl' => LIVE_QUIZ_PLUGIN_URL,
-                'nonce' => wp_create_nonce('wp_rest'),
-                'i18n' => array(
-                    'selectQuizError' => __('Vui lòng chọn ít nhất một bộ câu hỏi', 'live-quiz'),
-                    'questionCountError' => __('Vui lòng nhập số câu hỏi hợp lệ', 'live-quiz'),
-                    'createError' => __('Có lỗi xảy ra khi tạo phòng', 'live-quiz'),
-                    'copied' => __('Đã sao chép!', 'live-quiz'),
-                ),
-            );
-            
-            wp_localize_script('live-quiz-frontend', 'liveQuizFrontend', $frontend_config);
-        }
-        
-        // Load player assets
-        if (!$has_player) {
-            return;
-        }
-        
-        // Styles
+    }
+    
+    /**
+     * Enqueue player scripts
+     */
+    private function enqueue_player_scripts() {
+        // Player CSS
         wp_enqueue_style(
             'live-quiz-player',
             LIVE_QUIZ_PLUGIN_URL . 'assets/css/player.css',
@@ -229,7 +329,7 @@ final class Live_Quiz {
             LIVE_QUIZ_VERSION
         );
         
-        // WebSocket only - always load Socket.io and player.js
+        // Socket.io library
         wp_enqueue_script(
             'socketio',
             'https://cdn.socket.io/4.7.2/socket.io.min.js',
@@ -238,6 +338,7 @@ final class Live_Quiz {
             true
         );
         
+        // Player JS
         wp_enqueue_script(
             'live-quiz-player',
             LIVE_QUIZ_PLUGIN_URL . 'assets/js/player.js',
@@ -246,12 +347,11 @@ final class Live_Quiz {
             true
         );
         
-        // WebSocket configuration
+        // Configuration
         $websocket_url = get_option('live_quiz_websocket_url', 'http://localhost:3000');
         $websocket_secret = get_option('live_quiz_websocket_secret', '');
         
         $config = array(
-            'ajaxUrl' => admin_url('admin-ajax.php'),
             'restUrl' => rest_url('live-quiz/v1'),
             'nonce' => wp_create_nonce('live_quiz_nonce'),
             'websocket' => array(
@@ -275,6 +375,7 @@ final class Live_Quiz {
                 'final_results' => __('Kết quả cuối cùng', 'live-quiz'),
                 'connection_lost' => __('Mất kết nối... Đang kết nối lại', 'live-quiz'),
                 'connection_restored' => __('Đã kết nối lại', 'live-quiz'),
+                'error' => __('Có lỗi xảy ra', 'live-quiz'),
             )
         );
         
@@ -400,9 +501,8 @@ live_quiz();
  * Activation hook
  */
 register_activation_hook(__FILE__, function() {
-    // Register post types and rewrite rules first
+    // Register post types
     Live_Quiz_Post_Types::register();
-    Live_Quiz_Post_Types::add_rewrite_rules();
     
     // Set default options - Phase 1
     add_option('live_quiz_alpha', 0.3);
@@ -420,25 +520,12 @@ register_activation_hook(__FILE__, function() {
     add_option('live_quiz_redis_port', 6379);
     add_option('live_quiz_redis_password', '');
     add_option('live_quiz_redis_database', 0);
-    
-    // Permalink settings
-    add_option('live_quiz_host_base', 'host');
-    add_option('live_quiz_play_base', 'play');
-    
-    // Flush rewrite rules AFTER registering
-    flush_rewrite_rules();
-    
-    // Set notice to remind user
-    set_transient('live_quiz_need_flush_rewrite', true, 60 * 60 * 24); // 24 hours
 });
 
 /**
  * Deactivation hook
  */
 register_deactivation_hook(__FILE__, function() {
-    // Flush rewrite rules
-    flush_rewrite_rules();
-    
     // Clean up transients
     global $wpdb;
     $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_live_quiz_%'");
