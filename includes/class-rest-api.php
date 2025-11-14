@@ -93,6 +93,20 @@ class Live_Quiz_REST_API {
             'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
         ));
         
+        // Get player count (for players)
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/player-count', array(
+            'methods' => 'GET',
+            'callback' => array(__CLASS__, 'get_player_count'),
+            'permission_callback' => '__return_true',
+        ));
+        
+        // Get players list (for players)
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/players-list', array(
+            'methods' => 'GET',
+            'callback' => array(__CLASS__, 'get_players_list'),
+            'permission_callback' => '__return_true',
+        ));
+        
         // Get question stats (for host)
         register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/question-stats', array(
             'methods' => 'GET',
@@ -475,11 +489,89 @@ class Live_Quiz_REST_API {
     public static function get_players($request) {
         $session_id = $request->get_param('id');
         
+        // Get session to find host_id
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        $host_id = $session['host_id'];
+        
         $players = Live_Quiz_Session_Manager::get_participants($session_id);
+        
+        // Filter out the host from players list
+        $players = array_filter($players, function($player) use ($host_id) {
+            $player_id = isset($player['user_id']) ? $player['user_id'] : (isset($player['player_id']) ? $player['player_id'] : null);
+            return $player_id != $host_id;
+        });
+        
+        // Re-index array to ensure sequential keys
+        $players = array_values($players);
         
         return rest_ensure_response(array(
             'success' => true,
             'players' => $players,
+        ));
+    }
+    
+    /**
+     * Get player count (for players - public endpoint)
+     */
+    public static function get_player_count($request) {
+        $session_id = $request->get_param('id');
+        
+        // Get session to find host_id
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        if (!$session) {
+            return new WP_Error('not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
+        }
+        
+        $host_id = $session['host_id'];
+        $players = Live_Quiz_Session_Manager::get_participants($session_id);
+        
+        // Filter out the host from players list
+        $players = array_filter($players, function($player) use ($host_id) {
+            $player_id = isset($player['user_id']) ? $player['user_id'] : (isset($player['player_id']) ? $player['player_id'] : null);
+            return $player_id != $host_id;
+        });
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'count' => count($players),
+        ));
+    }
+    
+    /**
+     * Get players list (for players - public endpoint)
+     */
+    public static function get_players_list($request) {
+        $session_id = $request->get_param('id');
+        
+        // Get session to find host_id
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        if (!$session) {
+            return new WP_Error('not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
+        }
+        
+        $host_id = $session['host_id'];
+        $players = Live_Quiz_Session_Manager::get_participants($session_id);
+        
+        // Filter out the host from players list
+        $players = array_filter($players, function($player) use ($host_id) {
+            $player_id = isset($player['user_id']) ? $player['user_id'] : (isset($player['player_id']) ? $player['player_id'] : null);
+            return $player_id != $host_id;
+        });
+        
+        // Re-index array to ensure sequential keys
+        $players = array_values($players);
+        
+        // Only return necessary fields for display
+        $players_list = array_map(function($player) {
+            return array(
+                'display_name' => isset($player['display_name']) ? $player['display_name'] : 'Unknown',
+                'user_id' => isset($player['user_id']) ? $player['user_id'] : (isset($player['player_id']) ? $player['player_id'] : null),
+            );
+        }, $players);
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'players' => $players_list,
         ));
     }
     

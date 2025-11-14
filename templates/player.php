@@ -8,13 +8,23 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+
+$player_title = get_query_var('player_title', __('Tham gia Live Quiz', 'live-quiz'));
+$show_title = get_query_var('show_title', 'yes');
 ?>
 
-<div id="live-quiz-player" class="live-quiz-container">
-    <!-- Lobby Screen -->
-    <div id="quiz-lobby" class="quiz-screen active">
-        <div class="quiz-card">
-            <h1><?php _e('Tham gia Live Quiz', 'live-quiz'); ?></h1>
+<div class="live-quiz-player-wrapper">
+    <?php if ($show_title === 'yes') : ?>
+        <div class="player-header">
+            <h1><?php echo esc_html($player_title); ?></h1>
+        </div>
+    <?php endif; ?>
+    
+    <div id="live-quiz-player" class="live-quiz-container">
+        <!-- Lobby Screen -->
+        <div id="quiz-lobby" class="quiz-screen active">
+            <div class="quiz-card">
+                <h2><?php _e('Nhập thông tin', 'live-quiz'); ?></h2>
             
             <form id="join-form" class="quiz-form">
                 <div class="form-group">
@@ -63,6 +73,13 @@ if (!defined('ABSPATH')) {
                 <strong><?php _e('Mã phòng:', 'live-quiz'); ?></strong> <span id="waiting-room-code" class="room-code"></span>
             </p>
             <p id="participant-count" class="participant-count"></p>
+            
+            <div class="players-waiting-section">
+                <h3 class="players-waiting-title"><?php _e('Người chơi đang chờ', 'live-quiz'); ?></h3>
+                <div id="players-waiting-list" class="players-waiting-list">
+                    <p class="no-players"><?php _e('Đang tải...', 'live-quiz'); ?></p>
+                </div>
+            </div>
             
             <button class="btn btn-secondary leave-room-btn" style="margin-top: 20px;">
                 <?php _e('Rời khỏi phòng', 'live-quiz'); ?>
@@ -164,5 +181,6 @@ if (!defined('ABSPATH')) {
     <div id="connection-status" class="connection-status" style="display: none;">
         <span class="status-icon"></span>
         <span class="status-text"></span>
+    </div>
     </div>
 </div>

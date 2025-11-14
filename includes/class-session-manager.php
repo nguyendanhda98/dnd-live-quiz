@@ -398,10 +398,27 @@ class Live_Quiz_Session_Manager {
         set_transient($cache_key, $stored_participants, 60);
         
         // Broadcast join event (SSE fallback)
+        // Note: count should exclude host, so subtract 1 if host is in list
+        $participant_count = count($stored_participants);
+        if ($session['host_id']) {
+            // Check if host is in participants list and subtract
+            $has_host = false;
+            foreach ($stored_participants as $p) {
+                $p_id = isset($p['user_id']) ? $p['user_id'] : (isset($p['player_id']) ? $p['player_id'] : null);
+                if ($p_id == $session['host_id']) {
+                    $has_host = true;
+                    break;
+                }
+            }
+            if ($has_host) {
+                $participant_count--;
+            }
+        }
+        
         self::broadcast_event($session_id, 'participant_join', array(
             'user_id' => $user_id,
             'display_name' => $participant['display_name'],
-            'total_participants' => count($participants),
+            'total_participants' => $participant_count,
         ));
         
         return $participant;

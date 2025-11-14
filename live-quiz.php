@@ -193,14 +193,13 @@ final class Live_Quiz {
         ), $atts, 'live_quiz_player');
         
         ob_start();
-        ?>
-        <div class="live-quiz-player-wrapper">
-            <?php if ($atts['show_title'] === 'yes') : ?>
-                <h2><?php echo esc_html($atts['title']); ?></h2>
-            <?php endif; ?>
-            <div id="live-quiz-player"></div>
-        </div>
-        <?php
+        
+        // Set query vars for template
+        set_query_var('player_title', $atts['title']);
+        set_query_var('show_title', $atts['show_title']);
+        
+        include LIVE_QUIZ_PLUGIN_DIR . 'templates/player.php';
+        
         return ob_get_clean();
     }
     
@@ -208,9 +207,9 @@ final class Live_Quiz {
      * Host shortcode
      */
     public function shortcode_host($atts) {
-        // Check permission
-        if (!current_user_can('edit_posts')) {
-            return '<p>' . __('Bạn không có quyền truy cập tính năng này.', 'live-quiz') . '</p>';
+        // Check permission - anyone logged in can host
+        if (!is_user_logged_in()) {
+            return '<p>' . __('Bạn cần đăng nhập để sử dụng tính năng này.', 'live-quiz') . '</p>';
         }
         
         $atts = shortcode_atts(array(

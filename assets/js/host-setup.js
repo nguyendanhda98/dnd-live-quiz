@@ -260,8 +260,10 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        // Reload page - shortcode will auto-open the new session
-                        window.location.reload();
+                        // Redirect to host page with session_id parameter
+                        const sessionId = response.data ? response.data.session_id : response.session_id;
+                        const currentUrl = window.location.href.split('?')[0];
+                        window.location.href = currentUrl + '?session_id=' + sessionId;
                     } else {
                         $error.text(response.message || 'Lỗi tạo phòng').show();
                         $btn.prop('disabled', false).html('🚀 Tạo phòng');

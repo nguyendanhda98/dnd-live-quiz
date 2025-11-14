@@ -152,7 +152,12 @@
                 success: function(response) {
                     console.log('Fetched players:', response);
                     if (response.success && response.players) {
-                        self.updatePlayersList(response.players);
+                        // Merge players into this.players to maintain WebSocket updates
+                        response.players.forEach(function(player) {
+                            const playerId = player.user_id || player.player_id;
+                            self.players[playerId] = player;
+                        });
+                        self.updatePlayersList(Object.values(self.players));
                     }
                 },
                 error: function(xhr, status, error) {
@@ -163,20 +168,41 @@
         
         handlePlayerJoined: function(data) {
             console.log('Player joined:', data);
-            this.players[data.player_id] = data;
-            this.updatePlayersList(Object.values(this.players));
+            // Support both player_id and user_id
+            const playerId = data.player_id || data.user_id;
+            if (playerId) {
+                this.players[playerId] = data;
+                // Also store the ID in the data object for consistency
+                this.players[playerId].player_id = playerId;
+                this.players[playerId].user_id = playerId;
+                this.updatePlayersList(Object.values(this.players));
+            } else {
+                console.error('Player joined event missing player_id/user_id:', data);
+            }
         },
         
         handlePlayerLeft: function(data) {
             console.log('Player left:', data);
-            delete this.players[data.player_id];
-            this.updatePlayersList(Object.values(this.players));
+            const playerId = data.player_id || data.user_id;
+            if (playerId) {
+                delete this.players[playerId];
+                this.updatePlayersList(Object.values(this.players));
+            }
         },
         
         updatePlayersList: function(players) {
             const self = this;
             const $list = $('#players-list');
             const $count = $('#player-count');
+            
+            // Filter out host from players list (double-check in case API doesn't filter)
+            const hostId = window.liveQuizHostData.hostUserId;
+            if (hostId) {
+                players = players.filter(function(player) {
+                    const playerId = player.user_id || player.player_id;
+                    return playerId != hostId;
+                });
+            }
             
             // Update count
             $count.text(players.length);
