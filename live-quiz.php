@@ -189,7 +189,7 @@ final class Live_Quiz {
     public function shortcode_player($atts) {
         // Check if user is logged in
         if (!is_user_logged_in()) {
-            return '<div class="live-quiz-login-required"><p>' . __('Bạn cần đăng nhập để tham gia quiz.', 'live-quiz') . ' <a href="' . wp_login_url(get_permalink()) . '">' . __('Đăng nhập ngay', 'live-quiz') . '</a></p></div>';
+            return '<div class="live-quiz-login-required"><p>' . __('Bạn cần đăng nhập để tham gia quiz.', 'live-quiz') . ' </p></div>';
         }
         
         $atts = shortcode_atts(array(
@@ -427,7 +427,7 @@ final class Live_Quiz {
         
         $config = array(
             'restUrl' => rest_url('live-quiz/v1'),
-            'nonce' => wp_create_nonce('live_quiz_nonce'),
+            'nonce' => wp_create_nonce('wp_rest'),
             'websocket' => array(
                 'enabled' => true,
                 'url' => $websocket_url,

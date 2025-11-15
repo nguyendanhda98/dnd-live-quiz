@@ -205,6 +205,19 @@ class Live_Quiz_REST_API {
     }
     
     /**
+     * Check if user is logged in (with proper nonce verification)
+     */
+    public static function check_user_logged_in($request) {
+        // For cookie-based authentication, verify nonce
+        $nonce = $request->get_header('X-WP-Nonce');
+        if ($nonce && !wp_verify_nonce($nonce, 'wp_rest')) {
+            return false;
+        }
+        
+        return is_user_logged_in();
+    }
+    
+    /**
      * Create session
      */
     public static function create_session($request) {
@@ -517,15 +530,19 @@ class Live_Quiz_REST_API {
      */
     public static function leave_session($request) {
         $session_id = $request->get_param('session_id');
-        $user_id = $request->get_param('user_id');
         
-        if (!$session_id || !$user_id) {
+        if (!$session_id) {
             return new WP_Error('missing_params', __('Thiếu thông tin', 'live-quiz'), array('status' => 400));
+        }
+        
+        // Get WordPress user ID
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return new WP_Error('not_logged_in', __('Bạn cần đăng nhập', 'live-quiz'), array('status' => 401));
         }
         
         // Sanitize
         $session_id = absint($session_id);
-        $user_id = sanitize_text_field($user_id);
         
         // Remove participant from session
         $result = Live_Quiz_Session_Manager::remove_participant($session_id, $user_id);
@@ -553,11 +570,16 @@ class Live_Quiz_REST_API {
      */
     public static function submit_answer($request) {
         $session_id = $request->get_param('session_id');
-        $user_id = $request->get_param('user_id');
         $choice_id = $request->get_param('choice_id');
         
-        if (!$session_id || !$user_id || !is_numeric($choice_id)) {
+        if (!$session_id || !is_numeric($choice_id)) {
             return new WP_Error('missing_params', __('Thiếu thông tin', 'live-quiz'), array('status' => 400));
+        }
+        
+        // Get WordPress user ID
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return new WP_Error('not_logged_in', __('Bạn cần đăng nhập', 'live-quiz'), array('status' => 401));
         }
         
         // Validate session access
@@ -611,8 +633,7 @@ class Live_Quiz_REST_API {
         
         // Filter out the host from players list
         $players = array_filter($players, function($player) use ($host_id) {
-            $player_id = isset($player['user_id']) ? $player['user_id'] : (isset($player['player_id']) ? $player['player_id'] : null);
-            return $player_id != $host_id;
+            return $player['user_id'] != $host_id;
         });
         
         // Re-index array to ensure sequential keys
@@ -641,8 +662,7 @@ class Live_Quiz_REST_API {
         
         // Filter out the host from players list
         $players = array_filter($players, function($player) use ($host_id) {
-            $player_id = isset($player['user_id']) ? $player['user_id'] : (isset($player['player_id']) ? $player['player_id'] : null);
-            return $player_id != $host_id;
+            return $player['user_id'] != $host_id;
         });
         
         return rest_ensure_response(array(
@@ -668,8 +688,7 @@ class Live_Quiz_REST_API {
         
         // Filter out the host from players list
         $players = array_filter($players, function($player) use ($host_id) {
-            $player_id = isset($player['user_id']) ? $player['user_id'] : (isset($player['player_id']) ? $player['player_id'] : null);
-            return $player_id != $host_id;
+            return $player['user_id'] != $host_id;
         });
         
         // Re-index array to ensure sequential keys
@@ -679,7 +698,7 @@ class Live_Quiz_REST_API {
         $players_list = array_map(function($player) {
             return array(
                 'display_name' => isset($player['display_name']) ? $player['display_name'] : 'Unknown',
-                'user_id' => isset($player['user_id']) ? $player['user_id'] : (isset($player['player_id']) ? $player['player_id'] : null),
+                'user_id' => $player['user_id'],
             );
         }, $players);
         

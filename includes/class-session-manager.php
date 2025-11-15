@@ -368,8 +368,18 @@ class Live_Quiz_Session_Manager {
             return new WP_Error('session_full', __('Phòng đã đầy', 'live-quiz'));
         }
         
-        // Generate unique user ID
-        $user_id = uniqid('user_', true);
+        // Require WordPress login
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return new WP_Error('not_logged_in', __('Bạn cần đăng nhập để tham gia quiz', 'live-quiz'));
+        }
+        
+        // Check if user already in session
+        foreach ($participants as $p) {
+            if ($p['user_id'] == $user_id) {
+                return new WP_Error('already_joined', __('Bạn đã tham gia phiên này rồi', 'live-quiz'));
+            }
+        }
         
         $participant = array(
             'user_id' => $user_id,
@@ -415,8 +425,7 @@ class Live_Quiz_Session_Manager {
             // Check if host is in participants list and subtract
             $has_host = false;
             foreach ($stored_participants as $p) {
-                $p_id = isset($p['user_id']) ? $p['user_id'] : (isset($p['player_id']) ? $p['player_id'] : null);
-                if ($p_id == $session['host_id']) {
+                if ($p['user_id'] == $session['host_id']) {
                     $has_host = true;
                     break;
                 }

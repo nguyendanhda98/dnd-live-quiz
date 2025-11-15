@@ -162,7 +162,7 @@
                     if (response.success && response.players) {
                         // Merge players into this.players to maintain WebSocket updates
                         response.players.forEach(function(player) {
-                            const playerId = player.user_id || player.player_id;
+                            const playerId = player.user_id;
                             self.players[playerId] = player;
                         });
                         self.updatePlayersList(Object.values(self.players));
@@ -176,8 +176,7 @@
         
         handlePlayerJoined: function(data) {
             console.log('Player joined:', data);
-            // Support both player_id and user_id
-            const playerId = data.player_id || data.user_id;
+            const playerId = data.user_id;
             const hostId = window.liveQuizHostData.hostUserId;
             
             console.log('Comparing playerId:', playerId, 'with hostId:', hostId, 'types:', typeof playerId, typeof hostId);
@@ -185,20 +184,18 @@
             // Don't add host to players list (convert to string for comparison)
             if (playerId && String(playerId) !== String(hostId)) {
                 this.players[playerId] = data;
-                // Also store the ID in the data object for consistency
-                this.players[playerId].player_id = playerId;
                 this.players[playerId].user_id = playerId;
                 this.updatePlayersList(Object.values(this.players));
             } else if (String(playerId) === String(hostId)) {
                 console.log('Ignoring host join event for hostId:', hostId);
             } else {
-                console.error('Player joined event missing player_id/user_id:', data);
+                console.error('Player joined event missing user_id:', data);
             }
         },
         
         handlePlayerLeft: function(data) {
             console.log('Player left:', data);
-            const playerId = data.player_id || data.user_id;
+            const playerId = data.user_id;
             if (playerId) {
                 delete this.players[playerId];
                 this.updatePlayersList(Object.values(this.players));
@@ -214,8 +211,7 @@
             const hostId = window.liveQuizHostData.hostUserId;
             if (hostId) {
                 players = players.filter(function(player) {
-                    const playerId = player.user_id || player.player_id;
-                    return String(playerId) !== String(hostId);
+                    return String(player.user_id) !== String(hostId);
                 });
             }
             
@@ -237,8 +233,7 @@
             
             let html = '';
             players.forEach(function(player) {
-                // Support both user_id and player_id for backward compatibility
-                const playerId = player.user_id || player.player_id;
+                const playerId = player.user_id;
                 const initial = player.display_name ? player.display_name.charAt(0).toUpperCase() : '?';
                 html += `
                     <div class="player-item" data-player-id="${playerId}">

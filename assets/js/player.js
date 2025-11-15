@@ -317,7 +317,7 @@
             const sessionId = state.sessionId;
             const userId = state.userId;
             
-            if (sessionId && userId) {
+            if (sessionId) {
                 try {
                     await fetch(config.restUrl + '/leave', {
                         method: 'POST',
@@ -326,8 +326,7 @@
                             'X-WP-Nonce': config.nonce
                         },
                         body: JSON.stringify({
-                            session_id: sessionId,
-                            user_id: userId
+                            session_id: sessionId
                         })
                     });
                 } catch (error) {
@@ -385,6 +384,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-WP-Nonce': config.nonce,
                 },
                 body: JSON.stringify({
                     display_name: displayName,
@@ -653,7 +653,6 @@
                 },
                 body: JSON.stringify({
                     session_id: state.sessionId,
-                    user_id: state.userId,
                     choice_id: choiceId,
                 }),
             });
