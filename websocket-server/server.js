@@ -290,12 +290,55 @@ const RedisHelper = {
     // Save answer
     async saveAnswer(sessionId, userId, questionIndex, answerData) {
         try {
-            const key = `session:${sessionId}:answers:q${questionIndex}`;
-            await redisClient.hSet(key, userId, JSON.stringify(answerData));
+            const key = `session:${sessionId}:answer:${userId}:${questionIndex}`;
+            await redisClient.set(key, JSON.stringify(answerData));
             await redisClient.expire(key, 7200);
             return true;
         } catch (error) {
             logger.error('Error saving answer', { sessionId, userId, questionIndex, error });
+            return false;
+        }
+    },
+
+    // Store active connection for multi-device enforcement
+    async setActiveConnection(userId, sessionId, socketId, connectionId) {
+        try {
+            const key = `active_connection:user:${userId}:session:${sessionId}`;
+            const data = {
+                socket_id: socketId,
+                connection_id: connectionId,
+                joined_at: Date.now()
+            };
+            await redisClient.set(key, JSON.stringify(data));
+            await redisClient.expire(key, 7200); // 2 hours
+            return true;
+        } catch (error) {
+            logger.error('Error setting active connection', { userId, sessionId, error });
+            return false;
+        }
+    },
+
+    // Get active connection for user in session
+    async getActiveConnection(userId, sessionId) {
+        try {
+            const key = `active_connection:user:${userId}:session:${sessionId}`;
+            const data = await redisClient.get(key);
+            if (!data) return null;
+            return JSON.parse(data);
+        } catch (error) {
+            logger.error('Error getting active connection', { userId, sessionId, error });
+            return null;
+        }
+    },
+
+    // Remove active connection
+    async removeActiveConnection(userId, sessionId) {
+        try {
+            const key = `active_connection:user:${userId}:session:${sessionId}`;
+            await redisClient.del(key);
+            return true;
+        } catch (error) {
+            logger.error('Error removing active connection', { userId, sessionId, error });
             return false;
         }
     },
@@ -326,39 +369,78 @@ io.on('connection', async (socket) => {
             is_host
         });
         
-        // SINGLE TAB ENFORCEMENT: Kick out all other connections of this user
-        // Find and disconnect all existing connections for this user
-        const existingSockets = Array.from(io.sockets.sockets.values()).filter(s => 
-            s.userId === user_id && s.id !== socket.id
-        );
+        // SINGLE DEVICE ENFORCEMENT (Redis-based): Only allow ONE device/tab at a time per user
+        // Step 1: Check Redis for existing active connection
+        const existingConnection = await RedisHelper.getActiveConnection(user_id, session_id);
         
-        if (existingSockets.length > 0) {
-            logger.info('Disconnecting existing connections for user', {
+        if (existingConnection && existingConnection.socket_id !== socket.id) {
+            logger.info('🔄 Multi-device detection (Redis) - Found existing connection', {
                 user_id,
-                count: existingSockets.length,
-                new_connection_id: connection_id
+                display_name,
+                old_socket_id: existingConnection.socket_id,
+                old_connection_id: existingConnection.connection_id,
+                new_socket_id: socket.id,
+                new_connection_id: connection_id,
+                action: 'force_disconnect_old_device'
             });
             
-            // Force disconnect all old connections
-            existingSockets.forEach(oldSocket => {
-                logger.info('Forcing disconnect of old socket', {
+            // Step 2: Try to find the old socket in current server instance
+            const oldSocket = io.sockets.sockets.get(existingConnection.socket_id);
+            
+            if (oldSocket) {
+                logger.info('  ✗ Kicking old socket from this server instance', {
                     user_id,
-                    old_socket_id: oldSocket.id,
-                    old_connection_id: oldSocket.connectionId,
-                    new_connection_id: connection_id
+                    old_socket_id: existingConnection.socket_id,
+                    old_connection_id: existingConnection.connection_id
                 });
                 
                 // Send force_disconnect event before disconnecting
                 oldSocket.emit('force_disconnect', {
-                    reason: 'new_connection',
-                    message: 'Bạn đã mở phiên mới từ tab/thiết bị khác',
-                    new_connection_id: connection_id
+                    reason: 'new_device_connection',
+                    message: 'Bạn đã mở phiên này từ thiết bị/tab khác. Phiên này sẽ bị đóng.',
+                    new_connection_id: connection_id,
+                    timestamp: Date.now()
                 });
                 
                 // Disconnect the old socket
                 oldSocket.disconnect(true);
                 
-                // Remove from active connections
+                // Remove from active connections map
+                if (oldSocket.connectionId) {
+                    activeConnections.delete(oldSocket.connectionId);
+                }
+            } else {
+                // Old socket not in this server (maybe different server instance or already disconnected)
+                logger.info('  ℹ Old socket not found in this server (may be on different instance or disconnected)', {
+                    old_socket_id: existingConnection.socket_id
+                });
+            }
+        }
+        
+        // Step 3: Also check in-memory sockets (fallback for same server)
+        const existingSockets = Array.from(io.sockets.sockets.values()).filter(s => 
+            s.userId === user_id && s.sessionId === session_id && s.id !== socket.id
+        );
+        
+        if (existingSockets.length > 0) {
+            logger.info('  ⚠ Found additional sockets in memory (fallback check)', {
+                count: existingSockets.length
+            });
+            
+            existingSockets.forEach((oldSocket, index) => {
+                logger.info(`  ✗ Kicking memory socket #${index + 1}`, {
+                    old_socket_id: oldSocket.id
+                });
+                
+                oldSocket.emit('force_disconnect', {
+                    reason: 'new_device_connection',
+                    message: 'Bạn đã mở phiên này từ thiết bị/tab khác. Phiên này sẽ bị đóng.',
+                    new_connection_id: connection_id,
+                    timestamp: Date.now()
+                });
+                
+                oldSocket.disconnect(true);
+                
                 if (oldSocket.connectionId) {
                     activeConnections.delete(oldSocket.connectionId);
                 }
@@ -383,6 +465,16 @@ io.on('connection', async (socket) => {
         // Add participant to Redis
         await RedisHelper.addParticipant(session_id, user_id, display_name);
         
+        // IMPORTANT: Store active connection in Redis for multi-device enforcement
+        await RedisHelper.setActiveConnection(user_id, session_id, socket.id, connection_id);
+        
+        logger.info('✓ Stored active connection in Redis', {
+            user_id,
+            session_id,
+            socket_id: socket.id,
+            connection_id
+        });
+        
         // Notify ALL participants in room (including this user)
         io.to(`session:${session_id}`).emit('participant_joined', {
             user_id,
@@ -399,7 +491,7 @@ io.on('connection', async (socket) => {
     });
     
     // Handle leave_session event
-    socket.on('leave_session', () => {
+    socket.on('leave_session', async () => {
         if (socket.sessionId) {
             logger.info('User leaving session', {
                 session_id: socket.sessionId,
@@ -414,6 +506,9 @@ io.on('connection', async (socket) => {
                 user_id: socket.userId,
                 display_name: socket.displayName
             });
+            
+            // Remove active connection from Redis
+            await RedisHelper.removeActiveConnection(socket.userId, socket.sessionId);
         }
         
         // Remove from active connections
@@ -556,7 +651,7 @@ io.on('connection', async (socket) => {
     });
 
     // Handle disconnect
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', async (reason) => {
         stats.connections--;
 
         logger.info('Client disconnected', {
@@ -574,6 +669,15 @@ io.on('connection', async (socket) => {
                 display_name: socket.displayName,
                 total_participants: stats.connections,
             });
+            
+            // Remove active connection from Redis
+            if (socket.userId) {
+                await RedisHelper.removeActiveConnection(socket.userId, socket.sessionId);
+                logger.info('✓ Removed active connection from Redis on disconnect', {
+                    user_id: socket.userId,
+                    session_id: socket.sessionId
+                });
+            }
         }
         
         // Remove from active connections

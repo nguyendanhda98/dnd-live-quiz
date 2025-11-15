@@ -36,13 +36,6 @@
         return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
     }
     
-    /**
-     * Generate unique connection ID for this tab/device
-     */
-    function generateConnectionId() {
-        return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-    }
-    
     // Config from WordPress
     const config = window.liveQuizConfig || {};
     
@@ -155,9 +148,11 @@
             state.displayName = session.displayName;
             state.roomCode = session.roomCode;
             state.websocketToken = session.websocketToken;
-            state.connectionId = session.connectionId || generateConnectionId();
+            // ALWAYS generate NEW connectionId to trigger multi-device kick
+            state.connectionId = generateConnectionId();
             
-            console.log('[Live Quiz] Session restored from server:', state.roomCode);
+            console.log('[Live Quiz] Session restored from server with NEW connectionId:', state.connectionId);
+            console.log('[Live Quiz] Room code:', state.roomCode);
             
             // Update URL if needed
             if (!urlRoomCode) {
@@ -246,8 +241,11 @@
             state.displayName = session.displayName;
             state.roomCode = session.roomCode;
             state.websocketToken = session.websocketToken;
+            // ALWAYS generate NEW connectionId to trigger multi-device kick
+            state.connectionId = generateConnectionId();
             
-            console.log('[Live Quiz] Session restored:', state.roomCode);
+            console.log('[Live Quiz] Session restored from localStorage with NEW connectionId:', state.connectionId);
+            console.log('[Live Quiz] Room code:', state.roomCode);
             
             // Update URL if needed (when user opens /play but has active session)
             if (!urlRoomCode) {
@@ -779,14 +777,19 @@
     
     /**
      * Handle when user opens new tab/device - force disconnect old tabs
+     * This ensures only ONE device/tab can participate at a time
      */
     function handleForceDisconnect(data) {
-        console.log('[PLAYER] === FORCE DISCONNECTED ===');
+        console.log('[PLAYER] ========================================');
+        console.log('[PLAYER] ✗ FORCE DISCONNECTED - Multi-device detected');
+        console.log('[PLAYER] ========================================');
         console.log('[PLAYER] Reason:', data.reason);
         console.log('[PLAYER] Message:', data.message);
+        console.log('[PLAYER] Timestamp:', new Date(data.timestamp).toLocaleString());
         console.log('[PLAYER] Session before disconnect:', {
             sessionId: state.sessionId,
             userId: state.userId,
+            displayName: state.displayName,
             roomCode: state.roomCode,
             connectionId: state.connectionId
         });
@@ -799,7 +802,7 @@
         }
         
         // Clear ALL session data
-        console.log('[PLAYER] Clearing localStorage...');
+        console.log('[PLAYER] Clearing all session data...');
         localStorage.removeItem('live_quiz_session');
         sessionStorage.clear();
         
@@ -813,10 +816,15 @@
         state.currentQuestion = null;
         state.connectionId = null;
         
-        console.log('[PLAYER] All session data cleared');
+        console.log('[PLAYER] ✓ All session data cleared');
         console.log('[PLAYER] Redirecting to home page...');
+        console.log('[PLAYER] ========================================');
         
-        // Redirect to home page immediately without alert
+        // Show a brief notification before redirect (optional)
+        // You can uncomment this if you want to show an alert
+        // alert(data.message || 'Bạn đã mở phiên này từ thiết bị/tab khác.');
+        
+        // Redirect to home page immediately
         window.location.href = config.homeUrl || '/';
     }
     

@@ -377,7 +377,11 @@ class Live_Quiz_Session_Manager {
         // Check if user already in session
         foreach ($participants as $p) {
             if ($p['user_id'] == $user_id) {
-                return new WP_Error('already_joined', __('Bạn đã tham gia phiên này rồi', 'live-quiz'));
+                // User already joined - this is OK for multi-device support
+                // Just return the existing participant data
+                // The join_session REST API will handle kicking old connections
+                error_log("[Live Quiz] User {$user_id} already in session {$session_id} - returning existing data");
+                return $p; // Return existing participant instead of error
             }
         }
         

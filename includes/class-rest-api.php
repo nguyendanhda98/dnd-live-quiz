@@ -445,7 +445,7 @@ class Live_Quiz_REST_API {
             return $duplicate_check;
         }
         
-        // Add participant
+        // Add participant (or get existing if already joined)
         $participant = Live_Quiz_Session_Manager::add_participant($session_id, $display_name);
         
         if (is_wp_error($participant)) {
@@ -453,6 +453,32 @@ class Live_Quiz_REST_API {
         }
         
         $session = Live_Quiz_Session_Manager::get_session($session_id);
+        
+        // Get WordPress user ID for multi-device enforcement
+        $wp_user_id = get_current_user_id();
+        
+        // MULTI-DEVICE ENFORCEMENT: Check old connection BEFORE generating new token
+        if ($wp_user_id) {
+            $old_session = get_user_meta($wp_user_id, '_live_quiz_active_session', true);
+            if ($old_session && is_array($old_session)) {
+                $old_connection_id = isset($old_session['connectionId']) ? $old_session['connectionId'] : null;
+                
+                // If there's a different connection, emit event to kick it via WebSocket
+                if ($old_connection_id && $old_connection_id !== $connection_id) {
+                    error_log("[Live Quiz] Multi-device detected! User {$wp_user_id} joining from new device.");
+                    error_log("  Old connection: {$old_connection_id}");
+                    error_log("  New connection: {$connection_id}");
+                    error_log("  Sending kick event to old connection...");
+                    
+                    // Notify old connection via WebSocket
+                    self::send_websocket_event('session_kicked', array(
+                        'message' => 'Bạn đã tham gia phòng này từ tab/thiết bị khác.',
+                        'new_connection_id' => $connection_id,
+                        'timestamp' => time() * 1000,
+                    ), $old_connection_id);
+                }
+            }
+        }
         
         // Generate JWT token for WebSocket authentication
         $jwt_token = '';
@@ -490,27 +516,8 @@ class Live_Quiz_REST_API {
             }
         }
         
-        // Save active session to user meta if user is logged in
-        $wp_user_id = get_current_user_id();
+        // Save active session to user meta (for session restore on other devices)
         if ($wp_user_id) {
-            // Check if user already has an active session from another device
-            $old_session = get_user_meta($wp_user_id, '_live_quiz_active_session', true);
-            if ($old_session && is_array($old_session)) {
-                $old_connection_id = isset($old_session['connectionId']) ? $old_session['connectionId'] : null;
-                
-                // If there's a different connection, emit event to kick it via WebSocket
-                if ($old_connection_id && $old_connection_id !== $connection_id) {
-                    // Notify old connection via WebSocket
-                    self::send_websocket_event('session_kicked', array(
-                        'message' => 'Bạn đã tham gia phòng này từ tab/thiết bị khác.',
-                        'new_connection_id' => $connection_id,
-                    ), $old_connection_id);
-                    
-                    error_log("[Live Quiz] User {$wp_user_id} joined from new device. Kicking old connection: {$old_connection_id}");
-                }
-            }
-            
-            // Save new session
             update_user_meta($wp_user_id, '_live_quiz_active_session', array(
                 'sessionId' => $session_id,
                 'userId' => $participant['user_id'],
@@ -520,6 +527,10 @@ class Live_Quiz_REST_API {
                 'connectionId' => $connection_id,
                 'timestamp' => time() * 1000, // milliseconds
             ));
+            
+            error_log("[Live Quiz] Saved active session to user meta for user {$wp_user_id}");
+            error_log("  Session ID: {$session_id}");
+            error_log("  Connection ID: {$connection_id}");
         }
         
         return rest_ensure_response($response);
@@ -1240,7 +1251,9 @@ class Live_Quiz_REST_API {
         }
         
         // Check if session still exists and is active
-        $session_id = isset($active_session['session_id']) ? $active_session['session_id'] : 0;
+        // Support both camelCase (new) and snake_case (old) for backward compatibility
+        $session_id = isset($active_session['sessionId']) ? $active_session['sessionId'] : 
+                     (isset($active_session['session_id']) ? $active_session['session_id'] : 0);
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         
         error_log("Session data: " . json_encode($session ? ['id' => $session_id, 'status' => $session['status']] : null));

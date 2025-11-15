@@ -18,7 +18,8 @@ DND Live Quiz cho phép giáo viên tạo và host các quiz tương tác realti
 - ✅ **AI Generator**: Tạo câu hỏi tự động bằng AI (OpenAI)
 - ✅ **Shortcodes**: Dễ dàng tích hợp vào bất kỳ trang nào
 - ✅ **User Authentication**: Yêu cầu đăng nhập, tự động lấy tên người dùng
-- ✅ **Single Session**: Chỉ cho phép 1 tab/thiết bị tham gia mỗi user
+- ✅ **Single Session**: Chỉ cho phép user tham gia 1 phòng tại 1 thời điểm
+- ✅ **Single Device**: Chỉ cho phép 1 thiết bị/tab tại 1 thời điểm cho mỗi user
 - ✅ **Cross-Device Support**: Session được lưu theo tài khoản, không phải browser
 
 ## 🚀 Cài đặt
