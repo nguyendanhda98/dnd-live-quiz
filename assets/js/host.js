@@ -48,10 +48,10 @@
             });
             
             // End Session button
-            $('#end-session-btn').on('click', function() {
-                if (confirm('Bạn có chắc chắn muốn kết thúc phiên?')) {
-                    self.endSession();
-                }
+            $('#end-session-btn').on('click', function(e) {
+                e.preventDefault(); // Prevent any default behavior
+                console.log('[HOST] End session button clicked');
+                self.endSession();
             });
         },
         
@@ -90,7 +90,8 @@
                     session_id: self.sessionId,
                     user_id: window.liveQuizHostData.hostUserId,
                     display_name: window.liveQuizHostData.hostName || 'Host',
-                    connection_id: null // Host doesn't need connection_id tracking
+                    connection_id: null, // Host doesn't need connection_id tracking
+                    is_host: true // Mark this connection as host
                 });
                 
                 // Load participants immediately
@@ -462,20 +463,47 @@
         endSession: function() {
             const self = this;
             
+            if (!confirm('Bạn có chắc chắn muốn kết thúc phòng này? Tất cả học viên sẽ bị đá ra.')) {
+                return;
+            }
+            
+            const endUrl = liveQuizPlayer.apiUrl + '/sessions/' + this.sessionId + '/end';
+            console.log('[HOST] Ending room and kicking all players...', {
+                sessionId: this.sessionId,
+                url: endUrl
+            });
+            
+            // Disable the button to prevent multiple clicks
+            $('#end-session-btn').prop('disabled', true).text('Đang kết thúc phòng...');
+            
             $.ajax({
-                url: liveQuizPlayer.apiUrl + '/sessions/' + this.sessionId + '/end',
+                url: endUrl,
                 method: 'POST',
                 headers: {
                     'X-WP-Nonce': liveQuizPlayer.nonce
                 },
+                timeout: 10000, // 10 second timeout
                 success: function(response) {
-                    console.log('Session ended');
-                    // Reload page to show setup form
-                    window.location.reload();
+                    console.log('[HOST] ✓ Room ended successfully');
+                    console.log('[HOST] ✓ All players have been kicked');
+                    console.log('[HOST] Response:', response);
+                    
+                    // Wait 1.5 seconds to ensure players receive kick event
+                    setTimeout(function() {
+                        console.log('[HOST] Redirecting to home...');
+                        // Redirect to host setup page
+                        window.location.href = '/host';
+                    }, 1500);
                 },
                 error: function(xhr, status, error) {
-                    console.error('Failed to end session:', error);
-                    alert('Không thể kết thúc phiên. Vui lòng thử lại.');
+                    console.error('[HOST] ✗ Failed to end room:', {
+                        status: xhr.status,
+                        statusText: xhr.statusText,
+                        response: xhr.responseText,
+                        error: error
+                    });
+                    $('#end-session-btn').prop('disabled', false).text('Kết thúc phiên');
+                    alert('Không thể kết thúc phòng. Vui lòng thử lại.');
                 }
             });
         },

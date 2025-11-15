@@ -288,20 +288,67 @@ class Live_Quiz_REST_API {
     }
     
     /**
-     * End session
+     * End session - Kick all players out of the room
      */
     public static function end_session($request) {
         $session_id = $request->get_param('id');
         
+        error_log("\n=== END ROOM REQUEST ===");
+        error_log("Session ID: {$session_id}");
+        error_log("Timestamp: " . date('Y-m-d H:i:s'));
+        
+        // Step 1: Update session status in database
         $result = Live_Quiz_Session_Manager::end_session($session_id);
         
         if (!$result) {
+            error_log("ERROR: Failed to update session status in database");
             return new WP_Error('cannot_end', __('Không thể kết thúc phiên', 'live-quiz'), array('status' => 400));
         }
         
+        error_log("✓ Session status updated to 'ended' in database");
+        
+        // Step 2: Call WebSocket server to kick all players
+        error_log("Calling WebSocket server to kick all players...");
+        $websocket_url = get_option('live_quiz_websocket_url', '');
+        
+        if (empty($websocket_url)) {
+            error_log("ERROR: WebSocket URL not configured!");
+            // Continue anyway, session is marked as ended in database
+        } else {
+            $endpoint = trailingslashit($websocket_url) . 'api/sessions/' . $session_id . '/end';
+            error_log("WebSocket endpoint: {$endpoint}");
+            
+            // Get WebSocket secret for authentication
+            $websocket_secret = get_option('live_quiz_websocket_secret', '');
+            error_log("Using WebSocket secret: " . (empty($websocket_secret) ? 'EMPTY' : 'SET'));
+            
+            $response = wp_remote_post($endpoint, array(
+                'timeout' => 10,
+                'headers' => array(
+                    'Content-Type' => 'application/json',
+                    'X-WordPress-Secret' => $websocket_secret,
+                ),
+                'body' => json_encode(array(
+                    'session_id' => $session_id
+                ))
+            ));
+            
+            if (is_wp_error($response)) {
+                error_log("ERROR: WebSocket request failed: " . $response->get_error_message());
+            } else {
+                $response_code = wp_remote_retrieve_response_code($response);
+                $response_body = wp_remote_retrieve_body($response);
+                error_log("✓ WebSocket server response code: {$response_code}");
+                error_log("✓ WebSocket server response: {$response_body}");
+            }
+        }
+        
+        error_log("=== END ROOM COMPLETED ===\n");
+        
         return rest_ensure_response(array(
             'success' => true,
-            'session' => Live_Quiz_Session_Manager::get_session($session_id),
+            'message' => 'Room ended and all players kicked',
+            'session_id' => $session_id
         ));
     }
     
@@ -1154,6 +1201,8 @@ class Live_Quiz_REST_API {
     public static function get_user_active_session($request) {
         $user_id = get_current_user_id();
         
+        error_log("=== GET USER ACTIVE SESSION for user_id: {$user_id} ===");
+        
         if (!$user_id) {
             return new WP_Error('not_logged_in', __('Bạn cần đăng nhập', 'live-quiz'), array('status' => 401));
         }
@@ -1161,7 +1210,10 @@ class Live_Quiz_REST_API {
         // Get active session from user meta
         $active_session = get_user_meta($user_id, '_live_quiz_active_session', true);
         
+        error_log("Active session from user meta: " . json_encode($active_session));
+        
         if (!$active_session || !is_array($active_session)) {
+            error_log("No active session found");
             return rest_ensure_response(array(
                 'success' => true,
                 'has_session' => false,
@@ -1172,8 +1224,11 @@ class Live_Quiz_REST_API {
         $session_id = isset($active_session['session_id']) ? $active_session['session_id'] : 0;
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         
+        error_log("Session data: " . json_encode($session ? ['id' => $session_id, 'status' => $session['status']] : null));
+        
         if (!$session || $session['status'] === 'ended') {
             // Clean up invalid session
+            error_log("Session is ended or not found, cleaning up user meta");
             delete_user_meta($user_id, '_live_quiz_active_session');
             return rest_ensure_response(array(
                 'success' => true,

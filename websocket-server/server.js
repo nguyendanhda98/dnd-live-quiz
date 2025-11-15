@@ -316,13 +316,14 @@ io.on('connection', async (socket) => {
 
     // Handle join_session event from client
     socket.on('join_session', async (data) => {
-        const { session_id, user_id, display_name, connection_id } = data;
+        const { session_id, user_id, display_name, connection_id, is_host } = data;
         
         logger.info('User joining session', {
             session_id,
             user_id,
             display_name,
-            connection_id
+            connection_id,
+            is_host
         });
         
         // Store connection ID mapping for single-session enforcement
@@ -335,6 +336,7 @@ io.on('connection', async (socket) => {
         socket.sessionId = session_id;
         socket.userId = user_id;
         socket.displayName = display_name;
+        socket.isHost = is_host || false; // Mark if this is a host connection
         
         // Join the session room
         socket.join(`session:${session_id}`);
@@ -665,27 +667,89 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
     }
 });
 
-// End session
+// End session - Kick all players out of room
 app.post('/api/sessions/:id/end', async (req, res) => {
     try {
         const sessionId = req.params.id;
 
-        logger.info('Ending session', { sessionId });
+        logger.info('=== END ROOM REQUEST ===' , { sessionId, timestamp: new Date().toISOString() });
 
-        // Update session status
+        // Update session status in Redis
         await redisClient.hSet(`session:${sessionId}`, 'status', 'ended');
+        logger.info('✓ Session status updated to ended in Redis');
 
-        // Get final leaderboard
-        const leaderboard = await RedisHelper.getLeaderboard(sessionId, 0); // All participants
+        // Get all sockets in this session room
+        const room = io.sockets.adapter.rooms.get(`session:${sessionId}`);
+        const playerSockets = [];
+        
+        if (room) {
+            logger.info(`Found ${room.size} total connections in room`);
+            
+            room.forEach(socketId => {
+                const socket = io.sockets.sockets.get(socketId);
+                if (socket) {
+                    if (socket.isHost) {
+                        logger.info('Skipping host socket', { socketId, userId: socket.userId });
+                    } else {
+                        playerSockets.push(socket);
+                        logger.info('Found player to kick', { 
+                            socketId, 
+                            userId: socket.userId, 
+                            displayName: socket.displayName 
+                        });
+                    }
+                }
+            });
+        } else {
+            logger.warn('No room found for session', { sessionId });
+        }
 
-        // Broadcast session end
-        io.to(`session:${sessionId}`).emit('session_end', {
-            leaderboard,
+        logger.info(`Kicking ${playerSockets.length} player(s) from room`);
+
+        // Send kick event to each player
+        let kickedCount = 0;
+        playerSockets.forEach(socket => {
+            try {
+                socket.emit('session_ended_kicked', {
+                    message: 'Host đã kết thúc phòng. Bạn sẽ được chuyển về trang chủ.',
+                    reason: 'host_ended_room',
+                    session_id: sessionId
+                });
+                kickedCount++;
+                logger.info('✓ Sent kick event to player', {
+                    userId: socket.userId,
+                    displayName: socket.displayName,
+                    socketId: socket.id
+                });
+            } catch (err) {
+                logger.error('Failed to send kick event', { error: err, userId: socket.userId });
+            }
         });
 
-        res.json({ success: true, leaderboard });
+        logger.info(`✓ Kick events sent to ${kickedCount} player(s)`);
+
+        // Remove players from room after short delay
+        setTimeout(() => {
+            playerSockets.forEach(socket => {
+                try {
+                    socket.leave(`session:${sessionId}`);
+                } catch (err) {
+                    logger.error('Failed to remove socket from room', { error: err });
+                }
+            });
+            logger.info('✓ All players removed from room');
+        }, 1000);
+
+        logger.info('=== END ROOM COMPLETED ===');
+
+        res.json({ 
+            success: true, 
+            message: 'Room ended successfully',
+            players_kicked: kickedCount,
+            session_id: sessionId
+        });
     } catch (error) {
-        logger.error('Error ending session', { error, sessionId: req.params.id });
+        logger.error('Error ending session', { error: error.message, stack: error.stack, sessionId: req.params.id });
         res.status(500).json({ error: 'Failed to end session' });
     }
 });

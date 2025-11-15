@@ -307,12 +307,17 @@ class Live_Quiz_Session_Manager {
      * @return bool Success
      */
     public static function end_session($session_id) {
+        error_log("=== END SESSION CALLED for session_id: {$session_id} ===");
+        
         update_post_meta($session_id, '_session_status', self::STATE_ENDED);
         update_post_meta($session_id, '_session_ended_at', time());
+        
+        error_log("Updated session status to ENDED in database");
         
         // Update Redis if enabled
         if (self::is_redis_enabled()) {
             self::$redis->update_session_field($session_id, 'status', self::STATE_ENDED);
+            error_log("Updated session status in Redis");
             
             // Notify WebSocket server and save final results
             if (class_exists('Live_Quiz_WebSocket_Adapter')) {
@@ -323,6 +328,10 @@ class Live_Quiz_Session_Manager {
         
         self::clear_session_cache($session_id);
         
+        // Clear active session from all participants' user meta
+        error_log("Clearing all participants' active sessions...");
+        self::clear_all_participants_session($session_id);
+        
         // Get final leaderboard
         $leaderboard = Live_Quiz_Scoring::get_leaderboard($session_id, 0); // All players
         
@@ -330,6 +339,8 @@ class Live_Quiz_Session_Manager {
         self::broadcast_event($session_id, 'session_end', array(
             'leaderboard' => $leaderboard,
         ));
+        
+        error_log("=== END SESSION COMPLETED ===");
         
         return true;
     }
@@ -657,6 +668,52 @@ class Live_Quiz_Session_Manager {
         }
         
         return sanitize_text_field($ip);
+    }
+    
+    /**
+     * Clear active session from all participants when session ends
+     * 
+     * @param int $session_id Session ID
+     */
+    private static function clear_all_participants_session($session_id) {
+        global $wpdb;
+        
+        // Get all users who have this session as their active session
+        $meta_key = '_live_quiz_active_session';
+        
+        error_log("Querying users with active session meta...");
+        
+        // Query all user IDs with this meta key
+        $user_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = %s",
+            $meta_key
+        ));
+        
+        error_log("Found " . count($user_ids) . " users with active session meta");
+        
+        if (empty($user_ids)) {
+            error_log("No users found with active session meta");
+            return;
+        }
+        
+        $cleared_count = 0;
+        
+        // Check each user's active session and clear if it matches this session_id
+        foreach ($user_ids as $user_id) {
+            $active_session = get_user_meta($user_id, $meta_key, true);
+            
+            if (is_array($active_session) && isset($active_session['session_id'])) {
+                error_log("User {$user_id} has active session: " . $active_session['session_id']);
+                
+                if ((int)$active_session['session_id'] === (int)$session_id) {
+                    delete_user_meta($user_id, $meta_key);
+                    $cleared_count++;
+                    error_log("✓ Cleared active session for user {$user_id} (session {$session_id})");
+                }
+            }
+        }
+        
+        error_log("Total cleared: {$cleared_count} user(s)");
     }
     
     /**

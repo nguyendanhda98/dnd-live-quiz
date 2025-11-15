@@ -50,37 +50,49 @@
     document.addEventListener('DOMContentLoaded', init);
     
     async function init() {
+        console.log('=== [PLAYER] INIT STARTED ===');
+        console.log('[PLAYER] Current URL:', window.location.href);
+        console.log('[PLAYER] LocalStorage session:', localStorage.getItem('live_quiz_session'));
+        
         setupEventListeners();
         checkSocketIOLibrary();
         
         const urlRoomCode = extractRoomCodeFromUrl();
-        console.log('[Live Quiz] Init - URL room code:', urlRoomCode);
+        console.log('[PLAYER] URL room code:', urlRoomCode);
         
         // Try to restore session from server first (user meta)
+        console.log('[PLAYER] Fetching user active session from server...');
         const serverSession = await fetchUserActiveSession();
+        console.log('[PLAYER] Server session response:', serverSession);
         
         if (serverSession) {
-            console.log('[Live Quiz] Found server session, restoring...');
+            console.log('[PLAYER] Found server session, attempting to restore...');
             const restored = restoreSessionFromData(serverSession, urlRoomCode);
             if (restored) {
+                console.log('[PLAYER] Session restored from server successfully');
                 return;
             }
+            console.log('[PLAYER] Failed to restore from server session');
         }
         
         // Fallback to localStorage
-        console.log('[Live Quiz] No server session, checking localStorage...');
-        console.log('[Live Quiz] Init - Stored session:', localStorage.getItem('live_quiz_session'));
+        console.log('[PLAYER] No server session, checking localStorage...');
+        const stored = localStorage.getItem('live_quiz_session');
+        console.log('[PLAYER] Stored session:', stored);
         
         const restored = restoreSession(urlRoomCode);
-        console.log('[Live Quiz] Init - Session restored:', restored);
+        console.log('[PLAYER] Session restored from localStorage:', restored);
         
         // If session was not restored and we have URL room code, pre-fill it
         if (!restored && urlRoomCode) {
+            console.log('[PLAYER] Pre-filling room code in form');
             const roomCodeInput = document.getElementById('room-code');
             if (roomCodeInput) {
                 roomCodeInput.value = urlRoomCode;
             }
         }
+        
+        console.log('=== [PLAYER] INIT COMPLETED ===');
     }
     
     /**
@@ -530,6 +542,14 @@
             console.log('[Live Quiz] Session kicked - another device joined:', data);
             handleSessionKicked(data);
         });
+        
+        // Listen for session ended by host - kick all players
+        state.socket.on('session_ended_kicked', (data) => {
+            console.log('[PLAYER] ✗ KICKED OUT OF ROOM ✗');
+            console.log('[PLAYER] Reason:', data.message);
+            console.log('[PLAYER] Data:', data);
+            handleSessionEndedKicked(data);
+        });
     }
     
     function handleSessionState(data) {
@@ -748,6 +768,52 @@
         
         showScreen('quiz-final');
         displayFinalResults(data);
+    }
+    
+    /**
+     * Handle when host ends the room and kicks all players
+     */
+    function handleSessionEndedKicked(data) {
+        console.log('[PLAYER] === KICKED OUT BY HOST ===');
+        console.log('[PLAYER] Reason:', data.reason);
+        console.log('[PLAYER] Session before kick:', {
+            sessionId: state.sessionId,
+            userId: state.userId,
+            roomCode: state.roomCode
+        });
+        
+        // Disconnect socket immediately
+        if (state.socket) {
+            console.log('[PLAYER] Disconnecting socket...');
+            state.socket.disconnect();
+            state.socket = null;
+        }
+        
+        // Clear ALL session data
+        console.log('[PLAYER] Clearing localStorage...');
+        localStorage.removeItem('live_quiz_session');
+        sessionStorage.clear();
+        
+        // Reset state completely
+        state.sessionId = null;
+        state.userId = null;
+        state.displayName = null;
+        state.roomCode = null;
+        state.websocketToken = null;
+        state.isConnected = false;
+        state.currentQuestion = null;
+        
+        console.log('[PLAYER] All session data cleared');
+        console.log('[PLAYER] Redirecting to /play in 1 second...');
+        
+        // Show alert
+        alert(data.message || 'Host đã kết thúc phòng. Bạn sẽ được chuyển về trang chủ.');
+        
+        // Small delay then redirect
+        setTimeout(function() {
+            console.log('[PLAYER] Redirecting now...');
+            window.location.href = '/play';
+        }, 100);
     }
     
     function displayFinalResults(data) {

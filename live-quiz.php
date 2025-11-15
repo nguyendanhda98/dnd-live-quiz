@@ -3,7 +3,7 @@
  * Plugin Name: DND Live Quiz
  * Plugin URI: https://example.com/live-quiz
  * Description: Tổ chức phiên quiz thời gian thực với chấm điểm theo tốc độ trả lời, giống Kahoot/Quizizz.
- * Version: 2.0.5
+ * Version: 2.0.6
  * Author: DND English Group
  * Author URI: https://example.com
  * Text Domain: live-quiz
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('LIVE_QUIZ_VERSION', '2.1.0');
+define('LIVE_QUIZ_VERSION', '2.1.1');
 define('LIVE_QUIZ_PLUGIN_FILE', __FILE__);
 define('LIVE_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('LIVE_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
