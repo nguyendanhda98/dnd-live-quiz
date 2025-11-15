@@ -326,6 +326,45 @@ io.on('connection', async (socket) => {
             is_host
         });
         
+        // SINGLE TAB ENFORCEMENT: Kick out all other connections of this user
+        // Find and disconnect all existing connections for this user
+        const existingSockets = Array.from(io.sockets.sockets.values()).filter(s => 
+            s.userId === user_id && s.id !== socket.id
+        );
+        
+        if (existingSockets.length > 0) {
+            logger.info('Disconnecting existing connections for user', {
+                user_id,
+                count: existingSockets.length,
+                new_connection_id: connection_id
+            });
+            
+            // Force disconnect all old connections
+            existingSockets.forEach(oldSocket => {
+                logger.info('Forcing disconnect of old socket', {
+                    user_id,
+                    old_socket_id: oldSocket.id,
+                    old_connection_id: oldSocket.connectionId,
+                    new_connection_id: connection_id
+                });
+                
+                // Send force_disconnect event before disconnecting
+                oldSocket.emit('force_disconnect', {
+                    reason: 'new_connection',
+                    message: 'Bạn đã mở phiên mới từ tab/thiết bị khác',
+                    new_connection_id: connection_id
+                });
+                
+                // Disconnect the old socket
+                oldSocket.disconnect(true);
+                
+                // Remove from active connections
+                if (oldSocket.connectionId) {
+                    activeConnections.delete(oldSocket.connectionId);
+                }
+            });
+        }
+        
         // Store connection ID mapping for single-session enforcement
         if (connection_id) {
             activeConnections.set(connection_id, socket);

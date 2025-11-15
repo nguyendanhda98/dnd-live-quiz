@@ -550,6 +550,14 @@
             console.log('[PLAYER] Data:', data);
             handleSessionEndedKicked(data);
         });
+        
+        // Listen for force_disconnect (when user opens new tab/device)
+        state.socket.on('force_disconnect', (data) => {
+            console.log('[PLAYER] ✗ FORCE DISCONNECTED ✗');
+            console.log('[PLAYER] Reason:', data.reason);
+            console.log('[PLAYER] Message:', data.message);
+            handleForceDisconnect(data);
+        });
     }
     
     function handleSessionState(data) {
@@ -768,6 +776,49 @@
         
         showScreen('quiz-final');
         displayFinalResults(data);
+    }
+    
+    /**
+     * Handle when user opens new tab/device - force disconnect old tabs
+     */
+    function handleForceDisconnect(data) {
+        console.log('[PLAYER] === FORCE DISCONNECTED ===');
+        console.log('[PLAYER] Reason:', data.reason);
+        console.log('[PLAYER] Message:', data.message);
+        console.log('[PLAYER] Session before disconnect:', {
+            sessionId: state.sessionId,
+            userId: state.userId,
+            roomCode: state.roomCode,
+            connectionId: state.connectionId
+        });
+        
+        // Disconnect socket immediately
+        if (state.socket) {
+            console.log('[PLAYER] Disconnecting socket...');
+            state.socket.disconnect();
+            state.socket = null;
+        }
+        
+        // Clear ALL session data
+        console.log('[PLAYER] Clearing localStorage...');
+        localStorage.removeItem('live_quiz_session');
+        sessionStorage.clear();
+        
+        // Reset state completely
+        state.sessionId = null;
+        state.userId = null;
+        state.displayName = null;
+        state.roomCode = null;
+        state.websocketToken = null;
+        state.isConnected = false;
+        state.currentQuestion = null;
+        state.connectionId = null;
+        
+        console.log('[PLAYER] All session data cleared');
+        console.log('[PLAYER] Redirecting to home page...');
+        
+        // Redirect to home page immediately without alert
+        window.location.href = config.homeUrl || '/';
     }
     
     /**
