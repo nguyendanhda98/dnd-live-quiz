@@ -85,7 +85,14 @@
                 console.log('Host WebSocket connected');
                 self.showConnectionStatus('Đã kết nối', true);
                 
-                // No need to emit host:join, server automatically handles it
+                // Host must also join the session room to receive participant_joined events
+                self.socket.emit('join_session', {
+                    session_id: self.sessionId,
+                    user_id: window.liveQuizHostData.hostUserId,
+                    display_name: window.liveQuizHostData.hostName || 'Host',
+                    connection_id: null // Host doesn't need connection_id tracking
+                });
+                
                 // Load participants immediately
                 self.fetchPlayers();
             });
@@ -170,12 +177,19 @@
             console.log('Player joined:', data);
             // Support both player_id and user_id
             const playerId = data.player_id || data.user_id;
-            if (playerId) {
+            const hostId = window.liveQuizHostData.hostUserId;
+            
+            console.log('Comparing playerId:', playerId, 'with hostId:', hostId, 'types:', typeof playerId, typeof hostId);
+            
+            // Don't add host to players list (convert to string for comparison)
+            if (playerId && String(playerId) !== String(hostId)) {
                 this.players[playerId] = data;
                 // Also store the ID in the data object for consistency
                 this.players[playerId].player_id = playerId;
                 this.players[playerId].user_id = playerId;
                 this.updatePlayersList(Object.values(this.players));
+            } else if (String(playerId) === String(hostId)) {
+                console.log('Ignoring host join event for hostId:', hostId);
             } else {
                 console.error('Player joined event missing player_id/user_id:', data);
             }
@@ -200,7 +214,7 @@
             if (hostId) {
                 players = players.filter(function(player) {
                     const playerId = player.user_id || player.player_id;
-                    return playerId != hostId;
+                    return String(playerId) !== String(hostId);
                 });
             }
             

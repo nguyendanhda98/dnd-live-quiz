@@ -1,0 +1,802 @@
+/**
+ * DND Live Quiz - WebSocket Server
+ * 
+ * Node.js WebSocket server with Socket.io for real-time quiz functionality
+ * Supports 2000+ concurrent users with Redis backend
+ * 
+ * @version 2.0.0
+ */
+
+// Load .env file automatically
+require('dotenv').config();
+
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const Redis = require('redis');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const winston = require('winston');
+
+// Configuration from environment variables
+const config = {
+    port: process.env.PORT || 3033,
+    redis: {
+        host: process.env.REDIS_HOST || 'redis',
+        port: parseInt(process.env.REDIS_PORT) || 6379,
+        password: process.env.REDIS_PASSWORD || '',
+        database: parseInt(process.env.REDIS_DATABASE) || 0,
+    },
+    wordpress: {
+        url: process.env.WORDPRESS_URL || 'http://wordpress',
+        secret: process.env.WORDPRESS_SECRET || 'change-this-secret',
+    },
+    jwt: {
+        secret: process.env.JWT_SECRET || 'change-this-jwt-secret',
+        expiresIn: '24h',
+    },
+    cors: {
+        origin: process.env.CORS_ORIGIN || '*',
+        credentials: true,
+    },
+    rateLimit: {
+        windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 60000, // 1 minute
+        max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+    },
+    logLevel: process.env.LOG_LEVEL || 'info',
+};
+
+// Logger setup
+const logger = winston.createLogger({
+    level: config.logLevel,
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+    ),
+    transports: [
+        new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+        new winston.transports.File({ filename: 'logs/combined.log' }),
+        new winston.transports.Console({
+            format: winston.format.combine(
+                winston.format.colorize(),
+                winston.format.simple()
+            )
+        })
+    ]
+});
+
+// Express app setup
+const app = express();
+const server = http.createServer(app);
+
+// Security middleware
+app.use(helmet());
+app.use(cors(config.cors));
+app.use(express.json());
+
+// Rate limiting
+const limiter = rateLimit({
+    windowMs: config.rateLimit.windowMs,
+    max: config.rateLimit.max,
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use('/api/', limiter);
+
+// Redis clients
+let redisClient;
+let redisPub;
+let redisSub;
+
+// Initialize Redis connections
+async function initRedis() {
+    try {
+        // Main Redis client
+        redisClient = Redis.createClient({
+            socket: {
+                host: config.redis.host,
+                port: config.redis.port,
+            },
+            password: config.redis.password || undefined,
+            database: config.redis.database,
+        });
+
+        // Pub/Sub clients (separate connections required)
+        redisPub = redisClient.duplicate();
+        redisSub = redisClient.duplicate();
+
+        await redisClient.connect();
+        await redisPub.connect();
+        await redisSub.connect();
+
+        logger.info('Redis connected successfully', {
+            host: config.redis.host,
+            port: config.redis.port,
+            database: config.redis.database,
+        });
+
+        // Redis error handlers
+        redisClient.on('error', (err) => logger.error('Redis Client Error', err));
+        redisPub.on('error', (err) => logger.error('Redis Pub Error', err));
+        redisSub.on('error', (err) => logger.error('Redis Sub Error', err));
+
+    } catch (error) {
+        logger.error('Failed to connect to Redis', error);
+        process.exit(1);
+    }
+}
+
+// Socket.io setup
+const io = new Server(server, {
+    cors: config.cors,
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000,
+});
+
+// Statistics
+const stats = {
+    connections: 0,
+    totalConnections: 0,
+    messagesReceived: 0,
+    messagesSent: 0,
+    errors: 0,
+    startTime: Date.now(),
+};
+
+// Store active connections: { connectionId: socket }
+const activeConnections = new Map();
+
+// JWT Authentication middleware for Socket.io
+io.use(async (socket, next) => {
+    try {
+        const token = socket.handshake.auth.token;
+        
+        if (!token) {
+            logger.warn('Connection attempt without token', {
+                socketId: socket.id,
+                address: socket.handshake.address,
+            });
+            return next(new Error('Authentication token required'));
+        }
+
+        // Verify JWT token
+        const decoded = jwt.verify(token, config.jwt.secret);
+        
+        // Attach user data to socket
+        socket.userId = decoded.user_id;
+        socket.sessionId = decoded.session_id;
+        socket.displayName = decoded.display_name;
+
+        logger.debug('User authenticated', {
+            userId: socket.userId,
+            sessionId: socket.sessionId,
+            displayName: socket.displayName,
+        });
+
+        next();
+    } catch (error) {
+        logger.error('Authentication failed', {
+            error: error.message,
+            socketId: socket.id,
+        });
+        next(new Error('Invalid authentication token'));
+    }
+});
+
+// Redis Helper Functions
+const RedisHelper = {
+    // Get session data
+    async getSession(sessionId) {
+        try {
+            const data = await redisClient.hGetAll(`session:${sessionId}`);
+            if (Object.keys(data).length === 0) return null;
+            
+            // Parse JSON fields
+            if (data.questions) data.questions = JSON.parse(data.questions);
+            if (data.current_question_index) data.current_question_index = parseInt(data.current_question_index);
+            
+            return data;
+        } catch (error) {
+            logger.error('Error getting session', { sessionId, error });
+            return null;
+        }
+    },
+
+    // Set session data
+    async setSession(sessionId, data) {
+        try {
+            const flatData = { ...data };
+            if (flatData.questions) flatData.questions = JSON.stringify(flatData.questions);
+            
+            await redisClient.hSet(`session:${sessionId}`, flatData);
+            await redisClient.expire(`session:${sessionId}`, 7200); // 2 hours
+            return true;
+        } catch (error) {
+            logger.error('Error setting session', { sessionId, error });
+            return false;
+        }
+    },
+
+    // Add participant to session
+    async addParticipant(sessionId, userId, displayName) {
+        try {
+            const key = `session:${sessionId}:participants`;
+            await redisClient.hSet(key, userId, JSON.stringify({
+                user_id: userId,
+                display_name: displayName,
+                joined_at: Date.now(),
+            }));
+            await redisClient.expire(key, 7200);
+            return true;
+        } catch (error) {
+            logger.error('Error adding participant', { sessionId, userId, error });
+            return false;
+        }
+    },
+
+    // Get leaderboard (Redis Sorted Set - O(log N))
+    async getLeaderboard(sessionId, limit = 100) {
+        try {
+            const key = `session:${sessionId}:leaderboard`;
+            const results = await redisClient.zRevRangeWithScores(key, 0, limit - 1);
+            
+            const leaderboard = [];
+            for (let i = 0; i < results.length; i++) {
+                const item = results[i];
+                const participantData = await redisClient.hGet(
+                    `session:${sessionId}:participants`,
+                    item.value
+                );
+                
+                let displayName = item.value;
+                if (participantData) {
+                    const parsed = JSON.parse(participantData);
+                    displayName = parsed.display_name;
+                }
+                
+                leaderboard.push({
+                    user_id: item.value,
+                    display_name: displayName,
+                    total_score: Math.round(item.score),
+                    rank: i + 1,
+                });
+            }
+            
+            return leaderboard;
+        } catch (error) {
+            logger.error('Error getting leaderboard', { sessionId, error });
+            return [];
+        }
+    },
+
+    // Update score (Redis Sorted Set - O(log N))
+    async updateScore(sessionId, userId, scoreToAdd) {
+        try {
+            const key = `session:${sessionId}:leaderboard`;
+            await redisClient.zIncrBy(key, scoreToAdd, userId);
+            await redisClient.expire(key, 7200);
+            return true;
+        } catch (error) {
+            logger.error('Error updating score', { sessionId, userId, error });
+            return false;
+        }
+    },
+
+    // Save answer
+    async saveAnswer(sessionId, userId, questionIndex, answerData) {
+        try {
+            const key = `session:${sessionId}:answers:q${questionIndex}`;
+            await redisClient.hSet(key, userId, JSON.stringify(answerData));
+            await redisClient.expire(key, 7200);
+            return true;
+        } catch (error) {
+            logger.error('Error saving answer', { sessionId, userId, questionIndex, error });
+            return false;
+        }
+    },
+};
+
+// Socket.io connection handler
+io.on('connection', async (socket) => {
+    stats.connections++;
+    stats.totalConnections++;
+
+    logger.info('Client connected', {
+        socketId: socket.id,
+        userId: socket.userId,
+        sessionId: socket.sessionId,
+        displayName: socket.displayName,
+        totalConnections: stats.connections,
+    });
+
+    // Handle join_session event from client
+    socket.on('join_session', async (data) => {
+        const { session_id, user_id, display_name, connection_id } = data;
+        
+        logger.info('User joining session', {
+            session_id,
+            user_id,
+            display_name,
+            connection_id
+        });
+        
+        // Store connection ID mapping for single-session enforcement
+        if (connection_id) {
+            activeConnections.set(connection_id, socket);
+            socket.connectionId = connection_id;
+        }
+        
+        // Store session info on socket
+        socket.sessionId = session_id;
+        socket.userId = user_id;
+        socket.displayName = display_name;
+        
+        // Join the session room
+        socket.join(`session:${session_id}`);
+        
+        // Add participant to Redis
+        await RedisHelper.addParticipant(session_id, user_id, display_name);
+        
+        // Notify ALL participants in room (including this user)
+        io.to(`session:${session_id}`).emit('participant_joined', {
+            user_id,
+            display_name,
+            session_id,
+            total_participants: io.sockets.adapter.rooms.get(`session:${session_id}`)?.size || 0
+        });
+        
+        logger.info('User joined session successfully', {
+            session_id,
+            user_id,
+            room_size: io.sockets.adapter.rooms.get(`session:${session_id}`)?.size || 0
+        });
+    });
+    
+    // Handle leave_session event
+    socket.on('leave_session', () => {
+        if (socket.sessionId) {
+            logger.info('User leaving session', {
+                session_id: socket.sessionId,
+                user_id: socket.userId
+            });
+            
+            // Leave the room
+            socket.leave(`session:${socket.sessionId}`);
+            
+            // Notify other participants
+            socket.to(`session:${socket.sessionId}`).emit('participant_left', {
+                user_id: socket.userId,
+                display_name: socket.displayName
+            });
+        }
+        
+        // Remove from active connections
+        if (socket.connectionId) {
+            activeConnections.delete(socket.connectionId);
+        }
+    });
+
+    // Handle ping (heartbeat)
+    socket.on('ping', () => {
+        socket.emit('pong', { timestamp: Date.now() });
+    });
+
+    // Handle answer submission
+    socket.on('submit_answer', async (data) => {
+        try {
+            stats.messagesReceived++;
+
+            const { question_index, choice_id, client_time } = data;
+            const answer_time = Date.now();
+
+            logger.debug('Answer submitted', {
+                userId: socket.userId,
+                sessionId: socket.sessionId,
+                questionIndex: question_index,
+                choiceId: choice_id,
+            });
+
+            // Get session data
+            const session = await RedisHelper.getSession(socket.sessionId);
+            if (!session || session.status !== 'question') {
+                socket.emit('error', { message: 'Not accepting answers at this time' });
+                return;
+            }
+
+            const currentQuestion = session.current_question_index;
+            if (currentQuestion !== question_index) {
+                socket.emit('error', { message: 'Invalid question index' });
+                return;
+            }
+
+            // Get question data
+            const questions = JSON.parse(session.questions || '[]');
+            const question = questions[question_index];
+            
+            if (!question) {
+                socket.emit('error', { message: 'Question not found' });
+                return;
+            }
+
+            // Calculate time taken (server-side)
+            const questionStartTime = parseFloat(session.question_start_time || 0);
+            const timeTaken = (answer_time - questionStartTime) / 1000; // Convert to seconds
+
+            // Validate timing
+            if (timeTaken < 0.1) {
+                socket.emit('error', { message: 'Answer too fast' });
+                return;
+            }
+
+            if (timeTaken > (parseFloat(question.time_limit) + 2)) {
+                socket.emit('error', { message: 'Answer too late' });
+                return;
+            }
+
+            // Check if correct
+            const choices = question.choices || [];
+            const selectedChoice = choices[choice_id];
+            const isCorrect = selectedChoice && selectedChoice.is_correct === true;
+
+            // Calculate score
+            let score = 0;
+            if (isCorrect) {
+                const basePoints = parseFloat(question.base_points) || 1000;
+                const timeLimit = parseFloat(question.time_limit) || 20;
+                const alpha = parseFloat(session.alpha) || 0.3;
+                const timeRemain = Math.max(0, timeLimit - timeTaken);
+                const ratio = timeRemain / timeLimit;
+                score = Math.round(basePoints * (alpha + (1 - alpha) * ratio));
+            }
+
+            // Save answer to Redis
+            const answerData = {
+                question_index,
+                choice_id,
+                is_correct: isCorrect,
+                time_taken: timeTaken,
+                score,
+                timestamp: answer_time,
+            };
+
+            await RedisHelper.saveAnswer(socket.sessionId, socket.userId, question_index, answerData);
+
+            // Update leaderboard score
+            if (score > 0) {
+                await RedisHelper.updateScore(socket.sessionId, socket.userId, score);
+            }
+
+            // Send response to user
+            socket.emit('answer_received', {
+                success: true,
+                is_correct: isCorrect,
+                score,
+                time_taken: timeTaken,
+            });
+
+            stats.messagesSent++;
+
+            logger.info('Answer processed', {
+                userId: socket.userId,
+                questionIndex: question_index,
+                isCorrect,
+                score,
+                timeTaken: timeTaken.toFixed(2),
+            });
+
+        } catch (error) {
+            stats.errors++;
+            logger.error('Error processing answer', {
+                error: error.message,
+                stack: error.stack,
+                userId: socket.userId,
+            });
+            socket.emit('error', { message: 'Failed to process answer' });
+        }
+    });
+
+    // Handle get leaderboard request
+    socket.on('get_leaderboard', async (data) => {
+        try {
+            const limit = data?.limit || 100;
+            const leaderboard = await RedisHelper.getLeaderboard(socket.sessionId, limit);
+            
+            socket.emit('leaderboard_update', { leaderboard });
+            stats.messagesSent++;
+        } catch (error) {
+            logger.error('Error getting leaderboard', { error, sessionId: socket.sessionId });
+            socket.emit('error', { message: 'Failed to get leaderboard' });
+        }
+    });
+
+    // Handle disconnect
+    socket.on('disconnect', (reason) => {
+        stats.connections--;
+
+        logger.info('Client disconnected', {
+            socketId: socket.id,
+            userId: socket.userId,
+            sessionId: socket.sessionId,
+            reason,
+            totalConnections: stats.connections,
+        });
+
+        // Notify room
+        if (socket.sessionId) {
+            io.to(`session:${socket.sessionId}`).emit('participant_left', {
+                user_id: socket.userId,
+                display_name: socket.displayName,
+                total_participants: stats.connections,
+            });
+        }
+        
+        // Remove from active connections
+        if (socket.connectionId) {
+            activeConnections.delete(socket.connectionId);
+        }
+    });
+
+    // Handle errors
+    socket.on('error', (error) => {
+        stats.errors++;
+        logger.error('Socket error', {
+            error: error.message,
+            socketId: socket.id,
+            userId: socket.userId,
+        });
+    });
+});
+
+// HTTP API for WordPress backend to trigger events (for single-session enforcement)
+app.post('/api/emit', (req, res) => {
+    const { event, data, connectionId } = req.body;
+    
+    if (!event || !data) {
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Missing event or data' 
+        });
+    }
+    
+    logger.info('Emit event request', { event, connectionId });
+    
+    try {
+        if (connectionId) {
+            // Emit to specific connection
+            const targetSocket = activeConnections.get(connectionId);
+            
+            if (targetSocket) {
+                targetSocket.emit(event, data);
+                logger.info(`Event '${event}' sent to connection ${connectionId}`);
+                return res.json({ 
+                    success: true, 
+                    message: 'Event sent to specific connection' 
+                });
+            } else {
+                logger.warn(`Connection ${connectionId} not found`);
+                return res.json({ 
+                    success: false, 
+                    error: 'Connection not found' 
+                });
+            }
+        } else {
+            // Broadcast to all clients
+            io.emit(event, data);
+            logger.info(`Event '${event}' broadcasted to all clients`);
+            return res.json({ 
+                success: true, 
+                message: 'Event broadcasted' 
+            });
+        }
+    } catch (error) {
+        logger.error('Error emitting event', { error: error.message });
+        return res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
+// Admin API endpoints (protected by WordPress secret)
+app.use('/api', (req, res, next) => {
+    const secret = req.headers['x-wordpress-secret'];
+    if (secret !== config.wordpress.secret) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+});
+
+// Start question
+app.post('/api/sessions/:id/start-question', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+        const { question_index, question_data, start_time } = req.body;
+
+        logger.info('Starting question', { sessionId, questionIndex: question_index });
+
+        // Update session in Redis
+        await redisClient.hSet(`session:${sessionId}`, {
+            current_question_index: question_index,
+            question_start_time: start_time,
+            status: 'question',
+        });
+
+        // Broadcast to all participants in session
+        io.to(`session:${sessionId}`).emit('question_start', {
+            question_index,
+            question: question_data,
+            start_time,
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        logger.error('Error starting question', { error, sessionId: req.params.id });
+        res.status(500).json({ error: 'Failed to start question' });
+    }
+});
+
+// End question
+app.post('/api/sessions/:id/end-question', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+
+        logger.info('Ending question', { sessionId });
+
+        // Update session status
+        await redisClient.hSet(`session:${sessionId}`, 'status', 'results');
+
+        // Get leaderboard
+        const leaderboard = await RedisHelper.getLeaderboard(sessionId, 10);
+
+        // Broadcast results
+        io.to(`session:${sessionId}`).emit('question_end', {
+            leaderboard,
+        });
+
+        res.json({ success: true, leaderboard });
+    } catch (error) {
+        logger.error('Error ending question', { error, sessionId: req.params.id });
+        res.status(500).json({ error: 'Failed to end question' });
+    }
+});
+
+// End session
+app.post('/api/sessions/:id/end', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+
+        logger.info('Ending session', { sessionId });
+
+        // Update session status
+        await redisClient.hSet(`session:${sessionId}`, 'status', 'ended');
+
+        // Get final leaderboard
+        const leaderboard = await RedisHelper.getLeaderboard(sessionId, 0); // All participants
+
+        // Broadcast session end
+        io.to(`session:${sessionId}`).emit('session_end', {
+            leaderboard,
+        });
+
+        res.json({ success: true, leaderboard });
+    } catch (error) {
+        logger.error('Error ending session', { error, sessionId: req.params.id });
+        res.status(500).json({ error: 'Failed to end session' });
+    }
+});
+
+// Health check endpoint
+app.get('/health', async (req, res) => {
+    try {
+        // Check Redis connection
+        await redisClient.ping();
+        
+        res.json({
+            status: 'ok',
+            uptime: Math.floor((Date.now() - stats.startTime) / 1000),
+            connections: stats.connections,
+            redis: 'connected',
+            memory: process.memoryUsage(),
+        });
+    } catch (error) {
+        res.status(503).json({
+            status: 'error',
+            redis: 'disconnected',
+            error: error.message,
+        });
+    }
+});
+
+// Metrics endpoint
+app.get('/metrics', (req, res) => {
+    res.json({
+        connections: stats.connections,
+        total_connections: stats.totalConnections,
+        messages_received: stats.messagesReceived,
+        messages_sent: stats.messagesSent,
+        errors: stats.errors,
+        uptime: Math.floor((Date.now() - stats.startTime) / 1000),
+        memory: process.memoryUsage(),
+    });
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+    logger.error('Express error', { error: err.message, stack: err.stack });
+    res.status(500).json({ error: 'Internal server error' });
+});
+
+// Graceful shutdown
+async function shutdown(signal) {
+    logger.info(`${signal} received, shutting down gracefully...`);
+    
+    // Close Socket.io connections
+    io.close(() => {
+        logger.info('Socket.io connections closed');
+    });
+
+    // Close Redis connections
+    try {
+        await redisClient.quit();
+        await redisPub.quit();
+        await redisSub.quit();
+        logger.info('Redis connections closed');
+    } catch (error) {
+        logger.error('Error closing Redis', error);
+    }
+
+    // Close HTTP server
+    server.close(() => {
+        logger.info('HTTP server closed');
+        process.exit(0);
+    });
+
+    // Force close after 10 seconds
+    setTimeout(() => {
+        logger.error('Forcing shutdown after timeout');
+        process.exit(1);
+    }, 10000);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Start server
+async function start() {
+    try {
+        // Initialize Redis
+        await initRedis();
+
+        // Create logs directory
+        const fs = require('fs');
+        if (!fs.existsSync('logs')) {
+            fs.mkdirSync('logs');
+        }
+
+        // Start HTTP server
+        server.listen(config.port, '0.0.0.0', () => {
+            logger.info('WebSocket server started', {
+                port: config.port,
+                nodeVersion: process.version,
+                environment: process.env.NODE_ENV || 'development',
+            });
+        });
+
+    } catch (error) {
+        logger.error('Failed to start server', error);
+        process.exit(1);
+    }
+}
+
+// Start the server
+start();

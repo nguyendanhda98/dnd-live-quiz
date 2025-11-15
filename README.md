@@ -17,6 +17,9 @@ DND Live Quiz cho phép giáo viên tạo và host các quiz tương tác realti
 - ✅ **WebSocket**: Hỗ trợ WebSocket cho >2000 người chơi đồng thời
 - ✅ **AI Generator**: Tạo câu hỏi tự động bằng AI (OpenAI)
 - ✅ **Shortcodes**: Dễ dàng tích hợp vào bất kỳ trang nào
+- ✅ **User Authentication**: Yêu cầu đăng nhập, tự động lấy tên người dùng
+- ✅ **Single Session**: Chỉ cho phép 1 tab/thiết bị tham gia mỗi user
+- ✅ **Cross-Device Support**: Session được lưu theo tài khoản, không phải browser
 
 ## 🚀 Cài đặt
 
@@ -147,6 +150,9 @@ dnd-live-quiz/
 
 - [SHORTCODES.md](SHORTCODES.md) - Chi tiết về shortcodes
 - [MIGRATION_ROUTES.md](MIGRATION_ROUTES.md) - Migration guide từ routes cũ
+- [WEBSOCKET_SERVER_SETUP.md](WEBSOCKET_SERVER_SETUP.md) - Hướng dẫn setup WebSocket server
+- [SINGLE_SESSION_FEATURE.md](SINGLE_SESSION_FEATURE.md) - Tính năng single-session enforcement
+- [TESTING_SINGLE_SESSION.md](TESTING_SINGLE_SESSION.md) - Test cases cho single-session
 
 ## 🐛 Debug
 
@@ -159,6 +165,15 @@ define('WP_DEBUG_LOG', true);
 Logs được lưu trong `/wp-content/debug.log`
 
 ## 📝 Changelog
+
+### Version 2.2.0
+- ✅ User authentication requirement for players
+- ✅ Auto-populate username from WordPress account
+- ✅ Server-side session storage (user_meta)
+- ✅ Single-session enforcement (only one active tab per user)
+- ✅ Cross-device session restoration
+- ✅ WebSocket server with session_kicked event
+- ✅ Duplicate name handling with @username suffix
 
 ### Version 2.1.0
 - ✅ Chuyển từ Gutenberg blocks sang shortcodes

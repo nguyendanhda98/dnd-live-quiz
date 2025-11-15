@@ -2,8 +2,8 @@
 /**
  * Plugin Name: DND Live Quiz
  * Plugin URI: https://example.com/live-quiz
- * Description: Tổ chức phiên quiz thời gian thực với chấm điểm theo tốc độ trả lời, giống Kahoot/Quizizz. Phase 2: WebSocket + Redis cho 2000+ người chơi
- * Version: 2.0.4
+ * Description: Tổ chức phiên quiz thời gian thực với chấm điểm theo tốc độ trả lời, giống Kahoot/Quizizz.
+ * Version: 2.0.5
  * Author: DND English Group
  * Author URI: https://example.com
  * Text Domain: live-quiz
@@ -187,6 +187,11 @@ final class Live_Quiz {
      * Player shortcode
      */
     public function shortcode_player($atts) {
+        // Check if user is logged in
+        if (!is_user_logged_in()) {
+            return '<div class="live-quiz-login-required"><p>' . __('Bạn cần đăng nhập để tham gia quiz.', 'live-quiz') . ' <a href="' . wp_login_url(get_permalink()) . '">' . __('Đăng nhập ngay', 'live-quiz') . '</a></p></div>';
+        }
+        
         $atts = shortcode_atts(array(
             'title' => __('Tham gia Live Quiz', 'live-quiz'),
             'show_title' => 'yes',

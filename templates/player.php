@@ -24,20 +24,22 @@ $show_title = get_query_var('show_title', 'yes');
         <!-- Lobby Screen -->
         <div id="quiz-lobby" class="quiz-screen active">
             <div class="quiz-card">
-                <h2><?php _e('Nhập thông tin', 'live-quiz'); ?></h2>
+                <h2><?php _e('Tham gia phòng', 'live-quiz'); ?></h2>
+                
+                <?php 
+                $current_user = wp_get_current_user();
+                $display_name = $current_user->display_name;
+                ?>
+                
+                <div class="user-welcome">
+                    <p class="welcome-text">
+                        <?php printf(__('Xin chào, <strong>%s</strong>!', 'live-quiz'), esc_html($display_name)); ?>
+                    </p>
+                </div>
             
             <form id="join-form" class="quiz-form">
-                <div class="form-group">
-                    <label for="display-name"><?php _e('Tên hiển thị', 'live-quiz'); ?></label>
-                    <input 
-                        type="text" 
-                        id="display-name" 
-                        name="display_name"
-                        placeholder="<?php esc_attr_e('Nhập tên của bạn...', 'live-quiz'); ?>"
-                        required
-                        maxlength="50"
-                        autocomplete="off">
-                </div>
+                <!-- Hidden input for display name -->
+                <input type="hidden" id="display-name" name="display_name" value="<?php echo esc_attr($display_name); ?>">
                 
                 <div class="form-group">
                     <label for="room-code"><?php _e('PIN Code', 'live-quiz'); ?></label>
@@ -51,7 +53,8 @@ $show_title = get_query_var('show_title', 'yes');
                         maxlength="6"
                         pattern="[0-9]{6}"
                         inputmode="numeric"
-                        autocomplete="off">
+                        autocomplete="off"
+                        autofocus>
                 </div>
                 
                 <button type="submit" class="btn btn-primary btn-large">

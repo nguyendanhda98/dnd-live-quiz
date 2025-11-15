@@ -170,13 +170,15 @@ if ($has_session) {
     <script>
         // Generate JWT token for host
         <?php
-        $host_user_id = 'host_' . get_current_user_id() . '_' . time();
+        $current_user = wp_get_current_user();
+        $host_user_id = get_current_user_id(); // Use actual user ID for filtering
+        $host_display_name = 'Host - ' . $current_user->display_name;
         $host_token = '';
         if (class_exists('Live_Quiz_JWT_Helper')) {
             $host_token = Live_Quiz_JWT_Helper::generate_token(
                 $host_user_id,
                 $session_id,
-                'Host - ' . wp_get_current_user()->display_name
+                $host_display_name
             );
         }
         ?>
@@ -189,7 +191,8 @@ if ($has_session) {
             totalQuestions: <?php echo json_encode($total_questions); ?>,
             session: <?php echo json_encode($session); ?>,
             hostToken: <?php echo json_encode($host_token); ?>,
-            hostUserId: <?php echo json_encode($host_user_id); ?>
+            hostUserId: <?php echo json_encode($host_user_id); ?>,
+            hostName: <?php echo json_encode($host_display_name); ?>
         };
     </script>
     

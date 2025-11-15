@@ -20,6 +20,7 @@
         currentQuestion: null,
         questionStartTime: null,
         timerInterval: null,
+        connectionId: null, // Unique ID for this tab/device
         
         // WebSocket connection
         socket: null,
@@ -28,19 +29,46 @@
         isConnected: false,
     };
     
+    /**
+     * Generate unique connection ID for this tab/device
+     */
+    function generateConnectionId() {
+        return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    }
+    
+    /**
+     * Generate unique connection ID for this tab/device
+     */
+    function generateConnectionId() {
+        return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    }
+    
     // Config from WordPress
     const config = window.liveQuizConfig || {};
     
     // Initialize
     document.addEventListener('DOMContentLoaded', init);
     
-    function init() {
+    async function init() {
         setupEventListeners();
         checkSocketIOLibrary();
         
-        // Try to restore session first
         const urlRoomCode = extractRoomCodeFromUrl();
         console.log('[Live Quiz] Init - URL room code:', urlRoomCode);
+        
+        // Try to restore session from server first (user meta)
+        const serverSession = await fetchUserActiveSession();
+        
+        if (serverSession) {
+            console.log('[Live Quiz] Found server session, restoring...');
+            const restored = restoreSessionFromData(serverSession, urlRoomCode);
+            if (restored) {
+                return;
+            }
+        }
+        
+        // Fallback to localStorage
+        console.log('[Live Quiz] No server session, checking localStorage...');
         console.log('[Live Quiz] Init - Stored session:', localStorage.getItem('live_quiz_session'));
         
         const restored = restoreSession(urlRoomCode);
@@ -69,6 +97,90 @@
             }
         }
         return null;
+    }
+    
+    /**
+     * Fetch user's active session from server
+     */
+    async function fetchUserActiveSession() {
+        try {
+            const response = await fetch(config.restUrl + '/user/active-session', {
+                method: 'GET',
+                headers: {
+                    'X-WP-Nonce': config.nonce
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success && data.has_session) {
+                return data.session;
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('[Live Quiz] Failed to fetch user session:', error);
+            return null;
+        }
+    }
+    
+    /**
+     * Restore session from data object
+     */
+    function restoreSessionFromData(session, urlRoomCode) {
+        try {
+            console.log('[Live Quiz] Restoring session from data:', session);
+            
+            // If URL has code that doesn't match, don't restore
+            if (urlRoomCode && session.roomCode !== urlRoomCode) {
+                console.log('[Live Quiz] URL code mismatch, not restoring');
+                return false;
+            }
+            
+            // Restore state
+            state.sessionId = session.sessionId;
+            state.userId = session.userId;
+            state.displayName = session.displayName;
+            state.roomCode = session.roomCode;
+            state.websocketToken = session.websocketToken;
+            state.connectionId = session.connectionId || generateConnectionId();
+            
+            console.log('[Live Quiz] Session restored from server:', state.roomCode);
+            
+            // Update URL if needed
+            if (!urlRoomCode) {
+                const playUrl = '/play/' + state.roomCode;
+                window.history.replaceState({ roomCode: state.roomCode }, '', playUrl);
+                console.log('[Live Quiz] Redirected to', playUrl);
+            }
+            
+            // Show waiting screen
+            showScreen('quiz-waiting');
+            document.getElementById('waiting-player-name').textContent = state.displayName;
+            document.getElementById('waiting-room-code').textContent = state.roomCode;
+            
+            // Fetch players list
+            fetchPlayersList();
+            
+            // Connect to WebSocket
+            connectWebSocket();
+            
+            // Also sync to localStorage
+            localStorage.setItem('live_quiz_session', JSON.stringify({
+                sessionId: state.sessionId,
+                userId: state.userId,
+                displayName: state.displayName,
+                roomCode: state.roomCode,
+                websocketToken: state.websocketToken,
+                connectionId: state.connectionId,
+                timestamp: session.timestamp || Date.now()
+            }));
+            
+            return true;
+        } catch (error) {
+            console.error('[Live Quiz] Failed to restore session from data:', error);
+            return false;
+        }
     }
     
     /**
@@ -187,14 +299,36 @@
         });
     }
     
-    function handleLeaveRoom() {
+    async function handleLeaveRoom() {
         if (confirm('Bạn có chắc chắn muốn rời khỏi phòng?')) {
+            // Call API to leave session (will clear user meta on server)
+            const sessionId = state.sessionId;
+            const userId = state.userId;
+            
+            if (sessionId && userId) {
+                try {
+                    await fetch(config.restUrl + '/leave', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-WP-Nonce': config.nonce
+                        },
+                        body: JSON.stringify({
+                            session_id: sessionId,
+                            user_id: userId
+                        })
+                    });
+                } catch (error) {
+                    console.error('[Live Quiz] Error leaving session:', error);
+                }
+            }
+            
             // Disconnect WebSocket
             if (state.socket) {
                 state.socket.disconnect();
             }
             
-            // Clear session storage
+            // Clear local storage
             localStorage.removeItem('live_quiz_session');
             
             // Reset state
@@ -231,6 +365,10 @@
         }
         
         try {
+            // Generate connection ID for this session
+            const connectionId = generateConnectionId();
+            state.connectionId = connectionId;
+            
             const response = await fetch(config.restUrl + '/join', {
                 method: 'POST',
                 headers: {
@@ -239,6 +377,7 @@
                 body: JSON.stringify({
                     display_name: displayName,
                     room_code: roomCode,
+                    connection_id: connectionId,
                 }),
             });
             
@@ -262,6 +401,7 @@
                     displayName: state.displayName,
                     roomCode: state.roomCode,
                     websocketToken: state.websocketToken,
+                    connectionId: state.connectionId,
                     timestamp: Date.now()
                 };
                 console.log('[Live Quiz] Saving session to storage:', sessionData);
@@ -338,11 +478,12 @@
             state.reconnectAttempts = 0;
             hideConnectionStatus();
             
-            // Join the session room
+            // Join the session room with connection ID
             state.socket.emit('join_session', {
                 session_id: state.sessionId,
                 user_id: state.userId,
-                display_name: state.displayName
+                display_name: state.displayName,
+                connection_id: state.connectionId
             });
         });
         
@@ -382,6 +523,12 @@
         state.socket.on('participant_left', (data) => {
             console.log('[Live Quiz] Participant left event:', data);
             fetchPlayersList();
+        });
+        
+        // Listen for session kicked (when same user joins from another device)
+        state.socket.on('session_kicked', (data) => {
+            console.log('[Live Quiz] Session kicked - another device joined:', data);
+            handleSessionKicked(data);
         });
     }
     
@@ -557,6 +704,40 @@
                 feedbackText.textContent = config.i18n.incorrect;
             }
         }
+    }
+    
+    async function handleSessionKicked(data) {
+        console.log('[Live Quiz] Session kicked:', data);
+        
+        // Disconnect socket
+        if (state.socket) {
+            state.socket.disconnect();
+        }
+        
+        // Clear local storage
+        localStorage.removeItem('liveQuizSession');
+        
+        // Leave session via API to clean up server-side
+        if (state.sessionId && state.userId) {
+            try {
+                await fetch(`${config.restUrl}sessions/${state.sessionId}/leave`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WP-Nonce': config.nonce
+                    },
+                    body: JSON.stringify({
+                        user_id: state.userId
+                    })
+                });
+            } catch (error) {
+                console.error('[Live Quiz] Error leaving session:', error);
+            }
+        }
+        
+        // Show message and redirect
+        alert(data.message || 'Bạn đã tham gia phòng này từ tab/thiết bị khác. Tab này sẽ được chuyển về trang chủ.');
+        window.location.href = config.homeUrl || '/';
     }
     
     function handleSessionEnd(data) {

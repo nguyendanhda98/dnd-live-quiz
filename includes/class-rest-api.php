@@ -107,6 +107,13 @@ class Live_Quiz_REST_API {
             'permission_callback' => '__return_true',
         ));
         
+        // Get current user's active session
+        register_rest_route(self::NAMESPACE, '/user/active-session', array(
+            'methods' => 'GET',
+            'callback' => array(__CLASS__, 'get_user_active_session'),
+            'permission_callback' => 'is_user_logged_in',
+        ));
+        
         // Get question stats (for host)
         register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/question-stats', array(
             'methods' => 'GET',
@@ -323,6 +330,7 @@ class Live_Quiz_REST_API {
     public static function join_session($request) {
         $room_code = $request->get_param('room_code');
         $display_name = $request->get_param('display_name');
+        $connection_id = $request->get_param('connection_id');
         
         if (!$room_code || !$display_name) {
             return new WP_Error('missing_params', __('Thiếu thông tin', 'live-quiz'), array('status' => 400));
@@ -331,6 +339,7 @@ class Live_Quiz_REST_API {
         // Sanitize
         $room_code = Live_Quiz_Security::sanitize_room_code($room_code);
         $display_name = Live_Quiz_Security::sanitize_display_name($display_name);
+        $connection_id = sanitize_text_field($connection_id);
         
         if (empty($display_name)) {
             return new WP_Error('invalid_name', __('Tên không hợp lệ', 'live-quiz'), array('status' => 400));
@@ -341,6 +350,26 @@ class Live_Quiz_REST_API {
         
         if (!$session_id) {
             return new WP_Error('session_not_found', __('Không tìm thấy phòng', 'live-quiz'), array('status' => 404));
+        }
+        
+        // Check for duplicate display names and add username if needed
+        $current_user = wp_get_current_user();
+        if ($current_user->ID) {
+            $participants = Live_Quiz_Session_Manager::get_participants($session_id);
+            
+            // Check if display name already exists
+            $name_exists = false;
+            foreach ($participants as $participant) {
+                if (isset($participant['display_name']) && $participant['display_name'] === $display_name) {
+                    $name_exists = true;
+                    break;
+                }
+            }
+            
+            // If name exists, add username to differentiate
+            if ($name_exists) {
+                $display_name = $display_name . ' (@' . $current_user->user_login . ')';
+            }
         }
         
         // Check rate limit
@@ -401,6 +430,38 @@ class Live_Quiz_REST_API {
             }
         }
         
+        // Save active session to user meta if user is logged in
+        $wp_user_id = get_current_user_id();
+        if ($wp_user_id) {
+            // Check if user already has an active session from another device
+            $old_session = get_user_meta($wp_user_id, '_live_quiz_active_session', true);
+            if ($old_session && is_array($old_session)) {
+                $old_connection_id = isset($old_session['connectionId']) ? $old_session['connectionId'] : null;
+                
+                // If there's a different connection, emit event to kick it via WebSocket
+                if ($old_connection_id && $old_connection_id !== $connection_id) {
+                    // Notify old connection via WebSocket
+                    self::send_websocket_event('session_kicked', array(
+                        'message' => 'Bạn đã tham gia phòng này từ tab/thiết bị khác.',
+                        'new_connection_id' => $connection_id,
+                    ), $old_connection_id);
+                    
+                    error_log("[Live Quiz] User {$wp_user_id} joined from new device. Kicking old connection: {$old_connection_id}");
+                }
+            }
+            
+            // Save new session
+            update_user_meta($wp_user_id, '_live_quiz_active_session', array(
+                'sessionId' => $session_id,
+                'userId' => $participant['user_id'],
+                'displayName' => $participant['display_name'],
+                'roomCode' => $room_code,
+                'websocketToken' => $jwt_token,
+                'connectionId' => $connection_id,
+                'timestamp' => time() * 1000, // milliseconds
+            ));
+        }
+        
         return rest_ensure_response($response);
     }
     
@@ -426,6 +487,12 @@ class Live_Quiz_REST_API {
             // Even if there's an error, return success to allow client to clean up
             // This prevents stuck states
             error_log('Leave session error: ' . $result->get_error_message());
+        }
+        
+        // Clear user meta if user is logged in
+        $wp_user_id = get_current_user_id();
+        if ($wp_user_id) {
+            delete_user_meta($wp_user_id, '_live_quiz_active_session');
         }
         
         return rest_ensure_response(array(
@@ -1079,5 +1146,98 @@ class Live_Quiz_REST_API {
                 'question_count' => count($all_questions),
             ),
         ));
+    }
+    
+    /**
+     * Get user's active session
+     */
+    public static function get_user_active_session($request) {
+        $user_id = get_current_user_id();
+        
+        if (!$user_id) {
+            return new WP_Error('not_logged_in', __('Bạn cần đăng nhập', 'live-quiz'), array('status' => 401));
+        }
+        
+        // Get active session from user meta
+        $active_session = get_user_meta($user_id, '_live_quiz_active_session', true);
+        
+        if (!$active_session || !is_array($active_session)) {
+            return rest_ensure_response(array(
+                'success' => true,
+                'has_session' => false,
+            ));
+        }
+        
+        // Check if session still exists and is active
+        $session_id = isset($active_session['session_id']) ? $active_session['session_id'] : 0;
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        
+        if (!$session || $session['status'] === 'ended') {
+            // Clean up invalid session
+            delete_user_meta($user_id, '_live_quiz_active_session');
+            return rest_ensure_response(array(
+                'success' => true,
+                'has_session' => false,
+            ));
+        }
+        
+        // Check if session is not too old (30 minutes)
+        $MAX_AGE = 30 * 60 * 1000; // 30 minutes in milliseconds
+        $timestamp = isset($active_session['timestamp']) ? $active_session['timestamp'] : 0;
+        if ($timestamp && (time() * 1000 - $timestamp) > $MAX_AGE) {
+            delete_user_meta($user_id, '_live_quiz_active_session');
+            return rest_ensure_response(array(
+                'success' => true,
+                'has_session' => false,
+            ));
+        }
+        
+        // Return active session data
+        return rest_ensure_response(array(
+            'success' => true,
+            'has_session' => true,
+            'session' => $active_session,
+        ));
+    }
+    
+    /**
+     * Send event to WebSocket server
+     * 
+     * @param string $event Event name
+     * @param array $data Event data
+     * @param string $target_connection_id Optional connection ID to target specific client
+     * @return bool Success status
+     */
+    private static function send_websocket_event($event, $data, $target_connection_id = null) {
+        $websocket_url = get_option('live_quiz_websocket_url', 'http://localhost:3033');
+        
+        if (empty($websocket_url)) {
+            return false;
+        }
+        
+        // WebSocket server exposes /api/emit endpoint for emitting events
+        $emit_url = trailingslashit($websocket_url) . 'api/emit';
+        
+        $payload = array(
+            'event' => $event,
+            'data' => $data,
+        );
+        
+        if ($target_connection_id) {
+            $payload['connectionId'] = $target_connection_id;
+        }
+        
+        $response = wp_remote_post($emit_url, array(
+            'headers' => array('Content-Type' => 'application/json'),
+            'body' => json_encode($payload),
+            'timeout' => 5,
+        ));
+        
+        if (is_wp_error($response)) {
+            error_log('[Live Quiz] Failed to send WebSocket event: ' . $response->get_error_message());
+            return false;
+        }
+        
+        return true;
     }
 }
