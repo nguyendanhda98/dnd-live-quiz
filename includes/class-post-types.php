@@ -396,24 +396,6 @@ class Live_Quiz_Post_Types {
                     <?php endforeach; ?>
                 </div>
             </div>
-            
-            <div class="question-settings">
-                <label>
-                    <?php _e('Thời gian (giây):', 'live-quiz'); ?>
-                    <input type="number" 
-                           name="live_quiz_questions[<?php echo esc_attr($index); ?>][time_limit]"
-                           value="<?php echo esc_attr($question['time_limit']); ?>"
-                           min="5" max="120" step="1" required>
-                </label>
-                
-                <label>
-                    <?php _e('Điểm cơ bản:', 'live-quiz'); ?>
-                    <input type="number" 
-                           name="live_quiz_questions[<?php echo esc_attr($index); ?>][base_points]"
-                           value="<?php echo esc_attr($question['base_points']); ?>"
-                           min="100" max="10000" step="100" required>
-                </label>
-            </div>
         </div>
         <?php
     }

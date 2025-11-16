@@ -323,9 +323,7 @@ YÊU CẦU:
         {"text": "Đáp án B", "is_correct": false},
         {"text": "Đáp án C", "is_correct": false},
         {"text": "Đáp án D", "is_correct": false}
-      ],
-      "time_limit": 20,
-      "base_points": 1000
+      ]
     }
   ]
 }
@@ -353,9 +351,7 @@ YÊU CẦU:
         {"text": "Đáp án B", "is_correct": true},
         {"text": "Đáp án C", "is_correct": false},
         {"text": "Đáp án D", "is_correct": false}
-      ],
-      "time_limit": 30,
-      "base_points": 1500
+      ]
     }
   ]
 }

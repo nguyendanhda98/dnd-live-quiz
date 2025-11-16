@@ -518,24 +518,6 @@
                         ${choicesHtml}
                     </div>
                 </div>
-                
-                <div class="question-settings">
-                    <label>
-                        Thời gian (giây):
-                        <input type="number" 
-                               name="live_quiz_questions[${index}][time_limit]"
-                               value="${timeLimit}"
-                               min="5" max="120" step="1" required>
-                    </label>
-                    
-                    <label>
-                        Điểm cơ bản:
-                        <input type="number" 
-                               name="live_quiz_questions[${index}][base_points]"
-                               value="${basePoints}"
-                               min="100" max="10000" step="100" required>
-                    </label>
-                </div>
             </div>
         `;
         
