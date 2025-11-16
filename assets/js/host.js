@@ -7,6 +7,13 @@
 (function($) {
     'use strict';
 
+    /**
+     * Generate unique connection ID for this tab/device
+     */
+    function generateConnectionId() {
+        return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    }
+
     // Host Controller
     const HostController = {
         sessionId: null,
@@ -14,6 +21,7 @@
         socket: null,
         currentQuestionIndex: 0,
         players: {},
+        connectionId: null, // Track connection for multi-device enforcement
         
         init: function() {
             // Get session data from window
@@ -24,6 +32,10 @@
             
             this.sessionId = window.liveQuizHostData.sessionId;
             this.roomCode = window.liveQuizHostData.roomCode;
+            
+            // Generate connection ID for multi-device enforcement
+            this.connectionId = generateConnectionId();
+            console.log('[HOST] Generated connectionId:', this.connectionId);
             
             this.bindEvents();
             this.connectWebSocket();
@@ -90,9 +102,11 @@
                     session_id: self.sessionId,
                     user_id: window.liveQuizHostData.hostUserId,
                     display_name: window.liveQuizHostData.hostName || 'Host',
-                    connection_id: null, // Host doesn't need connection_id tracking
+                    connection_id: self.connectionId, // Track connection for multi-device enforcement
                     is_host: true // Mark this connection as host
                 });
+                
+                console.log('[HOST] Joined session with connectionId:', self.connectionId);
                 
                 // Load participants immediately
                 self.fetchPlayers();
@@ -101,6 +115,30 @@
             this.socket.on('disconnect', function() {
                 console.log('WebSocket disconnected');
                 self.showConnectionStatus('Mất kết nối', false);
+            });
+            
+            // Handle force_disconnect (multi-device enforcement)
+            this.socket.on('force_disconnect', function(data) {
+                console.log('[HOST] ========================================');
+                console.log('[HOST] ✗ FORCE DISCONNECTED - Multi-device detected');
+                console.log('[HOST] ========================================');
+                console.log('[HOST] Reason:', data.reason);
+                console.log('[HOST] Message:', data.message);
+                console.log('[HOST] Timestamp:', new Date(data.timestamp).toLocaleString());
+                console.log('[HOST] Session:', self.sessionId);
+                console.log('[HOST] ConnectionId:', self.connectionId);
+                
+                // Disconnect socket
+                if (self.socket) {
+                    self.socket.disconnect();
+                    self.socket = null;
+                }
+                
+                console.log('[HOST] Redirecting to home page...');
+                console.log('[HOST] ========================================');
+                
+                // Redirect to home page
+                window.location.href = window.liveQuizHostData.homeUrl || '/';
             });
             
             // Listen for player join events

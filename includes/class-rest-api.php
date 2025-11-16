@@ -994,24 +994,16 @@ class Live_Quiz_REST_API {
      * Check teacher permission with cookie authentication for REST API
      */
     public static function check_teacher_permission_with_cookie($request) {
-        // Check if user is logged in
+        // Check if user is logged in - all logged in users can create quiz rooms
         if (!is_user_logged_in()) {
             return new WP_Error(
                 'rest_forbidden',
-                __('Bạn cần đăng nhập với tài khoản giáo viên.', 'live-quiz'),
+                __('Bạn cần đăng nhập để tạo phòng quiz.', 'live-quiz'),
                 array('status' => 401)
             );
         }
         
-        // Check if user has edit_posts capability
-        if (!current_user_can('edit_posts')) {
-            return new WP_Error(
-                'rest_forbidden',
-                __('Bạn không có quyền tạo phòng quiz.', 'live-quiz'),
-                array('status' => 403)
-            );
-        }
-        
+        // All logged in users have permission to create quiz rooms
         return true;
     }
     

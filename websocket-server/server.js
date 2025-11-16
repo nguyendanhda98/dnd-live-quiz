@@ -301,9 +301,9 @@ const RedisHelper = {
     },
 
     // Store active connection for multi-device enforcement
-    async setActiveConnection(userId, sessionId, socketId, connectionId) {
+    async setActiveConnection(userId, sessionId, socketId, connectionId, role = 'player') {
         try {
-            const key = `active_connection:user:${userId}:session:${sessionId}`;
+            const key = `active_connection:user:${userId}:session:${sessionId}:role:${role}`;
             const data = {
                 socket_id: socketId,
                 connection_id: connectionId,
@@ -319,9 +319,9 @@ const RedisHelper = {
     },
 
     // Get active connection for user in session
-    async getActiveConnection(userId, sessionId) {
+    async getActiveConnection(userId, sessionId, role = 'player') {
         try {
-            const key = `active_connection:user:${userId}:session:${sessionId}`;
+            const key = `active_connection:user:${userId}:session:${sessionId}:role:${role}`;
             const data = await redisClient.get(key);
             if (!data) return null;
             return JSON.parse(data);
@@ -332,9 +332,9 @@ const RedisHelper = {
     },
 
     // Remove active connection
-    async removeActiveConnection(userId, sessionId) {
+    async removeActiveConnection(userId, sessionId, role = 'player') {
         try {
-            const key = `active_connection:user:${userId}:session:${sessionId}`;
+            const key = `active_connection:user:${userId}:session:${sessionId}:role:${role}`;
             await redisClient.del(key);
             return true;
         } catch (error) {
@@ -369,9 +369,12 @@ io.on('connection', async (socket) => {
             is_host
         });
         
+        // Determine role for Redis key separation
+        const role = is_host ? 'host' : 'player';
+        
         // SINGLE DEVICE ENFORCEMENT (Redis-based): Only allow ONE device/tab at a time per user
         // Step 1: Check Redis for existing active connection
-        const existingConnection = await RedisHelper.getActiveConnection(user_id, session_id);
+        const existingConnection = await RedisHelper.getActiveConnection(user_id, session_id, role);
         
         if (existingConnection && existingConnection.socket_id !== socket.id) {
             logger.info('🔄 Multi-device detection (Redis) - Found existing connection', {
@@ -466,10 +469,11 @@ io.on('connection', async (socket) => {
         await RedisHelper.addParticipant(session_id, user_id, display_name);
         
         // IMPORTANT: Store active connection in Redis for multi-device enforcement
-        await RedisHelper.setActiveConnection(user_id, session_id, socket.id, connection_id);
+        await RedisHelper.setActiveConnection(user_id, session_id, socket.id, connection_id, role);
         
         logger.info('✓ Stored active connection in Redis', {
             user_id,
+            role,
             session_id,
             socket_id: socket.id,
             connection_id
@@ -507,8 +511,9 @@ io.on('connection', async (socket) => {
                 display_name: socket.displayName
             });
             
-            // Remove active connection from Redis
-            await RedisHelper.removeActiveConnection(socket.userId, socket.sessionId);
+            // Remove active connection from Redis (use role from socket)
+            const role = socket.isHost ? 'host' : 'player';
+            await RedisHelper.removeActiveConnection(socket.userId, socket.sessionId, role);
         }
         
         // Remove from active connections
@@ -672,10 +677,12 @@ io.on('connection', async (socket) => {
             
             // Remove active connection from Redis
             if (socket.userId) {
-                await RedisHelper.removeActiveConnection(socket.userId, socket.sessionId);
+                const role = socket.isHost ? 'host' : 'player';
+                await RedisHelper.removeActiveConnection(socket.userId, socket.sessionId, role);
                 logger.info('✓ Removed active connection from Redis on disconnect', {
                     user_id: socket.userId,
-                    session_id: socket.sessionId
+                    session_id: socket.sessionId,
+                    role
                 });
             }
         }
