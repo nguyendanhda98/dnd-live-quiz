@@ -938,6 +938,15 @@ class Live_Quiz_REST_API {
         
         error_log('[LiveQuiz] Ban permanently SUCCESS');
         
+        // CRITICAL: Kick player from session (removes from Redis and clears user meta)
+        error_log('[LiveQuiz] Calling Session Manager kick_player to remove from Redis...');
+        $kick_result = Live_Quiz_Session_Manager::kick_player($session_id, $user_id);
+        if ($kick_result['success']) {
+            error_log('[LiveQuiz] Session Manager kick SUCCESS - user removed from Redis');
+        } else {
+            error_log('[LiveQuiz] !!! Session Manager kick FAILED: ' . $kick_result['message']);
+        }
+        
         // Notify WebSocket to kick player from current session
         if (class_exists('Live_Quiz_WebSocket_Helper')) {
             error_log('[LiveQuiz] Calling WebSocket Helper to kick player...');

@@ -386,6 +386,9 @@ class Live_Quiz_Session_Manager {
         // Clear their active session if any
         delete_user_meta($user_id, 'live_quiz_active_session');
         
+        // NOTE: Removal from current session is handled by REST API calling kick_player()
+        // This is intentional - ban_permanently only manages the permanent ban list
+        
         return array(
             'success' => true,
             'message' => __('Đã ban người chơi vĩnh viễn', 'live-quiz'),
