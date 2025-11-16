@@ -397,17 +397,11 @@
         handlePlayerJoined: function(data) {
             console.log('Player joined:', data);
             const playerId = data.user_id;
-            const hostId = window.liveQuizHostData.hostUserId;
             
-            console.log('Comparing playerId:', playerId, 'with hostId:', hostId, 'types:', typeof playerId, typeof hostId);
-            
-            // Don't add host to players list (convert to string for comparison)
-            if (playerId && String(playerId) !== String(hostId)) {
+            if (playerId) {
                 this.players[playerId] = data;
                 this.players[playerId].user_id = playerId;
                 this.updatePlayersList(Object.values(this.players));
-            } else if (String(playerId) === String(hostId)) {
-                console.log('Ignoring host join event for hostId:', hostId);
             } else {
                 console.error('Player joined event missing user_id:', data);
             }
@@ -426,14 +420,6 @@
             const self = this;
             const $list = $('#players-list');
             const $count = $('#player-count');
-            
-            // Filter out host from players list (double-check in case API doesn't filter)
-            const hostId = window.liveQuizHostData.hostUserId;
-            if (hostId) {
-                players = players.filter(function(player) {
-                    return String(player.user_id) !== String(hostId);
-                });
-            }
             
             // Update count
             $count.text(players.length);

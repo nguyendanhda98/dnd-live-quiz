@@ -465,8 +465,20 @@ io.on('connection', async (socket) => {
         // Join the session room
         socket.join(`session:${session_id}`);
         
-        // Add participant to Redis
-        await RedisHelper.addParticipant(session_id, user_id, display_name);
+        // Only add participant and broadcast if NOT a host connection
+        // Host joining WebSocket is just for monitoring, not playing
+        if (!is_host) {
+            // Add participant to Redis
+            await RedisHelper.addParticipant(session_id, user_id, display_name);
+            
+            // Notify ALL participants in room (including this user)
+            io.to(`session:${session_id}`).emit('participant_joined', {
+                user_id,
+                display_name,
+                session_id,
+                total_participants: io.sockets.adapter.rooms.get(`session:${session_id}`)?.size || 0
+            });
+        }
         
         // IMPORTANT: Store active connection in Redis for multi-device enforcement
         await RedisHelper.setActiveConnection(user_id, session_id, socket.id, connection_id, role);
@@ -476,15 +488,8 @@ io.on('connection', async (socket) => {
             role,
             session_id,
             socket_id: socket.id,
-            connection_id
-        });
-        
-        // Notify ALL participants in room (including this user)
-        io.to(`session:${session_id}`).emit('participant_joined', {
-            user_id,
-            display_name,
-            session_id,
-            total_participants: io.sockets.adapter.rooms.get(`session:${session_id}`)?.size || 0
+            connection_id,
+            added_as_participant: !is_host
         });
         
         logger.info('User joined session successfully', {
@@ -499,17 +504,21 @@ io.on('connection', async (socket) => {
         if (socket.sessionId) {
             logger.info('User leaving session', {
                 session_id: socket.sessionId,
-                user_id: socket.userId
+                user_id: socket.userId,
+                is_host: socket.isHost
             });
             
             // Leave the room
             socket.leave(`session:${socket.sessionId}`);
             
-            // Notify other participants
-            socket.to(`session:${socket.sessionId}`).emit('participant_left', {
-                user_id: socket.userId,
-                display_name: socket.displayName
-            });
+            // Only remove from participants and notify if NOT host
+            if (!socket.isHost) {
+                // Notify other participants
+                socket.to(`session:${socket.sessionId}`).emit('participant_left', {
+                    user_id: socket.userId,
+                    display_name: socket.displayName
+                });
+            }
             
             // Remove active connection from Redis (use role from socket)
             const role = socket.isHost ? 'host' : 'player';
@@ -669,11 +678,14 @@ io.on('connection', async (socket) => {
 
         // Notify room
         if (socket.sessionId) {
-            io.to(`session:${socket.sessionId}`).emit('participant_left', {
-                user_id: socket.userId,
-                display_name: socket.displayName,
-                total_participants: stats.connections,
-            });
+            // Only broadcast participant_left if NOT host
+            if (!socket.isHost) {
+                io.to(`session:${socket.sessionId}`).emit('participant_left', {
+                    user_id: socket.userId,
+                    display_name: socket.displayName,
+                    total_participants: stats.connections,
+                });
+            }
             
             // Remove active connection from Redis
             if (socket.userId) {
@@ -682,7 +694,8 @@ io.on('connection', async (socket) => {
                 logger.info('✓ Removed active connection from Redis on disconnect', {
                     user_id: socket.userId,
                     session_id: socket.sessionId,
-                    role
+                    role,
+                    was_host: socket.isHost
                 });
             }
         }

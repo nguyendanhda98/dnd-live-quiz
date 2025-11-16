@@ -654,16 +654,7 @@ class Live_Quiz_REST_API {
     public static function get_players($request) {
         $session_id = $request->get_param('id');
         
-        // Get session to find host_id
-        $session = Live_Quiz_Session_Manager::get_session($session_id);
-        $host_id = $session['host_id'];
-        
         $players = Live_Quiz_Session_Manager::get_participants($session_id);
-        
-        // Filter out the host from players list
-        $players = array_filter($players, function($player) use ($host_id) {
-            return $player['user_id'] != $host_id;
-        });
         
         // Re-index array to ensure sequential keys
         $players = array_values($players);
@@ -686,13 +677,7 @@ class Live_Quiz_REST_API {
             return new WP_Error('not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
         }
         
-        $host_id = $session['host_id'];
         $players = Live_Quiz_Session_Manager::get_participants($session_id);
-        
-        // Filter out the host from players list
-        $players = array_filter($players, function($player) use ($host_id) {
-            return $player['user_id'] != $host_id;
-        });
         
         return rest_ensure_response(array(
             'success' => true,
@@ -712,13 +697,7 @@ class Live_Quiz_REST_API {
             return new WP_Error('not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
         }
         
-        $host_id = $session['host_id'];
         $players = Live_Quiz_Session_Manager::get_participants($session_id);
-        
-        // Filter out the host from players list
-        $players = array_filter($players, function($player) use ($host_id) {
-            return $player['user_id'] != $host_id;
-        });
         
         // Re-index array to ensure sequential keys
         $players = array_values($players);
