@@ -110,6 +110,23 @@
                 }
             });
             
+            // Hide search results when clicking outside
+            $(document).on('click', function(e) {
+                const $searchContainer = $('.quiz-search-container');
+                if (!$searchContainer.is(e.target) && $searchContainer.has(e.target).length === 0) {
+                    $('#lobby-quiz-results').hide();
+                }
+            });
+            
+            // Show search results when focusing on input
+            $('#lobby-quiz-search').on('focus', function() {
+                const term = $(this).val().trim();
+                if (term.length >= 1) {
+                    // Re-trigger search to show results
+                    self.searchQuizzes(term);
+                }
+            });
+            
             $('input[name="lobby_quiz_type"]').on('change', function() {
                 if ($(this).val() === 'random') {
                     $('#lobby-random-count').slideDown();
