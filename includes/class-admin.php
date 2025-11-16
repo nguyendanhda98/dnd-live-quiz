@@ -165,10 +165,10 @@ class Live_Quiz_Admin {
                 update_option('live_quiz_gemini_timeout', $timeout);
             }
             if (isset($_POST['live_quiz_ai_prompt_single_choice'])) {
-                update_option('live_quiz_ai_prompt_single_choice', wp_kses_post($_POST['live_quiz_ai_prompt_single_choice']));
+                update_option('live_quiz_ai_prompt_single_choice', sanitize_textarea_field(wp_unslash($_POST['live_quiz_ai_prompt_single_choice'])));
             }
             if (isset($_POST['live_quiz_ai_prompt_multiple_choice'])) {
-                update_option('live_quiz_ai_prompt_multiple_choice', wp_kses_post($_POST['live_quiz_ai_prompt_multiple_choice']));
+                update_option('live_quiz_ai_prompt_multiple_choice', sanitize_textarea_field(wp_unslash($_POST['live_quiz_ai_prompt_multiple_choice'])));
             }
             
             // Phase 2 settings
