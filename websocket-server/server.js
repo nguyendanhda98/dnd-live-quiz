@@ -873,13 +873,24 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
 app.post('/api/sessions/:id/kick-player', async (req, res) => {
     try {
         const sessionId = req.params.id;
-        const { user_id } = req.body;
+        const { user_id, message, reason } = req.body;
 
         if (!user_id) {
             return res.status(400).json({ error: 'Missing user_id' });
         }
 
-        logger.info('=== KICK PLAYER REQUEST ===', { sessionId, userId: user_id, userIdType: typeof user_id, timestamp: new Date().toISOString() });
+        // Use custom message or default
+        const kickMessage = message || 'Bạn đã bị kick khỏi phòng bởi host.';
+        const kickReason = reason || 'kicked';
+
+        logger.info('=== KICK PLAYER REQUEST ===', { 
+            sessionId, 
+            userId: user_id, 
+            userIdType: typeof user_id,
+            reason: kickReason,
+            message: kickMessage,
+            timestamp: new Date().toISOString() 
+        });
 
         // Find the player's socket
         const room = io.sockets.adapter.rooms.get(`session:${sessionId}`);
@@ -902,10 +913,10 @@ app.post('/api/sessions/:id/kick-player', async (req, res) => {
                 }
                 // Compare as strings to handle both number and string types
                 if (socket && String(socket.userId) === String(user_id) && !socket.isHost) {
-                    // Send kick event to the player
+                    // Send kick event to the player with custom message
                     socket.emit('kicked_from_session', {
-                        message: 'Bạn đã bị kick khỏi phòng bởi host.',
-                        reason: 'kicked_by_host',
+                        message: kickMessage,
+                        reason: kickReason,
                         session_id: sessionId,
                         timestamp: Date.now()
                     });

@@ -118,15 +118,25 @@ class Live_Quiz_WebSocket_Helper {
      * 
      * @param int $session_id Session ID
      * @param string $user_id User ID to kick
+     * @param string $message Optional custom message
+     * @param string $reason Optional reason (kicked, banned_session, banned_permanently)
      * @return bool Success
      */
-    public static function kick_player($session_id, $user_id) {
+    public static function kick_player($session_id, $user_id, $message = null, $reason = 'kicked') {
         error_log('[LiveQuiz WebSocket Helper] kick_player() called');
-        error_log('[LiveQuiz WebSocket Helper] Session: ' . $session_id . ', User: ' . $user_id);
+        error_log('[LiveQuiz WebSocket Helper] Session: ' . $session_id . ', User: ' . $user_id . ', Reason: ' . $reason);
+        
+        $data = array('user_id' => $user_id);
+        if ($message) {
+            $data['message'] = $message;
+        }
+        if ($reason) {
+            $data['reason'] = $reason;
+        }
         
         $result = self::send_request(
             '/sessions/' . $session_id . '/kick-player',
-            array('user_id' => $user_id),
+            $data,
             'POST'
         );
         

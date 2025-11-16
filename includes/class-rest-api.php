@@ -839,7 +839,12 @@ class Live_Quiz_REST_API {
         // Notify WebSocket server to disconnect the player
         if (class_exists('Live_Quiz_WebSocket_Helper')) {
             error_log('[LiveQuiz] Calling WebSocket Helper to kick player...');
-            $ws_result = Live_Quiz_WebSocket_Helper::kick_player($session_id, $user_id);
+            $ws_result = Live_Quiz_WebSocket_Helper::kick_player(
+                $session_id, 
+                $user_id,
+                'Bạn đã bị kick khỏi phòng bởi host.',
+                'kicked'
+            );
             if ($ws_result) {
                 error_log('[LiveQuiz] WebSocket kick SUCCESS');
             } else {
@@ -886,7 +891,12 @@ class Live_Quiz_REST_API {
         // Notify WebSocket to kick player
         if (class_exists('Live_Quiz_WebSocket_Helper')) {
             error_log('[LiveQuiz] Calling WebSocket Helper to kick player...');
-            $ws_result = Live_Quiz_WebSocket_Helper::kick_player($session_id, $user_id);
+            $ws_result = Live_Quiz_WebSocket_Helper::kick_player(
+                $session_id, 
+                $user_id,
+                'Bạn đã bị ban khỏi phòng này bởi host. Bạn không thể tham gia lại phòng này.',
+                'banned_session'
+            );
             if ($ws_result) {
                 error_log('[LiveQuiz] WebSocket kick SUCCESS');
             } else {
@@ -950,7 +960,12 @@ class Live_Quiz_REST_API {
         // Notify WebSocket to kick player from current session
         if (class_exists('Live_Quiz_WebSocket_Helper')) {
             error_log('[LiveQuiz] Calling WebSocket Helper to kick player...');
-            $ws_result = Live_Quiz_WebSocket_Helper::kick_player($session_id, $user_id);
+            $ws_result = Live_Quiz_WebSocket_Helper::kick_player(
+                $session_id, 
+                $user_id,
+                'Bạn đã bị ban vĩnh viễn bởi host này. Bạn không thể tham gia bất kỳ phòng nào của host này.',
+                'banned_permanently'
+            );
             if ($ws_result) {
                 error_log('[LiveQuiz] WebSocket kick SUCCESS');
             } else {

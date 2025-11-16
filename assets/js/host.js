@@ -380,7 +380,8 @@
                 success: function(response) {
                     console.log('Fetched players:', response);
                     if (response.success && response.players) {
-                        // Merge players into this.players to maintain WebSocket updates
+                        // REPLACE players (not merge) to ensure kicked players are removed
+                        self.players = {};
                         response.players.forEach(function(player) {
                             const playerId = player.user_id;
                             self.players[playerId] = player;

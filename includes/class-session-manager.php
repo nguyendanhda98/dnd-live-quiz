@@ -298,12 +298,13 @@ class Live_Quiz_Session_Manager {
         error_log('[LiveQuiz Session Manager] Clearing user session meta for user: ' . $user_id);
         delete_user_meta($user_id, 'live_quiz_active_session');
         
-        // Remove player from Redis if enabled
-        if (self::is_redis_enabled()) {
-            $removed = self::$redis->remove_participant($session_id, $user_id);
-            if (!$removed) {
-                error_log('[LiveQuiz Session Manager] Player not found in Redis, continuing anyway');
-            }
+        // CRITICAL: Remove player from ALL storage (Redis, post meta, transient)
+        error_log('[LiveQuiz Session Manager] Removing player from all storage...');
+        $remove_result = self::remove_participant($session_id, $user_id);
+        if (is_wp_error($remove_result)) {
+            error_log('[LiveQuiz Session Manager] Warning: Failed to remove participant: ' . $remove_result->get_error_message());
+        } else {
+            error_log('[LiveQuiz Session Manager] Player removed from all storage successfully');
         }
         
         // Broadcast kick event
@@ -350,9 +351,13 @@ class Live_Quiz_Session_Manager {
         // Also kick them if they're currently in the session
         delete_user_meta($user_id, 'live_quiz_active_session');
         
-        // Remove from Redis participants
-        if (self::is_redis_enabled()) {
-            self::$redis->remove_participant($session_id, $user_id);
+        // CRITICAL: Remove player from ALL storage (Redis, post meta, transient)
+        error_log('[LiveQuiz Session Manager] Removing banned player from all storage...');
+        $remove_result = self::remove_participant($session_id, $user_id);
+        if (is_wp_error($remove_result)) {
+            error_log('[LiveQuiz Session Manager] Warning: Failed to remove participant: ' . $remove_result->get_error_message());
+        } else {
+            error_log('[LiveQuiz Session Manager] Banned player removed from all storage successfully');
         }
         
         return array(

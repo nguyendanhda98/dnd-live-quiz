@@ -765,18 +765,25 @@
         
         // Show kicked message
         const kickMessage = data.message || 'Bạn đã bị kick khỏi phòng bởi host.';
+        
+        // Show alert first (blocking)
+        alert('❌ ' + kickMessage + '\n\nNếu muốn vào lại, bạn cần nhập lại mã phòng.');
+        
+        // Then show lobby with error message
         showScreen('quiz-lobby');
         
-        // Show error message
-        const $error = $('#lobby-error');
-        $error.html(`
-            <div class="error-box kicked">
-                <h3>❌ Đã bị kick</h3>
-                <p>${kickMessage}</p>
-                <p style="margin-top: 10px;">Nếu muốn vào lại, bạn cần nhập lại mã phòng.</p>
-                <button onclick="window.location.href='${config.homeUrl || '/'}';" class="btn btn-primary">Về trang chủ</button>
-            </div>
-        `).show();
+        // Show error message in the form
+        const errorElement = document.getElementById('join-error');
+        if (errorElement) {
+            errorElement.innerHTML = `
+                <div class="error-box kicked" style="background: #fee; border: 2px solid #c00; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                    <h3 style="color: #c00; margin: 0 0 10px 0;">❌ Đã bị kick khỏi phòng</h3>
+                    <p style="margin: 0;">${kickMessage}</p>
+                    <p style="margin: 10px 0 0 0; font-size: 0.9em;">Nếu muốn vào lại, vui lòng nhập lại mã phòng.</p>
+                </div>
+            `;
+            errorElement.style.display = 'block';
+        }
         
         console.log('[PLAYER] Kicked message displayed - reconnection disabled');
     }
@@ -824,16 +831,14 @@
             }
         }).catch(err => console.error('[PLAYER] Failed to clear session:', err));
         
-        console.log('[PLAYER] Redirecting to home in 1 second...');
+        console.log('[PLAYER] Redirecting to home...');
         
-        // Show alert
-        alert(data.message || 'Host đã kết thúc phòng. Bạn sẽ được chuyển về trang chủ.');
+        // Show alert with clear message
+        const endMessage = data.message || 'Host đã kết thúc phòng.';
+        alert('🚪 ' + endMessage + '\n\nBạn sẽ được chuyển về trang chủ.');
         
-        // Small delay then redirect to home
-        setTimeout(function() {
-            console.log('[PLAYER] Redirecting now...');
-            window.location.href = config.homeUrl || '/';
-        }, 100);
+        // Redirect to home immediately after alert is dismissed
+        window.location.href = config.homeUrl || '/';
     }
     
     function displayFinalResults(data) {
