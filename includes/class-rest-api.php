@@ -114,6 +114,13 @@ class Live_Quiz_REST_API {
             'permission_callback' => 'is_user_logged_in',
         ));
         
+        // Clear current user's active session
+        register_rest_route(self::NAMESPACE, '/user/clear-session', array(
+            'methods' => 'POST',
+            'callback' => array(__CLASS__, 'clear_user_active_session'),
+            'permission_callback' => 'is_user_logged_in',
+        ));
+        
         // Get question stats (for host)
         register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/question-stats', array(
             'methods' => 'GET',
@@ -1629,6 +1636,29 @@ class Live_Quiz_REST_API {
             'success' => true,
             'has_session' => true,
             'session' => $active_session,
+        ));
+    }
+    
+    /**
+     * Clear current user's active session
+     */
+    public static function clear_user_active_session($request) {
+        $user_id = get_current_user_id();
+        
+        error_log("[LiveQuiz] Clearing active session for user: {$user_id}");
+        
+        if (!$user_id) {
+            return new WP_Error('not_logged_in', __('Bạn cần đăng nhập', 'live-quiz'), array('status' => 401));
+        }
+        
+        // Delete user meta
+        delete_user_meta($user_id, '_live_quiz_active_session');
+        
+        error_log("[LiveQuiz] User session cleared successfully");
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => __('Đã xóa session thành công', 'live-quiz'),
         ));
     }
     

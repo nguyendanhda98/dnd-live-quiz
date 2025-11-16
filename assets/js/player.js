@@ -754,6 +754,15 @@
         
         console.log('[PLAYER] State reset complete, showing kicked message...');
         
+        // Call server to ensure session is cleared
+        fetch(config.restUrl + '/user/clear-session', {
+            method: 'POST',
+            headers: {
+                'X-WP-Nonce': config.nonce,
+                'Content-Type': 'application/json'
+            }
+        }).catch(err => console.error('[PLAYER] Failed to clear session:', err));
+        
         // Show kicked message
         const kickMessage = data.message || 'Bạn đã bị kick khỏi phòng bởi host.';
         showScreen('quiz-lobby');
@@ -764,7 +773,8 @@
             <div class="error-box kicked">
                 <h3>❌ Đã bị kick</h3>
                 <p>${kickMessage}</p>
-                <button onclick="location.reload()" class="btn btn-primary">Quay về trang chủ</button>
+                <p style="margin-top: 10px;">Nếu muốn vào lại, bạn cần nhập lại mã phòng.</p>
+                <button onclick="window.location.href='${config.homeUrl || '/'}';" class="btn btn-primary">Về trang chủ</button>
             </div>
         `).show();
         
@@ -804,15 +814,25 @@
         state.currentQuestion = null;
         
         console.log('[PLAYER] All session data cleared');
-        console.log('[PLAYER] Redirecting to /play in 1 second...');
+        
+        // Call server to ensure session is cleared
+        fetch(config.restUrl + '/user/clear-session', {
+            method: 'POST',
+            headers: {
+                'X-WP-Nonce': config.nonce,
+                'Content-Type': 'application/json'
+            }
+        }).catch(err => console.error('[PLAYER] Failed to clear session:', err));
+        
+        console.log('[PLAYER] Redirecting to home in 1 second...');
         
         // Show alert
         alert(data.message || 'Host đã kết thúc phòng. Bạn sẽ được chuyển về trang chủ.');
         
-        // Small delay then redirect
+        // Small delay then redirect to home
         setTimeout(function() {
             console.log('[PLAYER] Redirecting now...');
-            window.location.href = '/play';
+            window.location.href = config.homeUrl || '/';
         }, 100);
     }
     
