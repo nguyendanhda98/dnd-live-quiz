@@ -342,6 +342,45 @@ const RedisHelper = {
             return false;
         }
     },
+    
+    // Add user to session ban list (Redis Set with TTL)
+    async addSessionBan(sessionId, userId) {
+        try {
+            const key = `session:${sessionId}:banned`;
+            await redisClient.sAdd(key, userId.toString());
+            // Set TTL to 24 hours - auto delete after session ends
+            await redisClient.expire(key, 86400);
+            logger.info('Added user to session ban list', { sessionId, userId });
+            return true;
+        } catch (error) {
+            logger.error('Error adding session ban', { sessionId, userId, error });
+            return false;
+        }
+    },
+    
+    // Check if user is banned from session (Redis Set - O(1))
+    async isSessionBanned(sessionId, userId) {
+        try {
+            const key = `session:${sessionId}:banned`;
+            const isBanned = await redisClient.sIsMember(key, userId.toString());
+            return isBanned;
+        } catch (error) {
+            logger.error('Error checking session ban', { sessionId, userId, error });
+            return false;
+        }
+    },
+    
+    // Get all banned users for a session
+    async getSessionBannedUsers(sessionId) {
+        try {
+            const key = `session:${sessionId}:banned`;
+            const bannedUsers = await redisClient.sMembers(key);
+            return bannedUsers.map(id => parseInt(id));
+        } catch (error) {
+            logger.error('Error getting session banned users', { sessionId, error });
+            return [];
+        }
+    },
 };
 
 // Socket.io connection handler
@@ -827,6 +866,144 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
     } catch (error) {
         logger.error('Error ending question', { error, sessionId: req.params.id });
         res.status(500).json({ error: 'Failed to end question' });
+    }
+});
+
+// Kick player from session
+app.post('/api/sessions/:id/kick-player', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+        const { user_id } = req.body;
+
+        if (!user_id) {
+            return res.status(400).json({ error: 'Missing user_id' });
+        }
+
+        logger.info('=== KICK PLAYER REQUEST ===', { sessionId, userId: user_id, userIdType: typeof user_id, timestamp: new Date().toISOString() });
+
+        // Find the player's socket
+        const room = io.sockets.adapter.rooms.get(`session:${sessionId}`);
+        let kicked = false;
+        
+        if (room) {
+            logger.info('Room found, checking sockets...', { roomSize: room.size });
+            room.forEach(socketId => {
+                const socket = io.sockets.sockets.get(socketId);
+                if (socket) {
+                    logger.info('Checking socket', {
+                        socketId: socket.id,
+                        socketUserId: socket.userId,
+                        socketUserIdType: typeof socket.userId,
+                        targetUserId: user_id,
+                        targetUserIdType: typeof user_id,
+                        isHost: socket.isHost,
+                        matches: String(socket.userId) === String(user_id)
+                    });
+                }
+                // Compare as strings to handle both number and string types
+                if (socket && String(socket.userId) === String(user_id) && !socket.isHost) {
+                    // Send kick event to the player
+                    socket.emit('kicked_from_session', {
+                        message: 'Bạn đã bị kick khỏi phòng bởi host.',
+                        reason: 'kicked_by_host',
+                        session_id: sessionId,
+                        timestamp: Date.now()
+                    });
+                    
+                    logger.info('✓ Sent kick event to player', {
+                        userId: socket.userId,
+                        displayName: socket.displayName,
+                        socketId: socket.id
+                    });
+                    
+                    // Disconnect the socket after a brief delay
+                    setTimeout(() => {
+                        socket.disconnect(true);
+                    }, 100);
+                    
+                    kicked = true;
+                }
+            });
+        }
+
+        if (kicked) {
+            // Notify other players
+            io.to(`session:${sessionId}`).emit('participant_left', {
+                user_id: user_id,
+                reason: 'kicked'
+            });
+            
+            logger.info('✓ Player kicked successfully', { sessionId, userId: user_id });
+            res.json({ 
+                success: true, 
+                message: 'Player kicked successfully',
+                user_id: user_id
+            });
+        } else {
+            logger.warn('Player not found in session', { sessionId, userId: user_id });
+            res.status(404).json({ error: 'Player not found in session' });
+        }
+    } catch (error) {
+        logger.error('Error kicking player', { error: error.message, stack: error.stack });
+        res.status(500).json({ error: 'Failed to kick player' });
+    }
+});
+
+// Ban player from session (stores in Redis with TTL)
+app.post('/api/sessions/:id/ban-session', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+        const { user_id } = req.body;
+
+        if (!user_id) {
+            return res.status(400).json({ error: 'Missing user_id' });
+        }
+
+        logger.info('Ban player from session', { sessionId, userId: user_id });
+
+        // Add to Redis ban list with 24h TTL
+        await RedisHelper.addSessionBan(sessionId, user_id);
+
+        // Also kick if currently connected
+        const room = io.sockets.adapter.rooms.get(`session:${sessionId}`);
+        if (room) {
+            room.forEach(socketId => {
+                const socket = io.sockets.sockets.get(socketId);
+                if (socket && String(socket.userId) === String(user_id) && !socket.isHost) {
+                    socket.emit('kicked_from_session', {
+                        message: 'Bạn đã bị ban khỏi phòng này.',
+                        reason: 'banned_from_session',
+                        session_id: sessionId,
+                        timestamp: Date.now()
+                    });
+                    setTimeout(() => socket.disconnect(true), 100);
+                }
+            });
+        }
+
+        res.json({ success: true, message: 'Player banned from session' });
+    } catch (error) {
+        logger.error('Error banning player', { error: error.message });
+        res.status(500).json({ error: 'Failed to ban player' });
+    }
+});
+
+// Check if user is banned from session
+app.get('/api/sessions/:id/is-banned', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+        const userId = req.query.user_id;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'Missing user_id' });
+        }
+
+        const isBanned = await RedisHelper.isSessionBanned(sessionId, userId);
+
+        res.json({ is_banned: isBanned });
+    } catch (error) {
+        logger.error('Error checking ban status', { error: error.message });
+        res.status(500).json({ error: 'Failed to check ban status' });
     }
 });
 

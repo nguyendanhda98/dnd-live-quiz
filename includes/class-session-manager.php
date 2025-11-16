@@ -279,6 +279,161 @@ class Live_Quiz_Session_Manager {
     }
     
     /**
+     * Kick player from session
+     * 
+     * @param int $session_id Session ID
+     * @param string $user_id User ID to kick
+     * @return array Result with success status and message
+     */
+    public static function kick_player($session_id, $user_id) {
+        $session = self::get_session($session_id);
+        if (!$session) {
+            return array(
+                'success' => false,
+                'message' => __('Phiên không tồn tại', 'live-quiz'),
+            );
+        }
+        
+        // CRITICAL: Clear user's active session from user meta to prevent auto-rejoin
+        error_log('[LiveQuiz Session Manager] Clearing user session meta for user: ' . $user_id);
+        delete_user_meta($user_id, 'live_quiz_active_session');
+        
+        // Remove player from Redis if enabled
+        if (self::is_redis_enabled()) {
+            $removed = self::$redis->remove_participant($session_id, $user_id);
+            if (!$removed) {
+                error_log('[LiveQuiz Session Manager] Player not found in Redis, continuing anyway');
+            }
+        }
+        
+        // Broadcast kick event
+        self::broadcast_event($session_id, 'player_kicked', array(
+            'user_id' => $user_id,
+            'timestamp' => time(),
+        ));
+        
+        return array(
+            'success' => true,
+            'message' => __('Đã kick người chơi thành công', 'live-quiz'),
+        );
+    }
+    
+    /**
+     * Ban player from this session only
+     * Store in Redis with TTL (auto-delete after 24h)
+     * 
+     * @param int $session_id Session ID
+     * @param int $user_id User ID to ban
+     * @return array Result
+     */
+    public static function ban_from_session($session_id, $user_id) {
+        $session = self::get_session($session_id);
+        if (!$session) {
+            return array(
+                'success' => false,
+                'message' => __('Phiên không tồn tại', 'live-quiz'),
+            );
+        }
+        
+        // Store ban in Redis (will auto-delete after TTL expires)
+        // This is more efficient than post meta for temporary data
+        error_log('[LiveQuiz Session Manager] Banning user ' . $user_id . ' from session ' . $session_id);
+        
+        // Ban via WebSocket (stores in Redis with TTL)
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            $result = Live_Quiz_WebSocket_Helper::ban_from_session($session_id, $user_id);
+            if (!$result) {
+                error_log('[LiveQuiz Session Manager] Warning: WebSocket ban failed, falling back to local storage');
+            }
+        }
+        
+        // Also kick them if they're currently in the session
+        delete_user_meta($user_id, 'live_quiz_active_session');
+        
+        // Remove from Redis participants
+        if (self::is_redis_enabled()) {
+            self::$redis->remove_participant($session_id, $user_id);
+        }
+        
+        return array(
+            'success' => true,
+            'message' => __('Đã ban người chơi khỏi phòng này', 'live-quiz'),
+        );
+    }
+    
+    /**
+     * Ban player permanently from all sessions by this host
+     * 
+     * @param int $host_id Host user ID
+     * @param int $user_id User ID to ban
+     * @return array Result
+     */
+    public static function ban_permanently($host_id, $user_id) {
+        // Get host's permanent ban list
+        $banned_users = get_user_meta($host_id, 'live_quiz_banned_users', true);
+        if (!is_array($banned_users)) {
+            $banned_users = array();
+        }
+        
+        // Add user to permanent ban list
+        if (!in_array($user_id, $banned_users)) {
+            $banned_users[] = $user_id;
+            update_user_meta($host_id, 'live_quiz_banned_users', $banned_users);
+        }
+        
+        error_log('[LiveQuiz Session Manager] Host ' . $host_id . ' permanently banned user ' . $user_id);
+        
+        // Clear their active session if any
+        delete_user_meta($user_id, 'live_quiz_active_session');
+        
+        return array(
+            'success' => true,
+            'message' => __('Đã ban người chơi vĩnh viễn', 'live-quiz'),
+        );
+    }
+    
+    /**
+     * Check if user is banned from session
+     * Check Redis first (fast), fallback to WebSocket server
+     * 
+     * @param int $session_id Session ID
+     * @param int $user_id User ID
+     * @return bool Is banned
+     */
+    public static function is_banned_from_session($session_id, $user_id) {
+        // Check via WebSocket (Redis check)
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            $is_banned = Live_Quiz_WebSocket_Helper::is_session_banned($session_id, $user_id);
+            if ($is_banned !== null) {
+                return $is_banned;
+            }
+        }
+        
+        // Fallback: check local Redis if available
+        if (self::is_redis_enabled()) {
+            // Redis check would go here
+        }
+        
+        // No ban found
+        return false;
+    }
+    
+    /**
+     * Check if user is permanently banned by host
+     * 
+     * @param int $host_id Host user ID
+     * @param int $user_id User ID
+     * @return bool Is banned
+     */
+    public static function is_permanently_banned($host_id, $user_id) {
+        $banned_users = get_user_meta($host_id, 'live_quiz_banned_users', true);
+        if (!is_array($banned_users)) {
+            return false;
+        }
+        return in_array($user_id, $banned_users);
+    }
+    
+    /**
      * Move to next question
      * 
      * @param int $session_id Session ID

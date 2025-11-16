@@ -45,7 +45,6 @@
     async function init() {
         console.log('=== [PLAYER] INIT STARTED ===');
         console.log('[PLAYER] Current URL:', window.location.href);
-        console.log('[PLAYER] LocalStorage session:', localStorage.getItem('live_quiz_session'));
         
         setupEventListeners();
         checkSocketIOLibrary();
@@ -53,7 +52,7 @@
         const urlRoomCode = extractRoomCodeFromUrl();
         console.log('[PLAYER] URL room code:', urlRoomCode);
         
-        // Try to restore session from server first (user meta)
+        // ONLY restore from server (user must be logged in)
         console.log('[PLAYER] Fetching user active session from server...');
         const serverSession = await fetchUserActiveSession();
         console.log('[PLAYER] Server session response:', serverSession);
@@ -68,16 +67,10 @@
             console.log('[PLAYER] Failed to restore from server session');
         }
         
-        // Fallback to localStorage
-        console.log('[PLAYER] No server session, checking localStorage...');
-        const stored = localStorage.getItem('live_quiz_session');
-        console.log('[PLAYER] Stored session:', stored);
+        console.log('[PLAYER] No active session found on server');
         
-        const restored = restoreSession(urlRoomCode);
-        console.log('[PLAYER] Session restored from localStorage:', restored);
-        
-        // If session was not restored and we have URL room code, pre-fill it
-        if (!restored && urlRoomCode) {
+        // If URL has room code, pre-fill it
+        if (urlRoomCode) {
             console.log('[PLAYER] Pre-filling room code in form');
             const roomCodeInput = document.getElementById('room-code');
             if (roomCodeInput) {
@@ -172,16 +165,7 @@
             // Connect to WebSocket
             connectWebSocket();
             
-            // Also sync to localStorage
-            localStorage.setItem('live_quiz_session', JSON.stringify({
-                sessionId: state.sessionId,
-                userId: state.userId,
-                displayName: state.displayName,
-                roomCode: state.roomCode,
-                websocketToken: state.websocketToken,
-                connectionId: state.connectionId,
-                timestamp: session.timestamp || Date.now()
-            }));
+            // Note: NO localStorage - server is source of truth
             
             return true;
         } catch (error) {
@@ -191,88 +175,10 @@
     }
     
     /**
-     * Restore session from sessionStorage
-     * @returns {boolean} true if session was restored, false otherwise
+     * Restore session - REMOVED
+     * No longer using localStorage - server is the source of truth
+     * Users must be logged in to play
      */
-    function restoreSession(urlRoomCode) {
-        try {
-            const stored = localStorage.getItem('live_quiz_session');
-            console.log('[Live Quiz] restoreSession - urlRoomCode:', urlRoomCode, 'stored:', !!stored);
-            
-            // Case 1: URL has code but no stored session
-            // Just pre-fill the code in form (user needs to enter name)
-            if (urlRoomCode && !stored) {
-                console.log('[Live Quiz] URL has code but no session - will pre-fill form');
-                return false;
-            }
-            
-            // Case 2: No stored session at all
-            if (!stored) {
-                console.log('[Live Quiz] No stored session found');
-                return false;
-            }
-            
-            const session = JSON.parse(stored);
-            
-            // Check if session is not too old (30 minutes)
-            const MAX_AGE = 30 * 60 * 1000;
-            if (Date.now() - session.timestamp > MAX_AGE) {
-                console.log('[Live Quiz] Session expired');
-                localStorage.removeItem('live_quiz_session');
-                return false;
-            }
-            
-            // Case 3: URL has code that doesn't match stored session
-            // Clear stored session and let user join the URL code
-            if (urlRoomCode && session.roomCode !== urlRoomCode) {
-                console.log('[Live Quiz] Room code mismatch - URL:', urlRoomCode, 'Stored:', session.roomCode);
-                console.log('[Live Quiz] Will clear stored session and prompt for name');
-                localStorage.removeItem('live_quiz_session');
-                return false;
-            }
-            
-            // Case 4: Has stored session
-            // If URL has no code, redirect to /play/{code}
-            // If URL matches stored code, restore session
-            
-            // Restore state
-            state.sessionId = session.sessionId;
-            state.userId = session.userId;
-            state.displayName = session.displayName;
-            state.roomCode = session.roomCode;
-            state.websocketToken = session.websocketToken;
-            // ALWAYS generate NEW connectionId to trigger multi-device kick
-            state.connectionId = generateConnectionId();
-            
-            console.log('[Live Quiz] Session restored from localStorage with NEW connectionId:', state.connectionId);
-            console.log('[Live Quiz] Room code:', state.roomCode);
-            
-            // Update URL if needed (when user opens /play but has active session)
-            if (!urlRoomCode) {
-                const playUrl = '/play/' + state.roomCode;
-                window.history.replaceState({ roomCode: state.roomCode }, '', playUrl);
-                console.log('[Live Quiz] Redirected to', playUrl);
-            }
-            
-            // Show waiting screen
-            showScreen('quiz-waiting');
-            document.getElementById('waiting-player-name').textContent = state.displayName;
-            document.getElementById('waiting-room-code').textContent = state.roomCode;
-            
-            // Fetch players list
-            fetchPlayersList();
-            
-            // Connect to WebSocket
-            connectWebSocket();
-            
-            return true;
-            
-        } catch (error) {
-            console.error('[Live Quiz] Failed to restore session:', error);
-            localStorage.removeItem('live_quiz_session');
-            return false;
-        }
-    }
     
     /**
      * Check if Socket.io library is loaded
@@ -336,9 +242,6 @@
             if (state.socket) {
                 state.socket.disconnect();
             }
-            
-            // Clear local storage
-            localStorage.removeItem('live_quiz_session');
             
             // Reset state
             state.sessionId = null;
@@ -404,19 +307,7 @@
                 state.roomCode = roomCode;
                 state.websocketToken = data.websocket_token || '';
                 
-                // Save to localStorage for restore after closing tab
-                const sessionData = {
-                    sessionId: state.sessionId,
-                    userId: state.userId,
-                    displayName: state.displayName,
-                    roomCode: state.roomCode,
-                    websocketToken: state.websocketToken,
-                    connectionId: state.connectionId,
-                    timestamp: Date.now()
-                };
-                console.log('[Live Quiz] Saving session to storage:', sessionData);
-                localStorage.setItem('live_quiz_session', JSON.stringify(sessionData));
-                console.log('[Live Quiz] Session saved, verify:', localStorage.getItem('live_quiz_session'));
+                // Note: NO localStorage - server handles session persistence
                 
                 // Update URL without reload using History API
                 const playUrl = '/play/' + roomCode;
@@ -539,6 +430,14 @@
         state.socket.on('session_kicked', (data) => {
             console.log('[Live Quiz] Session kicked - another device joined:', data);
             handleSessionKicked(data);
+        });
+        
+        // Listen for kicked from session by host
+        state.socket.on('kicked_from_session', (data) => {
+            console.log('[PLAYER] ✗ KICKED BY HOST ✗');
+            console.log('[PLAYER] Message:', data.message);
+            console.log('[PLAYER] Data:', data);
+            handleKickedByHost(data);
         });
         
         // Listen for session ended by host - kick all players
@@ -739,8 +638,7 @@
             state.socket.disconnect();
         }
         
-        // Clear local storage
-        localStorage.removeItem('liveQuizSession');
+        // Note: Server has already cleared session
         
         // Leave session via API to clean up server-side
         if (state.sessionId && state.userId) {
@@ -768,9 +666,6 @@
     function handleSessionEnd(data) {
         console.log('Session end:', data);
         
-        // Clear session storage as quiz has ended
-        localStorage.removeItem('live_quiz_session');
-        
         showScreen('quiz-final');
         displayFinalResults(data);
     }
@@ -780,9 +675,9 @@
      * This ensures only ONE device/tab can participate at a time
      */
     function handleForceDisconnect(data) {
-        console.log('[PLAYER] ========================================');
+        console.log('[PLAYER] ========================================')
         console.log('[PLAYER] ✗ FORCE DISCONNECTED - Multi-device detected');
-        console.log('[PLAYER] ========================================');
+        console.log('[PLAYER] ========================================')
         console.log('[PLAYER] Reason:', data.reason);
         console.log('[PLAYER] Message:', data.message);
         console.log('[PLAYER] Timestamp:', new Date(data.timestamp).toLocaleString());
@@ -794,17 +689,16 @@
             connectionId: state.connectionId
         });
         
-        // Disconnect socket immediately
+        // CRITICAL: Disable reconnection to prevent auto-rejoin
         if (state.socket) {
-            console.log('[PLAYER] Disconnecting socket...');
+            console.log('[PLAYER] Disabling reconnection and disconnecting socket...');
+            state.socket.io.opts.reconnection = false; // Disable auto-reconnect
+            state.socket.off(); // Remove all event listeners
             state.socket.disconnect();
-            state.socket = null;
         }
         
-        // Clear ALL session data
-        console.log('[PLAYER] Clearing all session data...');
-        localStorage.removeItem('live_quiz_session');
-        sessionStorage.clear();
+        // Reset client state (server handles session)
+        console.log('[PLAYER] Resetting client state...');
         
         // Reset state completely
         state.sessionId = null;
@@ -829,6 +723,55 @@
     }
     
     /**
+     * Handle when player is kicked by host
+     */
+    function handleKickedByHost(data) {
+        console.log('[PLAYER] === KICKED BY HOST ===');
+        console.log('[PLAYER] Message:', data.message);
+        console.log('[PLAYER] Session before kick:', {
+            sessionId: state.sessionId,
+            userId: state.userId,
+            roomCode: state.roomCode
+        });
+        
+        // CRITICAL: Disable reconnection to prevent auto-rejoin
+        if (state.socket) {
+            console.log('[PLAYER] Disabling reconnection and disconnecting socket...');
+            state.socket.io.opts.reconnection = false; // Disable auto-reconnect
+            state.socket.off(); // Remove all event listeners
+            state.socket.disconnect();
+        }
+        
+        // Reset state completely (server-side session already cleared by kick)
+        console.log('[PLAYER] Resetting client state...');
+        state.sessionId = null;
+        state.userId = null;
+        state.displayName = null;
+        state.roomCode = null;
+        state.websocketToken = null;
+        state.isConnected = false;
+        state.currentQuestion = null;
+        
+        console.log('[PLAYER] State reset complete, showing kicked message...');
+        
+        // Show kicked message
+        const kickMessage = data.message || 'Bạn đã bị kick khỏi phòng bởi host.';
+        showScreen('quiz-lobby');
+        
+        // Show error message
+        const $error = $('#lobby-error');
+        $error.html(`
+            <div class="error-box kicked">
+                <h3>❌ Đã bị kick</h3>
+                <p>${kickMessage}</p>
+                <button onclick="location.reload()" class="btn btn-primary">Quay về trang chủ</button>
+            </div>
+        `).show();
+        
+        console.log('[PLAYER] Kicked message displayed - reconnection disabled');
+    }
+
+    /**
      * Handle when host ends the room and kicks all players
      */
     function handleSessionEndedKicked(data) {
@@ -840,17 +783,16 @@
             roomCode: state.roomCode
         });
         
-        // Disconnect socket immediately
+        // CRITICAL: Disable reconnection to prevent auto-rejoin
         if (state.socket) {
-            console.log('[PLAYER] Disconnecting socket...');
+            console.log('[PLAYER] Disabling reconnection and disconnecting socket...');
+            state.socket.io.opts.reconnection = false; // Disable auto-reconnect
+            state.socket.off(); // Remove all event listeners  
             state.socket.disconnect();
-            state.socket = null;
         }
         
-        // Clear ALL session data
-        console.log('[PLAYER] Clearing localStorage...');
-        localStorage.removeItem('live_quiz_session');
-        sessionStorage.clear();
+        // Reset client state (server handles session)
+        console.log('[PLAYER] Resetting client state...');
         
         // Reset state completely
         state.sessionId = null;

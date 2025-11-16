@@ -446,11 +446,226 @@
                         <div class="player-avatar">${initial}</div>
                         <div class="player-name">${self.escapeHtml(player.display_name)}</div>
                         <div class="player-status">✓ Sẵn sàng</div>
+                        <div class="player-actions">
+                            <button class="btn-kick-player" data-player-id="${playerId}" data-player-name="${self.escapeHtml(player.display_name)}" title="Kick người chơi">
+                                ✕ Kick
+                            </button>
+                            <button class="btn-ban-session" data-player-id="${playerId}" data-player-name="${self.escapeHtml(player.display_name)}" title="Ban khỏi phòng này">
+                                🚫 Ban phòng
+                            </button>
+                            <button class="btn-ban-permanent" data-player-id="${playerId}" data-player-name="${self.escapeHtml(player.display_name)}" title="Ban vĩnh viễn">
+                                ⛔ Ban vĩnh viễn
+                            </button>
+                        </div>
                     </div>
                 `;
             });
             
             $list.html(html);
+            
+            // Bind kick button events
+            $('.btn-kick-player').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const playerId = $(this).data('player-id');
+                const playerName = $(this).data('player-name');
+                self.kickPlayer(playerId, playerName);
+            });
+            
+            // Bind ban from session button events
+            $('.btn-ban-session').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const playerId = $(this).data('player-id');
+                const playerName = $(this).data('player-name');
+                self.banFromSession(playerId, playerName);
+            });
+            
+            // Bind ban permanently button events
+            $('.btn-ban-permanent').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const playerId = $(this).data('player-id');
+                const playerName = $(this).data('player-name');
+                self.banPermanently(playerId, playerName);
+            });
+        },
+        
+        kickPlayer: function(playerId, playerName) {
+            const self = this;
+            
+            // Confirm before kicking
+            if (!confirm('Bạn có chắc muốn kick "' + playerName + '" khỏi phòng?')) {
+                return;
+            }
+            
+            const api = this.getApiConfig();
+            if (!api) {
+                alert('Không thể kick người chơi: API không khả dụng');
+                return;
+            }
+            
+            const kickUrl = api.apiUrl + '/sessions/' + this.sessionId + '/kick-player';
+            console.log('[HOST] === KICKING PLAYER ===');
+            console.log('[HOST] URL:', kickUrl);
+            console.log('[HOST] Session ID:', this.sessionId);
+            console.log('[HOST] Player ID:', playerId);
+            console.log('[HOST] Player Name:', playerName);
+            console.log('[HOST] API Config:', api);
+            
+            // Disable the kick button
+            $('.btn-kick-player[data-player-id="' + playerId + '"]').prop('disabled', true);
+            
+            // Send kick request
+            $.ajax({
+                url: kickUrl,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    user_id: playerId
+                }),
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                success: function(response) {
+                    console.log('[HOST] ✓ Player kicked successfully:', response);
+                    
+                    // Remove player from local list
+                    delete self.players[playerId];
+                    self.updatePlayersList(Object.values(self.players));
+                    
+                    // Show notification
+                    self.showNotification('Đã kick "' + playerName + '" khỏi phòng', 'success');
+                },
+                error: function(xhr, status, error) {
+                    console.error('[HOST] ✗ Error kicking player:', {
+                        status: status,
+                        error: error,
+                        statusCode: xhr.status,
+                        statusText: xhr.statusText,
+                        response: xhr.responseJSON,
+                        responseText: xhr.responseText
+                    });
+                    alert('Không thể kick người chơi: ' + (xhr.responseJSON?.message || error));
+                    
+                    // Re-enable button
+                    $('.btn-kick-player[data-player-id="' + playerId + '"]').prop('disabled', false);
+                }
+            });
+        },
+        
+        banFromSession: function(playerId, playerName) {
+            const self = this;
+            
+            // Confirm before banning
+            if (!confirm('Bạn có chắc muốn ban "' + playerName + '" khỏi phòng này?\n\nNgười chơi sẽ không thể tham gia lại phòng này.')) {
+                return;
+            }
+            
+            const api = this.getApiConfig();
+            if (!api) {
+                alert('Không thể ban người chơi: API không khả dụng');
+                return;
+            }
+            
+            const banUrl = api.apiUrl + '/sessions/' + this.sessionId + '/ban-from-session';
+            console.log('[HOST] === BANNING FROM SESSION ===');
+            console.log('[HOST] URL:', banUrl);
+            console.log('[HOST] Player ID:', playerId);
+            console.log('[HOST] Player Name:', playerName);
+            
+            // Send ban request
+            $.ajax({
+                url: banUrl,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    user_id: playerId
+                }),
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                success: function(response) {
+                    console.log('[HOST] ✓ Player banned from session:', response);
+                    
+                    // Remove player from local list
+                    delete self.players[playerId];
+                    self.updatePlayersList(Object.values(self.players));
+                    
+                    // Show notification
+                    self.showNotification('Đã ban "' + playerName + '" khỏi phòng này', 'success');
+                },
+                error: function(xhr, status, error) {
+                    console.error('[HOST] ✗ Error banning player:', xhr);
+                    alert('Không thể ban người chơi: ' + (xhr.responseJSON?.message || error));
+                }
+            });
+        },
+        
+        banPermanently: function(playerId, playerName) {
+            const self = this;
+            
+            // Confirm before permanent ban
+            if (!confirm('⚠️ BAN VĨNH VIỄN\n\nBạn có chắc muốn ban vĩnh viễn "' + playerName + '"?\n\nNgười chơi này sẽ KHÔNG THỂ tham gia BẤT KỲ phòng nào do bạn tạo ra.')) {
+                return;
+            }
+            
+            const api = this.getApiConfig();
+            if (!api) {
+                alert('Không thể ban người chơi: API không khả dụng');
+                return;
+            }
+            
+            const banUrl = api.apiUrl + '/sessions/' + this.sessionId + '/ban-permanently';
+            console.log('[HOST] === BANNING PERMANENTLY ===');
+            console.log('[HOST] URL:', banUrl);
+            console.log('[HOST] Player ID:', playerId);
+            console.log('[HOST] Player Name:', playerName);
+            
+            // Send ban request
+            $.ajax({
+                url: banUrl,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    user_id: playerId
+                }),
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                success: function(response) {
+                    console.log('[HOST] ✓ Player banned permanently:', response);
+                    
+                    // Remove player from local list
+                    delete self.players[playerId];
+                    self.updatePlayersList(Object.values(self.players));
+                    
+                    // Show notification
+                    self.showNotification('⛔ Đã ban vĩnh viễn "' + playerName + '"', 'warning');
+                },
+                error: function(xhr, status, error) {
+                    console.error('[HOST] ✗ Error banning player permanently:', xhr);
+                    alert('Không thể ban người chơi: ' + (xhr.responseJSON?.message || error));
+                }
+            });
+        },
+        
+        showNotification: function(message, type) {
+            // Create notification element
+            const $notification = $('<div class="host-notification ' + type + '">' + message + '</div>');
+            $('body').append($notification);
+            
+            // Show and auto-hide
+            setTimeout(function() {
+                $notification.addClass('show');
+            }, 10);
+            
+            setTimeout(function() {
+                $notification.removeClass('show');
+                setTimeout(function() {
+                    $notification.remove();
+                }, 300);
+            }, 3000);
         },
         
         startQuiz: function() {

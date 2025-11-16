@@ -128,6 +128,27 @@ class Live_Quiz_REST_API {
             'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
         ));
         
+        // Kick player (for host)
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/kick-player', array(
+            'methods' => 'POST',
+            'callback' => array(__CLASS__, 'kick_player'),
+            'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
+        ));
+        
+        // Ban player from session (for host)
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/ban-from-session', array(
+            'methods' => 'POST',
+            'callback' => array(__CLASS__, 'ban_from_session'),
+            'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
+        ));
+        
+        // Ban player permanently (for host)
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/ban-permanently', array(
+            'methods' => 'POST',
+            'callback' => array(__CLASS__, 'ban_permanently'),
+            'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
+        ));
+        
         // Phase 2: Test connection
         register_rest_route(self::NAMESPACE, '/settings/test-phase2', array(
             'methods' => 'POST',
@@ -430,9 +451,24 @@ class Live_Quiz_REST_API {
             return new WP_Error('session_not_found', __('Không tìm thấy phòng', 'live-quiz'), array('status' => 404));
         }
         
-        // Check for duplicate display names and add username if needed
+        // Get session and check bans
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
         $current_user = wp_get_current_user();
         if ($current_user->ID) {
+            // CHECK BAN STATUS
+            // 1. Check if banned from this session
+            if (Live_Quiz_Session_Manager::is_banned_from_session($session_id, $current_user->ID)) {
+                error_log('[LiveQuiz] User ' . $current_user->ID . ' is banned from session ' . $session_id);
+                return new WP_Error('banned_from_session', __('Bạn đã bị ban khỏi phòng này', 'live-quiz'), array('status' => 403));
+            }
+            
+            // 2. Check if permanently banned by host
+            $host_id = $session['host_id'];
+            if (Live_Quiz_Session_Manager::is_permanently_banned($host_id, $current_user->ID)) {
+                error_log('[LiveQuiz] User ' . $current_user->ID . ' is permanently banned by host ' . $host_id);
+                return new WP_Error('permanently_banned', __('Bạn đã bị ban vĩnh viễn bởi host này', 'live-quiz'), array('status' => 403));
+            }
+            
             $participants = Live_Quiz_Session_Manager::get_participants($session_id);
             
             // Check if display name already exists
@@ -750,6 +786,167 @@ class Live_Quiz_REST_API {
         
         return rest_ensure_response(array(
             'success' => true,
+        ));
+    }
+    
+    /**
+     * Kick player from session
+     */
+    public static function kick_player($request) {
+        $session_id = $request->get_param('id');
+        $user_id = $request->get_param('user_id');
+        
+        // Debug log to file
+        $log_file = LIVE_QUIZ_PLUGIN_DIR . 'kick-debug.log';
+        $log_msg = sprintf("[%s] KICK REQUEST - Session: %s, User: %s\n", 
+            date('Y-m-d H:i:s'), $session_id, $user_id);
+        file_put_contents($log_file, $log_msg, FILE_APPEND);
+        
+        error_log('[LiveQuiz] === KICK PLAYER REQUEST ===');
+        error_log('[LiveQuiz] Session ID: ' . $session_id);
+        error_log('[LiveQuiz] User ID: ' . $user_id);
+        
+        if (!$user_id) {
+            error_log('[LiveQuiz] !!! ERROR: Missing user_id');
+            return new WP_Error('missing_user_id', __('Thiếu ID người chơi', 'live-quiz'), array('status' => 400));
+        }
+        
+        // Get session data
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        if (!$session) {
+            error_log('[LiveQuiz] !!! ERROR: Session not found');
+            return new WP_Error('session_not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
+        }
+        
+        // Use Session Manager to kick player
+        error_log('[LiveQuiz] Calling Session Manager kick_player()');
+        $result = Live_Quiz_Session_Manager::kick_player($session_id, $user_id);
+        
+        if (!$result['success']) {
+            error_log('[LiveQuiz] !!! Session Manager kick failed: ' . $result['message']);
+            return new WP_Error('cannot_kick', $result['message'], array('status' => 400));
+        }
+        
+        error_log('[LiveQuiz] Session Manager kick SUCCESS');
+        
+        // Notify WebSocket server to disconnect the player
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            error_log('[LiveQuiz] Calling WebSocket Helper to kick player...');
+            $ws_result = Live_Quiz_WebSocket_Helper::kick_player($session_id, $user_id);
+            if ($ws_result) {
+                error_log('[LiveQuiz] WebSocket kick SUCCESS');
+            } else {
+                error_log('[LiveQuiz] !!! WebSocket kick FAILED (but continuing...)');
+            }
+        } else {
+            error_log('[LiveQuiz] !!! WebSocket Helper class not found');
+        }
+        
+        error_log('[LiveQuiz] === KICK PLAYER COMPLETE ===');
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => __('Đã kick người chơi thành công', 'live-quiz'),
+        ));
+    }
+    
+    /**
+     * Ban player from session
+     */
+    public static function ban_from_session($request) {
+        $session_id = $request->get_param('id');
+        $user_id = $request->get_param('user_id');
+        
+        error_log('[LiveQuiz] === BAN FROM SESSION REQUEST ===');
+        error_log('[LiveQuiz] Session ID: ' . $session_id);
+        error_log('[LiveQuiz] User ID: ' . $user_id);
+        
+        if (!$user_id) {
+            error_log('[LiveQuiz] !!! ERROR: Missing user_id');
+            return new WP_Error('missing_user_id', __('Thiếu ID người chơi', 'live-quiz'), array('status' => 400));
+        }
+        
+        // Ban the player from this session
+        $result = Live_Quiz_Session_Manager::ban_from_session($session_id, $user_id);
+        
+        if (!$result['success']) {
+            error_log('[LiveQuiz] !!! Ban from session failed: ' . $result['message']);
+            return new WP_Error('cannot_ban', $result['message'], array('status' => 400));
+        }
+        
+        error_log('[LiveQuiz] Ban from session SUCCESS');
+        
+        // Notify WebSocket to kick player
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            error_log('[LiveQuiz] Calling WebSocket Helper to kick player...');
+            $ws_result = Live_Quiz_WebSocket_Helper::kick_player($session_id, $user_id);
+            if ($ws_result) {
+                error_log('[LiveQuiz] WebSocket kick SUCCESS');
+            } else {
+                error_log('[LiveQuiz] !!! WebSocket kick FAILED (but continuing...)');
+            }
+        }
+        
+        error_log('[LiveQuiz] === BAN FROM SESSION COMPLETE ===');
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => $result['message'],
+        ));
+    }
+    
+    /**
+     * Ban player permanently from all host's sessions
+     */
+    public static function ban_permanently($request) {
+        $session_id = $request->get_param('id');
+        $user_id = $request->get_param('user_id');
+        
+        error_log('[LiveQuiz] === BAN PERMANENTLY REQUEST ===');
+        error_log('[LiveQuiz] Session ID: ' . $session_id);
+        error_log('[LiveQuiz] User ID: ' . $user_id);
+        
+        if (!$user_id) {
+            error_log('[LiveQuiz] !!! ERROR: Missing user_id');
+            return new WP_Error('missing_user_id', __('Thiếu ID người chơi', 'live-quiz'), array('status' => 400));
+        }
+        
+        // Get session to find host ID
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        if (!$session) {
+            error_log('[LiveQuiz] !!! ERROR: Session not found');
+            return new WP_Error('session_not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
+        }
+        
+        $host_id = $session['host_id'];
+        error_log('[LiveQuiz] Host ID: ' . $host_id);
+        
+        // Ban the player permanently
+        $result = Live_Quiz_Session_Manager::ban_permanently($host_id, $user_id);
+        
+        if (!$result['success']) {
+            error_log('[LiveQuiz] !!! Ban permanently failed: ' . $result['message']);
+            return new WP_Error('cannot_ban', $result['message'], array('status' => 400));
+        }
+        
+        error_log('[LiveQuiz] Ban permanently SUCCESS');
+        
+        // Notify WebSocket to kick player from current session
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            error_log('[LiveQuiz] Calling WebSocket Helper to kick player...');
+            $ws_result = Live_Quiz_WebSocket_Helper::kick_player($session_id, $user_id);
+            if ($ws_result) {
+                error_log('[LiveQuiz] WebSocket kick SUCCESS');
+            } else {
+                error_log('[LiveQuiz] !!! WebSocket kick FAILED (but continuing...)');
+            }
+        }
+        
+        error_log('[LiveQuiz] === BAN PERMANENTLY COMPLETE ===');
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => $result['message'],
         ));
     }
     

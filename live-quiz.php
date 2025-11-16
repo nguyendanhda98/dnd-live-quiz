@@ -76,6 +76,9 @@ final class Live_Quiz {
         
         // JWT Helper for WebSocket authentication
         require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-jwt-helper.php';
+        
+        // WebSocket Helper for API communication
+        require_once LIVE_QUIZ_PLUGIN_DIR . 'includes/class-websocket-helper.php';
     }
     
     /**
