@@ -68,6 +68,257 @@
 }
 
 /* Lobby Screen */
+.lobby-layout {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+@media (max-width: 1024px) {
+    .lobby-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Settings Panel */
+.lobby-settings-panel {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.lobby-settings-panel h3 {
+    margin: 0 0 20px 0;
+    font-size: 20px;
+    color: #333;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 10px;
+}
+
+.settings-section {
+    margin-bottom: 25px;
+}
+
+.settings-section h4 {
+    font-size: 15px;
+    color: #333;
+    margin: 0 0 12px 0;
+    font-weight: 600;
+}
+
+.radio-option, .checkbox-option {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    margin-bottom: 8px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.radio-option:hover, .checkbox-option:hover {
+    border-color: #667eea;
+    background: #f5f7fa;
+}
+
+.radio-option input, .checkbox-option input {
+    margin-right: 10px;
+}
+
+.quiz-search-container {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.quiz-search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    margin-top: 5px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.quiz-results-list {
+    padding: 5px;
+}
+
+.quiz-result-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 5px;
+    transition: background 0.2s;
+}
+
+.quiz-result-item:hover {
+    background: #f5f7fa;
+}
+
+.quiz-result-item.selected {
+    background: #e0e7ff;
+}
+
+.btn-select-quiz {
+    padding: 4px 12px;
+    font-size: 12px;
+    border: 1px solid #667eea;
+    background: white;
+    color: #667eea;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-select-quiz:hover {
+    background: #667eea;
+    color: white;
+}
+
+.selected-quizzes-list {
+    min-height: 50px;
+}
+
+.no-selection {
+    color: #999;
+    font-size: 13px;
+    font-style: italic;
+    margin: 0;
+}
+
+.selected-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.selected-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #e0e7ff;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.btn-remove {
+    background: none;
+    border: none;
+    color: #ef4444;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.btn-remove:hover {
+    background: #fee2e2;
+}
+
+.random-count-input {
+    margin-top: 10px;
+    padding: 10px;
+    background: #f9fafb;
+    border-radius: 6px;
+}
+
+.number-input {
+    width: 100px;
+    padding: 6px 10px;
+    border: 2px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.hint {
+    font-size: 12px;
+    color: #666;
+    margin-left: 10px;
+}
+
+.settings-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background: #e0f2fe;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #0369a1;
+    margin-top: 20px;
+}
+
+.settings-info .info-icon {
+    font-size: 16px;
+}
+
+.settings-info .info-text {
+    flex: 1;
+}
+
+.btn-block {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-secondary {
+    background: #667eea;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #5568d3;
+}
+
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Lobby Info Panel */
+.lobby-info-panel {
+    background: white;
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    text-align: center;
+}
+
 .lobby-card {
     background: white;
     border-radius: 20px;

@@ -490,7 +490,7 @@ final class Live_Quiz {
             'live-quiz-host',
             LIVE_QUIZ_PLUGIN_URL . 'assets/js/host.js',
             array('jquery', 'socketio'),
-            LIVE_QUIZ_VERSION,
+            LIVE_QUIZ_VERSION . '-' . time(),
             true
         );
         
@@ -499,7 +499,7 @@ final class Live_Quiz {
             'live-quiz-host-setup',
             LIVE_QUIZ_PLUGIN_URL . 'assets/js/host-setup.js',
             array('jquery'),
-            LIVE_QUIZ_VERSION,
+            LIVE_QUIZ_VERSION . '-' . time(),
             true
         );
         

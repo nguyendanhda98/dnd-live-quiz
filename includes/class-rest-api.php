@@ -187,6 +187,20 @@ class Live_Quiz_REST_API {
             'callback' => array(__CLASS__, 'create_session_frontend'),
             'permission_callback' => array(__CLASS__, 'check_teacher_permission_with_cookie'),
         ));
+        
+        // Frontend: Quick create empty session (requires authentication)
+        register_rest_route(self::NAMESPACE, '/sessions/create-quick', array(
+            'methods' => 'POST',
+            'callback' => array(__CLASS__, 'create_session_quick'),
+            'permission_callback' => array(__CLASS__, 'check_teacher_permission_with_cookie'),
+        ));
+        
+        // Update session settings before start (requires host permission)
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/settings', array(
+            'methods' => 'PUT',
+            'callback' => array(__CLASS__, 'update_session_settings'),
+            'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
+        ));
     }
     
     /**
@@ -375,6 +389,10 @@ class Live_Quiz_REST_API {
         if (!$session) {
             return new WP_Error('not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
         }
+        
+        // Add configuration status
+        $configured = get_post_meta($session_id, '_session_configured', true);
+        $session['configured'] = $configured ? true : false;
         
         // Don't expose all questions if not admin
         if (!current_user_can('manage_options')) {
@@ -1113,6 +1131,7 @@ class Live_Quiz_REST_API {
         $quiz_ids = $request->get_param('quiz_ids');
         $quiz_type = $request->get_param('quiz_type'); // 'all' or 'random'
         $question_count = $request->get_param('question_count'); // Only for random mode
+        $question_order = $request->get_param('question_order'); // 'sequential' or 'random'
         $session_name = $request->get_param('session_name'); // Optional custom name
         
         if (empty($quiz_ids) || !is_array($quiz_ids)) {
@@ -1155,6 +1174,11 @@ class Live_Quiz_REST_API {
             }
         }
         
+        // Handle question order - shuffle if random order is selected
+        if ($question_order === 'random') {
+            shuffle($all_questions);
+        }
+        
         // Create session title
         if (!empty($session_name)) {
             $session_title = $session_name;
@@ -1182,6 +1206,7 @@ class Live_Quiz_REST_API {
         
         // Save all quiz IDs and merged questions
         update_post_meta($session_id, '_session_quiz_ids', $quiz_ids);
+        update_post_meta($session_id, '_session_question_order', $question_order);
         
         // Generate room code
         $room_code = self::generate_room_code();
@@ -1212,6 +1237,158 @@ class Live_Quiz_REST_API {
             'data' => array(
                 'session_id' => $session_id,
                 'room_code' => $room_code,
+                'question_count' => count($all_questions),
+            ),
+        ));
+    }
+    
+    /**
+     * Quick create empty session (no quiz selected yet)
+     */
+    public static function create_session_quick($request) {
+        $session_title = sprintf(
+            __('Phòng Quiz - %s', 'live-quiz'),
+            date('d/m/Y H:i')
+        );
+        
+        $session_id = wp_insert_post(array(
+            'post_type' => 'live_quiz_session',
+            'post_title' => $session_title,
+            'post_status' => 'publish',
+            'post_author' => get_current_user_id(),
+        ));
+        
+        if (is_wp_error($session_id)) {
+            return $session_id;
+        }
+        
+        // Generate room code
+        $room_code = self::generate_room_code();
+        update_post_meta($session_id, '_session_room_code', $room_code);
+        update_post_meta($session_id, '_session_status', 'lobby');
+        update_post_meta($session_id, '_session_current_question', 0);
+        update_post_meta($session_id, '_session_configured', false); // Mark as not configured yet
+        
+        // Clear cache
+        Live_Quiz_Session_Manager::clear_session_cache($session_id);
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'data' => array(
+                'session_id' => $session_id,
+                'room_code' => $room_code,
+            ),
+        ));
+    }
+    
+    /**
+     * Update session settings (quiz selection, question mode, etc.)
+     */
+    public static function update_session_settings($request) {
+        $session_id = $request->get_param('id');
+        $quiz_ids = $request->get_param('quiz_ids');
+        $quiz_type = $request->get_param('quiz_type'); // 'all' or 'random'
+        $question_count = $request->get_param('question_count');
+        $question_order = $request->get_param('question_order'); // 'sequential' or 'random'
+        $hide_leaderboard = $request->get_param('hide_leaderboard'); // true/false
+        $joining_open = $request->get_param('joining_open'); // true/false
+        $show_pin = $request->get_param('show_pin'); // true/false
+        $session_name = $request->get_param('session_name');
+        
+        if (empty($quiz_ids) || !is_array($quiz_ids)) {
+            return new WP_Error('missing_quiz_ids', __('Phải chọn ít nhất một bộ câu hỏi', 'live-quiz'), array('status' => 400));
+        }
+        
+        // Collect all questions from selected quizzes
+        $all_questions = array();
+        $quiz_titles = array();
+        
+        foreach ($quiz_ids as $quiz_id) {
+            $quiz = get_post($quiz_id);
+            if (!$quiz || $quiz->post_type !== 'live_quiz') {
+                continue;
+            }
+            
+            $quiz_titles[] = $quiz->post_title;
+            $questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
+            
+            if (is_string($questions)) {
+                $questions = json_decode($questions, true);
+            }
+            $questions = $questions ? $questions : array();
+            
+            if (!empty($questions)) {
+                $all_questions = array_merge($all_questions, $questions);
+            }
+        }
+        
+        if (empty($all_questions)) {
+            return new WP_Error('no_questions', __('Các bộ câu hỏi đã chọn không có câu hỏi nào', 'live-quiz'), array('status' => 400));
+        }
+        
+        // Handle question mode (select random subset)
+        if ($quiz_type === 'random' && $question_count > 0) {
+            if ($question_count < count($all_questions)) {
+                shuffle($all_questions);
+                $all_questions = array_slice($all_questions, 0, $question_count);
+            }
+        }
+        
+        // Handle question order - shuffle if random order is selected
+        if ($question_order === 'random') {
+            shuffle($all_questions);
+        }
+        
+        // Update session title if provided
+        if (!empty($session_name)) {
+            $session_title = $session_name;
+        } else {
+            $session_title = sprintf(
+                __('Phiên: %s - %s', 'live-quiz'),
+                implode(', ', array_slice($quiz_titles, 0, 2)) . (count($quiz_titles) > 2 ? '...' : ''),
+                date('Y-m-d H:i')
+            );
+        }
+        
+        wp_update_post(array(
+            'ID' => $session_id,
+            'post_title' => $session_title,
+        ));
+        
+        // Create or update merged quiz
+        $merged_quiz_id = get_post_meta($session_id, '_session_quiz_id', true);
+        
+        if (!$merged_quiz_id || !get_post($merged_quiz_id)) {
+            // Create new merged quiz
+            $merged_quiz_id = wp_insert_post(array(
+                'post_type' => 'live_quiz',
+                'post_title' => $session_title . ' (Merged)',
+                'post_status' => 'private',
+                'post_author' => get_current_user_id(),
+            ));
+        }
+        
+        if (!is_wp_error($merged_quiz_id)) {
+            update_post_meta($merged_quiz_id, '_live_quiz_questions', $all_questions);
+            update_post_meta($session_id, '_session_quiz_id', $merged_quiz_id);
+            update_post_meta($session_id, '_session_is_merged', true);
+        }
+        
+        // Save settings metadata
+        update_post_meta($session_id, '_session_quiz_ids', $quiz_ids);
+        update_post_meta($session_id, '_session_question_order', $question_order);
+        update_post_meta($session_id, '_session_hide_leaderboard', $hide_leaderboard ? true : false);
+        update_post_meta($session_id, '_session_joining_open', $joining_open ? true : false);
+        update_post_meta($session_id, '_session_show_pin', $show_pin ? true : false);
+        update_post_meta($session_id, '_session_configured', true); // Mark as configured
+        
+        // Clear cache
+        Live_Quiz_Session_Manager::clear_session_cache($session_id);
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'data' => array(
+                'session_id' => $session_id,
                 'question_count' => count($all_questions),
             ),
         ));

@@ -22,6 +22,28 @@
         currentQuestionIndex: 0,
         players: {},
         connectionId: null, // Track connection for multi-device enforcement
+        selectedQuizzes: [],
+        searchTimeout: null,
+        isConfigured: false,
+        
+        // Helper to get API config safely
+        getApiConfig: function() {
+            console.log('[HOST] Getting API config...');
+            console.log('[HOST] window.liveQuizPlayer:', typeof window.liveQuizPlayer !== 'undefined' ? 'exists' : 'undefined');
+            console.log('[HOST] liveQuizPlayer:', typeof liveQuizPlayer !== 'undefined' ? 'exists' : 'undefined');
+            
+            if (typeof window.liveQuizPlayer !== 'undefined') {
+                console.log('[HOST] Using window.liveQuizPlayer');
+                return window.liveQuizPlayer;
+            }
+            if (typeof liveQuizPlayer !== 'undefined') {
+                console.log('[HOST] Using liveQuizPlayer');
+                return liveQuizPlayer;
+            }
+            console.error('[HOST] API config not found!');
+            console.error('[HOST] Available window properties:', Object.keys(window).filter(k => k.includes('Quiz')));
+            return null;
+        },
         
         init: function() {
             // Get session data from window
@@ -62,9 +84,167 @@
             // End Session button
             $('#end-session-btn').on('click', function(e) {
                 e.preventDefault(); // Prevent any default behavior
-                console.log('[HOST] End session button clicked');
+                console.log('[HOST] ===========================================');
+                console.log('[HOST] End session button CLICK EVENT TRIGGERED');
+                console.log('[HOST] Button element:', this);
+                console.log('[HOST] Button exists:', $('#end-session-btn').length);
+                console.log('[HOST] ===========================================');
                 self.endSession();
             });
+            
+            // Debug: Check if button exists on load
+            console.log('[HOST] Checking end session button on init...');
+            console.log('[HOST] #end-session-btn exists:', $('#end-session-btn').length);
+            console.log('[HOST] #end-session-btn element:', $('#end-session-btn')[0]);
+            
+            // Settings Panel Events
+            $('#lobby-quiz-search').on('input', function() {
+                clearTimeout(self.searchTimeout);
+                const term = $(this).val().trim();
+                if (term.length >= 1) {
+                    self.searchTimeout = setTimeout(function() {
+                        self.searchQuizzes(term);
+                    }, 300);
+                } else {
+                    $('#lobby-quiz-results').hide();
+                }
+            });
+            
+            $('input[name="lobby_quiz_type"]').on('change', function() {
+                if ($(this).val() === 'random') {
+                    $('#lobby-random-count').slideDown();
+                } else {
+                    $('#lobby-random-count').slideUp();
+                }
+            });
+            
+            // Enable start button when at least one quiz is selected
+            $(document).on('change', '#lobby-selected-quizzes', function() {
+                if (self.selectedQuizzes.length > 0) {
+                    $('#start-quiz-btn').prop('disabled', false);
+                } else {
+                    $('#start-quiz-btn').prop('disabled', true);
+                }
+            });
+        },
+        
+        searchQuizzes: function(term) {
+            const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
+            
+            const $results = $('#lobby-quiz-results');
+            
+            $results.html('<div class="search-loading">Đang tìm...</div>').show();
+            
+            $.ajax({
+                url: api.apiUrl + '/quizzes/search',
+                method: 'GET',
+                data: { s: term },
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.data.length > 0) {
+                        self.renderQuizResults(response.data);
+                    } else {
+                        $results.html('<div class="no-results">Không tìm thấy</div>');
+                    }
+                },
+                error: function() {
+                    $results.html('<div class="error">Lỗi tìm kiếm</div>');
+                }
+            });
+        },
+        
+        renderQuizResults: function(quizzes) {
+            const self = this;
+            const $results = $('#lobby-quiz-results');
+            
+            let html = '<div class="quiz-results-list">';
+            quizzes.forEach(function(quiz) {
+                const isSelected = self.selectedQuizzes.some(q => q.id === quiz.id);
+                html += `
+                    <div class="quiz-result-item ${isSelected ? 'selected' : ''}" data-quiz-id="${quiz.id}">
+                        <span>${quiz.title} (${quiz.question_count} câu)</span>
+                        <button class="btn-select-quiz" data-quiz-id="${quiz.id}" data-quiz-title="${quiz.title}" data-question-count="${quiz.question_count}">
+                            ${isSelected ? 'Bỏ' : 'Chọn'}
+                        </button>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            $results.html(html).show();
+            
+            $('.btn-select-quiz').on('click', function() {
+                const quizId = parseInt($(this).data('quiz-id'));
+                const quizTitle = $(this).data('quiz-title');
+                const questionCount = parseInt($(this).data('question-count'));
+                self.toggleQuizSelection(quizId, quizTitle, questionCount);
+            });
+        },
+        
+        toggleQuizSelection: function(quizId, quizTitle, questionCount) {
+            const index = this.selectedQuizzes.findIndex(q => q.id === quizId);
+            
+            if (index > -1) {
+                this.selectedQuizzes.splice(index, 1);
+            } else {
+                this.selectedQuizzes.push({
+                    id: quizId,
+                    title: quizTitle,
+                    question_count: questionCount
+                });
+            }
+            
+            this.updateSelectedQuizzes();
+            this.updateStartButton();
+            
+            // Refresh search results
+            const term = $('#lobby-quiz-search').val().trim();
+            if (term.length >= 1) {
+                this.searchQuizzes(term);
+            }
+        },
+        
+        updateSelectedQuizzes: function() {
+            const $container = $('#lobby-selected-quizzes');
+            
+            if (this.selectedQuizzes.length === 0) {
+                $container.html('<p class="no-selection">Chưa chọn bộ câu hỏi</p>');
+                return;
+            }
+            
+            const self = this;
+            let html = '<div class="selected-list">';
+            this.selectedQuizzes.forEach(function(quiz) {
+                html += `
+                    <div class="selected-item">
+                        <span>${quiz.title} (${quiz.question_count} câu)</span>
+                        <button class="btn-remove" data-quiz-id="${quiz.id}">×</button>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            $container.html(html);
+            
+            $('.btn-remove').on('click', function() {
+                const quizId = parseInt($(this).data('quiz-id'));
+                const quiz = self.selectedQuizzes.find(q => q.id === quizId);
+                if (quiz) {
+                    self.toggleQuizSelection(quizId, quiz.title, quiz.question_count);
+                }
+            });
+        },
+        
+        updateStartButton: function() {
+            if (this.selectedQuizzes.length > 0) {
+                $('#start-quiz-btn').prop('disabled', false);
+            } else {
+                $('#start-quiz-btn').prop('disabled', true);
+            }
         },
         
         connectWebSocket: function() {
@@ -188,12 +368,14 @@
         
         fetchPlayers: function() {
             const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
             
             $.ajax({
-                url: liveQuizPlayer.apiUrl + '/sessions/' + this.sessionId + '/players',
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/players',
                 method: 'GET',
                 headers: {
-                    'X-WP-Nonce': liveQuizPlayer.nonce
+                    'X-WP-Nonce': api.nonce
                 },
                 success: function(response) {
                     console.log('Fetched players:', response);
@@ -287,23 +469,71 @@
         
         startQuiz: function() {
             const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
             
+            // Validate settings
+            if (this.selectedQuizzes.length === 0) {
+                alert('Vui lòng chọn ít nhất một bộ câu hỏi');
+                return;
+            }
+            
+            // Collect settings
+            const quizIds = this.selectedQuizzes.map(q => q.id);
+            const quizType = $('input[name="lobby_quiz_type"]:checked').val();
+            const questionCount = quizType === 'random' ? parseInt($('#lobby-question-count').val()) : null;
+            const questionOrder = $('input[name="lobby_question_order"]:checked').val();
+            const hideLeaderboard = $('#lobby-hide-leaderboard').is(':checked');
+            const joiningOpen = $('#lobby-joining-open').is(':checked');
+            const showPin = $('#lobby-show-pin').is(':checked');
+            
+            // Disable start button
+            $('#start-quiz-btn').prop('disabled', true).text('⏳ Đang khởi động...');
+            
+            // First, update settings
             $.ajax({
-                url: liveQuizPlayer.apiUrl + '/sessions/' + this.sessionId + '/start',
-                method: 'POST',
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/settings',
+                method: 'PUT',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    quiz_ids: quizIds,
+                    quiz_type: quizType,
+                    question_count: questionCount,
+                    question_order: questionOrder,
+                    hide_leaderboard: hideLeaderboard,
+                    joining_open: joiningOpen,
+                    show_pin: showPin
+                }),
                 headers: {
-                    'X-WP-Nonce': liveQuizPlayer.nonce
+                    'X-WP-Nonce': api.nonce
                 },
                 success: function(response) {
                     if (response.success) {
-                        console.log('Quiz started');
-                        // Switch to question screen
-                        self.showScreen('host-question');
-                        $('#end-session-btn').show();
+                        // Then start the quiz
+                        $.ajax({
+                            url: api.apiUrl + '/sessions/' + self.sessionId + '/start',
+                            method: 'POST',
+                            headers: {
+                                'X-WP-Nonce': api.nonce
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    console.log('Quiz started');
+                                    // Switch to question screen
+                                    self.showScreen('host-question');
+                                    $('#end-session-btn').show();
+                                }
+                            },
+                            error: function(xhr) {
+                                alert('Có lỗi khi bắt đầu quiz: ' + (xhr.responseJSON ? xhr.responseJSON.message : 'Unknown error'));
+                                $('#start-quiz-btn').prop('disabled', false).text('▶️ Bắt đầu Quiz');
+                            }
+                        });
                     }
                 },
                 error: function(xhr) {
-                    alert('Có lỗi khi bắt đầu quiz: ' + xhr.responseJSON.message);
+                    alert('Lỗi lưu cấu hình: ' + (xhr.responseJSON ? xhr.responseJSON.message : 'Unknown error'));
+                    $('#start-quiz-btn').prop('disabled', false).text('▶️ Bắt đầu Quiz');
                 }
             });
         },
@@ -378,17 +608,19 @@
             this.updateAnswerStats();
         },
         
-        updateAnswerStats: function() {
+        fetchQuestionStats: function() {
             const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
             
             $.ajax({
-                url: liveQuizPlayer.apiUrl + '/sessions/' + this.sessionId + '/question-stats',
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/question-stats',
                 method: 'GET',
                 data: {
                     question_index: this.currentQuestionIndex
                 },
                 headers: {
-                    'X-WP-Nonce': liveQuizPlayer.nonce
+                    'X-WP-Nonce': api.nonce
                 },
                 success: function(response) {
                     if (response.success && response.stats) {
@@ -422,14 +654,17 @@
             $('#answer-stats').show();
         },
         
-        endQuestion: function() {
+        showResults: function() {
             const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
             
+            // End question first to calculate scores
             $.ajax({
-                url: liveQuizPlayer.apiUrl + '/sessions/' + this.sessionId + '/end-question',
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/end-question',
                 method: 'POST',
                 headers: {
-                    'X-WP-Nonce': liveQuizPlayer.nonce
+                    'X-WP-Nonce': api.nonce
                 },
                 success: function(response) {
                     console.log('Question ended');
@@ -467,12 +702,14 @@
         
         nextQuestion: function() {
             const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
             
             $.ajax({
-                url: liveQuizPlayer.apiUrl + '/sessions/' + this.sessionId + '/next',
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/next',
                 method: 'POST',
                 headers: {
-                    'X-WP-Nonce': liveQuizPlayer.nonce
+                    'X-WP-Nonce': api.nonce
                 },
                 success: function(response) {
                     console.log('Next question');
@@ -494,16 +731,35 @@
         },
         
         endSession: function() {
-            const self = this;
+            console.log('[HOST] ==========================================');
+            console.log('[HOST] END SESSION BUTTON CLICKED');
+            console.log('[HOST] ==========================================');
             
-            if (!confirm('Bạn có chắc chắn muốn kết thúc phòng này? Tất cả học viên sẽ bị đá ra.')) {
+            const self = this;
+            const api = this.getApiConfig();
+            
+            if (!api) {
+                console.error('[HOST] Failed to get API config!');
+                alert('Không thể kết nối API. Vui lòng tải lại trang.');
                 return;
             }
             
-            const endUrl = liveQuizPlayer.apiUrl + '/sessions/' + this.sessionId + '/end';
+            console.log('[HOST] API Config:', {
+                apiUrl: api.apiUrl,
+                hasNonce: !!api.nonce,
+                sessionId: this.sessionId
+            });
+            
+            if (!confirm('Bạn có chắc chắn muốn kết thúc phòng này? Tất cả học viên sẽ bị đá ra.')) {
+                console.log('[HOST] User cancelled end session');
+                return;
+            }
+            
+            const endUrl = api.apiUrl + '/sessions/' + this.sessionId + '/end';
             console.log('[HOST] Ending room and kicking all players...', {
                 sessionId: this.sessionId,
-                url: endUrl
+                url: endUrl,
+                method: 'POST'
             });
             
             // Disable the button to prevent multiple clicks
@@ -513,7 +769,7 @@
                 url: endUrl,
                 method: 'POST',
                 headers: {
-                    'X-WP-Nonce': liveQuizPlayer.nonce
+                    'X-WP-Nonce': api.nonce
                 },
                 timeout: 10000, // 10 second timeout
                 success: function(response) {
@@ -529,14 +785,28 @@
                     }, 1500);
                 },
                 error: function(xhr, status, error) {
-                    console.error('[HOST] ✗ Failed to end room:', {
-                        status: xhr.status,
-                        statusText: xhr.statusText,
-                        response: xhr.responseText,
-                        error: error
-                    });
+                    console.error('[HOST] ==========================================');
+                    console.error('[HOST] ✗ FAILED TO END ROOM');
+                    console.error('[HOST] ==========================================');
+                    console.error('[HOST] XHR Status:', xhr.status);
+                    console.error('[HOST] Status Text:', xhr.statusText);
+                    console.error('[HOST] Error:', error);
+                    console.error('[HOST] Response:', xhr.responseText);
+                    console.error('[HOST] Full XHR:', xhr);
+                    
+                    let errorMsg = 'Không thể kết thúc phòng. ';
+                    if (xhr.status === 0) {
+                        errorMsg += 'Không thể kết nối đến server.';
+                    } else if (xhr.status === 403) {
+                        errorMsg += 'Không có quyền. Vui lòng đăng nhập lại.';
+                    } else if (xhr.status === 404) {
+                        errorMsg += 'Phòng không tồn tại.';
+                    } else {
+                        errorMsg += 'Lỗi: ' + (xhr.responseJSON?.message || xhr.statusText);
+                    }
+                    
                     $('#end-session-btn').prop('disabled', false).text('Kết thúc phiên');
-                    alert('Không thể kết thúc phòng. Vui lòng thử lại.');
+                    alert(errorMsg);
                 }
             });
         },
@@ -605,7 +875,18 @@
     
     // Initialize when document is ready
     $(document).ready(function() {
-        HostController.init();
+        console.log('[HOST] ==========================================');
+        console.log('[HOST] Document ready - Initializing HostController');
+        console.log('[HOST] ==========================================');
+        console.log('[HOST] liveQuizHostData exists:', typeof window.liveQuizHostData !== 'undefined');
+        console.log('[HOST] live-quiz-host element exists:', $('#live-quiz-host').length);
+        
+        if (typeof window.liveQuizHostData !== 'undefined' && $('#live-quiz-host').length > 0) {
+            console.log('[HOST] Initializing HostController...');
+            HostController.init();
+        } else {
+            console.log('[HOST] Skipping HostController init (not on host page)');
+        }
     });
     
 })(jQuery);

@@ -51,33 +51,109 @@ if ($has_session) {
 
         <!-- Lobby Screen -->
         <div id="host-lobby" class="host-screen active">
-            <div class="lobby-card">
-                <div class="pin-display">
-                    <h2><?php _e('PIN Code', 'live-quiz'); ?></h2>
-                    <div class="pin-code"><?php echo esc_html($room_code); ?></div>
-                    <p class="pin-instruction">
-                        <?php _e('Học viên nhập PIN này để tham gia', 'live-quiz'); ?>
-                    </p>
-                </div>
-
-                <div class="waiting-status">
-                    <div class="spinner"></div>
-                    <h3><?php _e('Waiting for players...', 'live-quiz'); ?></h3>
-                    <p class="player-count">
-                        <span id="player-count">0</span> <?php _e('người chơi', 'live-quiz'); ?>
-                    </p>
-                </div>
-
-                <div class="players-list-container">
-                    <h4><?php _e('Danh sách người chơi', 'live-quiz'); ?></h4>
-                    <div id="players-list" class="players-list">
-                        <p class="no-players"><?php _e('Chưa có người chơi nào tham gia', 'live-quiz'); ?></p>
+            <div class="lobby-layout">
+                <!-- Left: Settings Panel -->
+                <div class="lobby-settings-panel">
+                    <h3><?php _e('⚙️ Cấu hình phòng', 'live-quiz'); ?></h3>
+                    
+                    <!-- Quiz Selection -->
+                    <div class="settings-section">
+                        <h4><?php _e('1. Chọn bộ câu hỏi', 'live-quiz'); ?></h4>
+                        <div class="quiz-search-container">
+                            <input 
+                                type="text" 
+                                id="lobby-quiz-search" 
+                                class="search-input"
+                                placeholder="<?php esc_attr_e('Tìm kiếm...', 'live-quiz'); ?>">
+                            <div id="lobby-quiz-results" class="quiz-search-results"></div>
+                        </div>
+                        <div id="lobby-selected-quizzes" class="selected-quizzes-list">
+                            <p class="no-selection"><?php _e('Chưa chọn bộ câu hỏi', 'live-quiz'); ?></p>
+                        </div>
+                    </div>
+                    
+                    <!-- Question Mode -->
+                    <div class="settings-section">
+                        <h4><?php _e('2. Số lượng câu hỏi', 'live-quiz'); ?></h4>
+                        <label class="radio-option">
+                            <input type="radio" name="lobby_quiz_type" value="all" checked>
+                            <span><?php _e('Toàn bộ câu hỏi', 'live-quiz'); ?></span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="lobby_quiz_type" value="random">
+                            <span><?php _e('Ngẫu nhiên', 'live-quiz'); ?></span>
+                        </label>
+                        <div id="lobby-random-count" class="random-count-input" style="display:none;">
+                            <input type="number" id="lobby-question-count" min="1" value="10" class="number-input">
+                            <span class="hint" id="lobby-question-hint"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Question Order -->
+                    <div class="settings-section">
+                        <h4><?php _e('3. Thứ tự câu hỏi', 'live-quiz'); ?></h4>
+                        <label class="radio-option">
+                            <input type="radio" name="lobby_question_order" value="sequential" checked>
+                            <span><?php _e('Tuần tự', 'live-quiz'); ?></span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="lobby_question_order" value="random">
+                            <span><?php _e('Ngẫu nhiên', 'live-quiz'); ?></span>
+                        </label>
+                    </div>
+                    
+                    <!-- Hide Leaderboard -->
+                    <div class="settings-section">
+                        <h4><?php _e('4. Tùy chọn khác', 'live-quiz'); ?></h4>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="lobby-hide-leaderboard">
+                            <span><?php _e('Ẩn bảng xếp hạng trong game', 'live-quiz'); ?></span>
+                        </label>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="lobby-joining-open" checked>
+                            <span><?php _e('Cho phép người chơi tham gia', 'live-quiz'); ?></span>
+                        </label>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="lobby-show-pin" checked>
+                            <span><?php _e('Hiển thị mã PIN', 'live-quiz'); ?></span>
+                        </label>
+                    </div>
+                    
+                    <div class="settings-info">
+                        <span class="info-icon">ℹ️</span>
+                        <span class="info-text"><?php _e('Cấu hình sẽ được áp dụng khi bắt đầu game', 'live-quiz'); ?></span>
                     </div>
                 </div>
+                
+                <!-- Right: Lobby Info -->
+                <div class="lobby-info-panel">
+                    <div class="pin-display">
+                        <h2><?php _e('PIN Code', 'live-quiz'); ?></h2>
+                        <div class="pin-code"><?php echo esc_html($room_code); ?></div>
+                        <p class="pin-instruction">
+                            <?php _e('Học viên nhập PIN này để tham gia', 'live-quiz'); ?>
+                        </p>
+                    </div>
 
-                <button id="start-quiz-btn" class="btn btn-primary btn-large" disabled>
-                    <?php _e('Bắt đầu Quiz', 'live-quiz'); ?>
-                </button>
+                    <div class="waiting-status">
+                        <div class="spinner"></div>
+                        <h3><?php _e('Waiting for players...', 'live-quiz'); ?></h3>
+                        <p class="player-count">
+                            <span id="player-count">0</span> <?php _e('người chơi', 'live-quiz'); ?>
+                        </p>
+                    </div>
+
+                    <div class="players-list-container">
+                        <h4><?php _e('Danh sách người chơi', 'live-quiz'); ?></h4>
+                        <div id="players-list" class="players-list">
+                            <p class="no-players"><?php _e('Chưa có người chơi nào tham gia', 'live-quiz'); ?></p>
+                        </div>
+                    </div>
+
+                    <button id="start-quiz-btn" class="btn btn-primary btn-large btn-block" disabled>
+                        <?php _e('▶️ Bắt đầu Quiz', 'live-quiz'); ?>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -193,6 +269,13 @@ if ($has_session) {
             hostToken: <?php echo json_encode($host_token); ?>,
             hostUserId: <?php echo json_encode($host_user_id); ?>,
             hostName: <?php echo json_encode($host_display_name); ?>
+        };
+        
+        // Also set liveQuizPlayer for API calls compatibility
+        window.liveQuizPlayer = {
+            apiUrl: <?php echo json_encode(rest_url('live-quiz/v1')); ?>,
+            nonce: <?php echo json_encode(wp_create_nonce('wp_rest')); ?>,
+            wsUrl: <?php echo json_encode(get_option('live_quiz_websocket_url', '')); ?>
         };
     </script>
     
