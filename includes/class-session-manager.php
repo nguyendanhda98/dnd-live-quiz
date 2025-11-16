@@ -745,17 +745,21 @@ class Live_Quiz_Session_Manager {
             return false;
         }
         
-        // Check if user has manage_options capability
-        if (!current_user_can('manage_options')) {
-            return false;
-        }
-        
         $session = self::get_session($session_id);
         if (!$session) {
             return false;
         }
         
-        // Check if user is host
-        return (int)$session['host_id'] === (int)$user_id;
+        // Check if user is the host of this session
+        if ((int)$session['host_id'] === (int)$user_id) {
+            return true;
+        }
+        
+        // Admin can also control any session
+        if (current_user_can('manage_options')) {
+            return true;
+        }
+        
+        return false;
     }
 }
