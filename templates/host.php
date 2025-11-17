@@ -157,6 +157,33 @@ if ($has_session) {
             </div>
         </div>
 
+        <!-- Countdown Screen -->
+        <div id="host-countdown" class="host-screen">
+            <div class="quiz-card text-center">
+                <h1 class="countdown-title"><?php _e('Quiz bắt đầu sau', 'live-quiz'); ?></h1>
+                <div class="countdown-number" id="host-countdown-number">3</div>
+            </div>
+        </div>
+        
+        <!-- Final Question Announcement -->
+        <div id="host-final-announcement" class="host-screen">
+            <div class="quiz-card text-center">
+                <h1 class="final-announcement-title"><?php _e('🏆 Câu hỏi cuối cùng! 🏆', 'live-quiz'); ?></h1>
+                <p class="final-announcement-text"><?php _e('Điểm số gấp đôi!', 'live-quiz'); ?></p>
+                <div class="final-announcement-points">2000 pts</div>
+            </div>
+        </div>
+        
+        <!-- Top 3 Screen -->
+        <div id="host-top3" class="host-screen">
+            <div class="quiz-card text-center">
+                <h1 class="top3-title"><?php _e('🏆 Top 3 Cao Điểm Nhất 🏆', 'live-quiz'); ?></h1>
+                <div id="host-top3-podium" class="top3-podium">
+                    <!-- Top 3 will be inserted here -->
+                </div>
+            </div>
+        </div>
+
         <!-- Question Control Screen -->
         <div id="host-question" class="host-screen">
             <div class="question-control-card">

@@ -558,11 +558,15 @@ io.on('connection', async (socket) => {
                     startTime
                 });
                 
+                // Calculate total questions
+                const totalQuestions = questions.length;
+                
                 // Send to this specific socket only
                 socket.emit('question_start', {
                     question_index: questionIndex,
                     question: currentQuestion,
                     start_time: startTime,
+                    total_questions: totalQuestions,
                 });
             }
         }
@@ -603,6 +607,22 @@ io.on('connection', async (socket) => {
     // Handle ping (heartbeat)
     socket.on('ping', () => {
         socket.emit('pong', { timestamp: Date.now() });
+    });
+    
+    // Handle countdown broadcast from host
+    socket.on('broadcast_countdown', (data) => {
+        if (socket.sessionId && socket.isHost) {
+            logger.info('Broadcasting countdown', { sessionId: socket.sessionId, count: data.count });
+            io.to(`session:${socket.sessionId}`).emit('quiz_countdown', data);
+        }
+    });
+    
+    // Handle top 3 broadcast from host
+    socket.on('broadcast_top3', (data) => {
+        if (socket.sessionId && socket.isHost) {
+            logger.info('Broadcasting top 3', { sessionId: socket.sessionId, top3Count: data.top3?.length });
+            io.to(`session:${socket.sessionId}`).emit('show_top3', data);
+        }
     });
 
     // Handle answer submission
@@ -865,6 +885,7 @@ app.post('/api/sessions/:id/start-question', async (req, res) => {
             question_index,
             question: question_data,
             start_time,
+            total_questions: question_data.total_questions || 0,
         });
 
         res.json({ success: true });

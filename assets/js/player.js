@@ -413,8 +413,11 @@
         
         // Quiz events
         state.socket.on('session_state', handleSessionState);
+        state.socket.on('quiz_countdown', handleQuizCountdown);
+        state.socket.on('final_question_announcement', handleFinalQuestionAnnouncement);
         state.socket.on('question_start', handleQuestionStart);
         state.socket.on('question_end', handleQuestionEnd);
+        state.socket.on('show_top3', handleShowTop3);
         state.socket.on('session_end', handleSessionEnd);
         state.socket.on('participant_joined', (data) => {
             // Don't use data.total_participants as it may include host
@@ -471,6 +474,49 @@
         }
     }
     
+    function handleQuizCountdown(data) {
+        console.log('[PLAYER] Quiz countdown:', data);
+        
+        showScreen('quiz-countdown');
+        
+        let count = data.count || 3;
+        const countdownEl = document.getElementById('countdown-number');
+        if (countdownEl) {
+            countdownEl.textContent = count;
+        }
+    }
+    
+
+    
+    function handleShowTop3(data) {
+        console.log('[PLAYER] Show top 3:', data);
+        showScreen('quiz-top3');
+        
+        const podiumEl = document.getElementById('top3-podium');
+        if (podiumEl && data.top3 && data.top3.length > 0) {
+            podiumEl.innerHTML = '';
+            
+            const medals = ['🥇', '🥈', '🥉'];
+            const places = ['first', 'second', 'third'];
+            
+            data.top3.forEach((player, index) => {
+                if (index < 3) {
+                    const placeDiv = document.createElement('div');
+                    placeDiv.className = `podium-place ${places[index]}`;
+                    
+                    placeDiv.innerHTML = `
+                        <div class="podium-medal">${medals[index]}</div>
+                        <div class="podium-name">${player.display_name || player.name}</div>
+                        <div class="podium-score">${player.score} pts</div>
+                        <div class="podium-stand">#${index + 1}</div>
+                    `;
+                    
+                    podiumEl.appendChild(placeDiv);
+                }
+            });
+        }
+    }
+    
     function handleQuestionStart(data) {
         console.log('Question start:', data);
         
@@ -480,7 +526,7 @@
         
         showScreen('quiz-question');
         displayQuestion(data);
-        // Timer will be started by displayQuestion after 1 second delay
+        // Timer will be started by displayQuestion after question is displayed
     }
     
     function displayQuestion(data) {
@@ -551,7 +597,8 @@
         
         const maxPoints = 1000;
         const minPoints = 0;
-        const freezeDuration = 1.0; // Freeze at 1000 pts for first 1 second
+        
+        console.log('[PLAYER] Timer start - Max points:', maxPoints);
         
         // Calculate display offset (time from server start to now)
         // This includes: network delay + display time + 3s fixed delay
@@ -570,7 +617,7 @@
         const updateTimer = () => {
             // Calculate elapsed time based on adjusted timestamp
             const nowSeconds = Date.now() / 1000;
-            const elapsed = nowSeconds - adjustedStartTime;
+            const elapsed = Math.max(0, nowSeconds - adjustedStartTime); // Never negative
             const remaining = Math.max(0, endTime - nowSeconds);
             
             if (remaining <= 0) {
@@ -585,28 +632,29 @@
             const percentage = (remaining / seconds) * 100;
             timerFill.style.width = percentage + '%';
             
+            // Freeze period: 1 second at max points, then linear decrease for remaining time
+            const freezePeriod = 1; // 1 second freeze at max points
             let currentPoints;
             
-            // First 1 second: freeze at 1000 points
-            if (elapsed < freezeDuration) {
+            if (elapsed < freezePeriod) {
+                // During freeze period, stay at max points
                 currentPoints = maxPoints;
             } else {
-                // After 1s: decrease from 1000 to 0 over remaining time
-                const scoringTime = seconds - freezeDuration; // e.g., 20s - 1s = 19s
-                const scoringElapsed = elapsed - freezeDuration; // time after freeze period
-                const pointsToLose = maxPoints - minPoints; // 1000 - 0 = 1000
-                const pointsPerSecond = pointsToLose / scoringTime; // 1000 / 19 ≈ 52.63
-                
-                currentPoints = Math.max(minPoints, maxPoints - Math.floor(scoringElapsed * pointsPerSecond));
+                // After freeze period, decrease linearly from maxPoints to 0 over remaining time
+                const decreaseTime = seconds - freezePeriod; // Time for decrease (e.g., 19 seconds)
+                const elapsedAfterFreeze = elapsed - freezePeriod;
+                const pointsPerSecond = maxPoints / decreaseTime;
+                currentPoints = Math.max(minPoints, Math.min(maxPoints, Math.floor(maxPoints - (elapsedAfterFreeze * pointsPerSecond))));
             }
             
             timerText.textContent = currentPoints + ' pts';
             
-            // Change color when points are low
-            if (currentPoints < 400) {
+            // Change color based on percentage of max points
+            const pointsPercentage = (currentPoints / maxPoints) * 100;
+            if (pointsPercentage < 40) {
                 timerFill.style.backgroundColor = '#e74c3c';
                 timerText.style.color = '#e74c3c';
-            } else if (currentPoints < 700) {
+            } else if (pointsPercentage < 70) {
                 timerFill.style.backgroundColor = '#f39c12';
                 timerText.style.color = '#f39c12';
             } else {

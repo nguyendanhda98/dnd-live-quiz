@@ -208,6 +208,9 @@ class Live_Quiz_Session_Manager {
             ));
         }
         
+        // Get total questions count
+        $total_questions = count($session['questions']);
+        
         // Notify WebSocket server if available (regardless of Redis)
         if (class_exists('Live_Quiz_WebSocket_Helper')) {
             error_log('[Session Manager] Notifying WebSocket server about question start');
@@ -222,6 +225,7 @@ class Live_Quiz_Session_Manager {
                 'start_time' => $start_time,
                 'timer_delay' => $timer_delay,
                 'actual_timer_start' => $actual_timer_start,
+                'total_questions' => $total_questions,
             ));
             
             if ($result) {

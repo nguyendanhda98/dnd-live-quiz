@@ -66,6 +66,23 @@ $show_title = get_query_var('show_title', 'yes');
         </div>
     </div>
     
+    <!-- Countdown Screen -->
+    <div id="quiz-countdown" class="quiz-screen">
+        <div class="quiz-card text-center">
+            <h1 class="countdown-title"><?php _e('Quiz bắt đầu sau', 'live-quiz'); ?></h1>
+            <div class="countdown-number" id="countdown-number">3</div>
+        </div>
+    </div>
+    
+    <!-- Final Question Announcement -->
+    <div id="quiz-final-announcement" class="quiz-screen">
+        <div class="quiz-card text-center">
+            <h1 class="final-announcement-title"><?php _e('🏆 Câu hỏi cuối cùng! 🏆', 'live-quiz'); ?></h1>
+            <p class="final-announcement-text"><?php _e('Điểm số gấp đôi!', 'live-quiz'); ?></p>
+            <div class="final-announcement-points">2000 pts</div>
+        </div>
+    </div>
+    
     <!-- Waiting Screen -->
     <div id="quiz-waiting" class="quiz-screen">
         <div class="quiz-card text-center">
@@ -141,6 +158,16 @@ $show_title = get_query_var('show_title', 'yes');
             <button class="btn btn-secondary leave-room-btn" style="margin-top: 20px;">
                 <?php _e('Rời khỏi phòng', 'live-quiz'); ?>
             </button>
+        </div>
+    </div>
+    
+    <!-- Top 3 Screen -->
+    <div id="quiz-top3" class="quiz-screen">
+        <div class="quiz-card text-center">
+            <h1 class="top3-title"><?php _e('🏆 Top 3 Cao Điểm Nhất 🏆', 'live-quiz'); ?></h1>
+            <div id="top3-podium" class="top3-podium">
+                <!-- Top 3 will be inserted here -->
+            </div>
         </div>
     </div>
     

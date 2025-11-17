@@ -20,6 +20,7 @@
         roomCode: null,
         socket: null,
         currentQuestionIndex: 0,
+        currentQuestionData: null, // Store current question data
         players: {},
         connectionId: null, // Track connection for multi-device enforcement
         selectedQuizzes: [],
@@ -799,26 +800,10 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        // Then start the quiz
-                        $.ajax({
-                            url: api.apiUrl + '/sessions/' + self.sessionId + '/start',
-                            method: 'POST',
-                            headers: {
-                                'X-WP-Nonce': api.nonce
-                            },
-                            success: function(response) {
-                                if (response.success) {
-                                    console.log('Quiz started');
-                                    // Switch to question screen
-                                    self.showScreen('host-question');
-                                    $('#end-session-btn').show();
-                                }
-                            },
-                            error: function(xhr) {
-                                alert('Có lỗi khi bắt đầu quiz: ' + (xhr.responseJSON ? xhr.responseJSON.message : 'Unknown error'));
-                                $('#start-quiz-btn').prop('disabled', false).text('▶️ Bắt đầu Quiz');
-                            }
-                        });
+                        console.log('Settings saved, starting countdown...');
+                        // Show countdown FIRST, then start quiz
+                        self.showCountdownAndStartQuiz();
+                        $('#end-session-btn').show();
                     }
                 },
                 error: function(xhr) {
@@ -832,9 +817,15 @@
             console.log('Question started:', data);
             
             this.currentQuestionIndex = data.question_index;
+            this.currentQuestionData = data; // Store full question data
             this.serverStartTime = data.start_time; // Store server timestamp
             this.displayStartTime = Date.now() / 1000; // Record when we start displaying
             
+            // Show question immediately
+            this.displayQuestionContent(data);
+        },
+        
+        displayQuestionContent: function(data) {
             // Reset answered players list
             this.answeredPlayers = [];
             $('#answered-players-list').empty();
@@ -917,7 +908,8 @@
             
             const maxPoints = 1000;
             const minPoints = 0;
-            const freezeDuration = 1.0; // Freeze at 1000 pts for first 1 second
+            
+            console.log('[HOST] Timer start - Max points:', maxPoints);
             
             // Calculate display offset (time from server start to now)
             // This includes: network delay + display time + 3s fixed delay
@@ -940,7 +932,7 @@
             this.timerInterval = setInterval(function() {
                 const nowSeconds = Date.now() / 1000;
                 const remaining = Math.max(0, endTime - nowSeconds);
-                const elapsed = nowSeconds - adjustedStartTime;
+                const elapsed = Math.max(0, nowSeconds - adjustedStartTime); // Never negative
                 
                 if (remaining <= 0) {
                     clearInterval(self.timerInterval);
@@ -957,27 +949,28 @@
                 const percent = (remaining / seconds) * 100;
                 $fill.css('width', percent + '%');
                 
+                // Freeze period: 1 second at max points, then linear decrease for remaining time
+                const freezePeriod = 1; // 1 second freeze at max points
                 let currentPoints;
                 
-                // First 1 second: freeze at 1000 points
-                if (elapsed < freezeDuration) {
+                if (elapsed < freezePeriod) {
+                    // During freeze period, stay at max points
                     currentPoints = maxPoints;
                 } else {
-                    // After 1s: decrease from 1000 to 0 over remaining time
-                    const scoringTime = seconds - freezeDuration; // e.g., 20s - 1s = 19s
-                    const scoringElapsed = elapsed - freezeDuration; // time after freeze period
-                    const pointsToLose = maxPoints - minPoints; // 1000 - 0 = 1000
-                    const pointsPerSecond = pointsToLose / scoringTime; // 1000 / 19 ≈ 52.63
-                    
-                    currentPoints = Math.max(minPoints, maxPoints - Math.floor(scoringElapsed * pointsPerSecond));
+                    // After freeze period, decrease linearly from maxPoints to 0 over remaining time
+                    const decreaseTime = seconds - freezePeriod; // Time for decrease (e.g., 19 seconds)
+                    const elapsedAfterFreeze = elapsed - freezePeriod;
+                    const pointsPerSecond = maxPoints / decreaseTime;
+                    currentPoints = Math.max(minPoints, Math.min(maxPoints, Math.floor(maxPoints - (elapsedAfterFreeze * pointsPerSecond))));
                 }
                 
                 $text.text(currentPoints + ' pts');
                 
-                // Change color based on points
-                if (currentPoints < 400) {
+                // Change color based on percentage of max points (works for both 1000 and 2000)
+                const pointsPercentage = (currentPoints / maxPoints) * 100;
+                if (pointsPercentage < 40) {
                     $text.css('color', '#dc3545');
-                } else if (currentPoints < 700) {
+                } else if (pointsPercentage < 70) {
                     $text.css('color', '#ffc107');
                 } else {
                     $text.css('color', '#28a745');
@@ -1436,6 +1429,124 @@
             this.showScreen('host-results');
         },
         
+        showCountdownAndStartQuiz: function() {
+            const self = this;
+            
+            this.showScreen('host-countdown');
+            
+            // Emit countdown to all players
+            if (this.socket && this.socket.connected) {
+                console.log('[HOST] Emitting countdown 3 to all players');
+                this.socket.emit('broadcast_countdown', { count: 3 });
+            } else {
+                console.warn('[HOST] WebSocket not connected, cannot broadcast countdown');
+            }
+            
+            let count = 3;
+            const countdownEl = document.getElementById('host-countdown-number');
+            
+            const interval = setInterval(() => {
+                count--;
+                if (countdownEl) {
+                    countdownEl.textContent = count;
+                }
+                
+                // Emit each countdown to players
+                if (self.socket && self.socket.connected && count > 0) {
+                    console.log('[HOST] Emitting countdown', count, 'to all players');
+                    self.socket.emit('broadcast_countdown', { count: count });
+                }
+                
+                if (count === 0) {
+                    clearInterval(interval);
+                    // After countdown, NOW start the quiz
+                    console.log('[HOST] Countdown finished, starting quiz...');
+                    self.startQuizAfterCountdown();
+                }
+            }, 1000);
+        },
+        
+        startQuizAfterCountdown: function() {
+            const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
+            
+            console.log('[HOST] Calling /start API...');
+            $.ajax({
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/start',
+                method: 'POST',
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        console.log('[HOST] Quiz started successfully');
+                        // Question will be shown via WebSocket event
+                    }
+                },
+                error: function(xhr) {
+                    console.error('[HOST] Error starting quiz:', xhr);
+                    alert('Có lỗi khi bắt đầu quiz: ' + (xhr.responseJSON ? xhr.responseJSON.message : 'Unknown error'));
+                }
+            });
+        },
+        
+        showFinalQuestionAnnouncement: function() {
+            const self = this;
+            this.showScreen('host-final-announcement');
+            
+            // Emit to all players
+            if (this.socket) {
+                this.socket.emit('broadcast_final_announcement', {});
+            }
+            
+            // Show for 3 seconds then continue
+            setTimeout(() => {
+                // The question will be shown via WebSocket event
+            }, 3000);
+        },
+        
+        showTop3: function(leaderboard) {
+            const self = this;
+            this.showScreen('host-top3');
+            
+            // Get top 3 from leaderboard
+            const top3 = leaderboard.slice(0, 3);
+            
+            // Emit to all players
+            if (this.socket) {
+                this.socket.emit('broadcast_top3', { top3: top3 });
+            }
+            
+            // Display on host screen
+            const podiumEl = document.getElementById('host-top3-podium');
+            if (podiumEl && top3.length > 0) {
+                podiumEl.innerHTML = '';
+                
+                const medals = ['🥇', '🥈', '🥉'];
+                const places = ['first', 'second', 'third'];
+                
+                top3.forEach((player, index) => {
+                    const placeDiv = document.createElement('div');
+                    placeDiv.className = `podium-place ${places[index]}`;
+                    
+                    placeDiv.innerHTML = `
+                        <div class="podium-medal">${medals[index]}</div>
+                        <div class="podium-name">${player.display_name || player.name}</div>
+                        <div class="podium-score">${player.score} pts</div>
+                        <div class="podium-stand">#${index + 1}</div>
+                    `;
+                    
+                    podiumEl.appendChild(placeDiv);
+                });
+            }
+            
+            // Show for 5 seconds then show final results
+            setTimeout(() => {
+                self.showScreen('host-final');
+            }, 5000);
+        },
+        
         nextQuestion: function() {
             const self = this;
             const api = this.getApiConfig();
@@ -1462,8 +1573,12 @@
             // Update final leaderboard
             this.updateLeaderboard(data.leaderboard, '#final-leaderboard');
             
-            // Show final screen
-            this.showScreen('host-final');
+            // Show top 3 first, then final screen
+            if (data.leaderboard && data.leaderboard.length >= 3) {
+                this.showTop3(data.leaderboard);
+            } else {
+                this.showScreen('host-final');
+            }
         },
         
         endSession: function() {
