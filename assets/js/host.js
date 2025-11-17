@@ -849,22 +849,25 @@
             const $fill = $('.timer-fill');
             const $text = $('.timer-text');
             
-            let remaining = seconds;
             const maxPoints = 1000;
             const pointsPerSecond = 50;
-            let elapsed = 0;
+            const startTime = Date.now();
+            const endTime = startTime + (seconds * 1000);
             
             $fill.css('width', '100%');
             
             const timer = setInterval(function() {
-                elapsed += 0.1;
-                remaining -= 0.1;
+                const now = Date.now();
+                const remaining = Math.max(0, (endTime - now) / 1000);
                 
                 if (remaining <= 0) {
                     clearInterval(timer);
                     $fill.css('width', '0%');
                     $text.text('0 pts');
-                    self.endQuestion();
+                    
+                    // Auto end question and show correct answer
+                    console.log('[HOST] Timer ended, auto-ending question');
+                    self.autoEndQuestion();
                     return;
                 }
                 
@@ -872,7 +875,8 @@
                 $fill.css('width', percent + '%');
                 
                 // Calculate points (1000 - 50 per second)
-                const currentPoints = Math.max(0, maxPoints - Math.floor(elapsed * pointsPerSecond));
+                const elapsedSeconds = seconds - remaining;
+                const currentPoints = Math.max(0, maxPoints - Math.floor(elapsedSeconds * pointsPerSecond));
                 $text.text(currentPoints + ' pts');
                 
                 // Change color based on points
@@ -957,17 +961,84 @@
             });
         },
         
+        autoEndQuestion: function() {
+            const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
+            
+            console.log('[HOST] Auto-ending question...');
+            
+            // Call API to end question
+            $.ajax({
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/end-question',
+                method: 'POST',
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                success: function(response) {
+                    console.log('[HOST] Question ended');
+                    // handleQuestionEnd will show correct answer after 1 second
+                    // Then we wait 4 more seconds (total 5 seconds) before next question
+                    setTimeout(function() {
+                        console.log('[HOST] 5 seconds passed, auto next question now...');
+                        self.autoNextQuestion();
+                    }, 5000); // 5 seconds total from when question ended
+                },
+                error: function(xhr) {
+                    console.error('[HOST] Error ending question:', xhr);
+                }
+            });
+        },
+        
+        autoNextQuestion: function() {
+            const self = this;
+            const api = this.getApiConfig();
+            if (!api) return;
+            
+            console.log('[HOST] Auto next question...');
+            
+            $.ajax({
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/next',
+                method: 'POST',
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                success: function(response) {
+                    console.log('[HOST] Next question called');
+                },
+                error: function(xhr) {
+                    console.log('[HOST] No more questions or session ended');
+                    // If no more questions, session might have ended
+                }
+            });
+        },
+        
         handleQuestionEnd: function(data) {
             console.log('Question end event:', data);
+            console.log('Correct answer index:', data.correct_answer);
             
-            // Highlight correct answer
-            $('.choice-preview-item').eq(data.correct_answer).addClass('correct');
+            // Wait 1 second before showing correct answer
+            setTimeout(() => {
+                // Highlight correct answer in current screen
+                const $correctChoice = $('.choice-preview-item').eq(data.correct_answer);
+                $correctChoice.addClass('correct');
+                $correctChoice.css({
+                    'background': '#2ecc71',
+                    'color': 'white',
+                    'border-color': '#2ecc71',
+                    'border-width': '5px',
+                    'font-weight': 'bold'
+                });
+                
+                // Add checkmark
+                const originalText = $correctChoice.text();
+                $correctChoice.html('✓ ' + originalText);
+                
+                console.log('[HOST] Correct answer shown, will auto-next in ~4 seconds...');
+            }, 1000);
             
-            // Show final stats
-            this.displayAnswerStats(data.stats);
-            
-            // Show results screen
-            this.showResultsScreen(data);
+            // Note: After 5 seconds total (1s + 4s in autoEndQuestion) server will call next question
+            // which will trigger handleQuestionStart again
         },
         
         showResultsScreen: function(data) {

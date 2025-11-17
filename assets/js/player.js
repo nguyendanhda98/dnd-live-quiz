@@ -541,20 +541,25 @@
     function startTimer(seconds) {
         clearInterval(state.timerInterval);
         
-        let remaining = seconds;
         const maxPoints = 1000;
         const pointsPerSecond = 50;
+        const startTime = Date.now();
+        const endTime = startTime + (seconds * 1000);
         
         const timerFill = document.querySelector('.timer-fill');
         const timerText = document.querySelector('.timer-text');
         
         const updateTimer = () => {
-            remaining -= 0.1;
+            const now = Date.now();
+            const remaining = Math.max(0, (endTime - now) / 1000);
             
             if (remaining <= 0) {
-                remaining = 0;
                 clearInterval(state.timerInterval);
+                timerFill.style.width = '0%';
+                timerText.textContent = '0 pts';
                 disableChoices();
+                // Timer ended - wait for server to show correct answer
+                return;
             }
             
             const percentage = (remaining / seconds) * 100;
@@ -633,11 +638,34 @@
     
     function handleQuestionEnd(data) {
         console.log('Question end:', data);
+        console.log('Correct answer index:', data.correct_answer);
         
         clearInterval(state.timerInterval);
         
-        showScreen('quiz-results');
-        displayResults(data);
+        // Wait 1 second before showing correct answer
+        setTimeout(() => {
+            // Show correct answer in current question screen
+            const buttons = document.querySelectorAll('.choice-button');
+            buttons.forEach((button, index) => {
+                if (data.correct_answer !== undefined && index === data.correct_answer) {
+                    button.classList.add('correct-answer');
+                    button.style.borderColor = '#2ecc71';
+                    button.style.borderWidth = '5px';
+                    button.style.backgroundColor = '#2ecc71';
+                    button.style.color = 'white';
+                    button.style.fontWeight = 'bold';
+                    
+                    // Add checkmark
+                    const originalText = button.textContent;
+                    button.innerHTML = '✓ ' + originalText;
+                }
+            });
+            
+            console.log('[PLAYER] Correct answer shown, waiting 5 seconds...');
+            
+            // After 5 seconds, show results screen (or wait for next question)
+            // Actually, let's keep showing the answer until next question starts
+        }, 1000);
     }
     
     function displayResults(data) {

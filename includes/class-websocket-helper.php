@@ -193,12 +193,18 @@ class Live_Quiz_WebSocket_Helper {
      * End question
      * 
      * @param int $session_id Session ID
+     * @param int $correct_answer Correct answer index
      * @return bool Success
      */
-    public static function end_question($session_id) {
+    public static function end_question($session_id, $correct_answer = null) {
+        $data = array();
+        if ($correct_answer !== null) {
+            $data['correct_answer'] = $correct_answer;
+        }
+        
         return self::send_request(
             '/sessions/' . $session_id . '/end-question',
-            array(),
+            $data,
             'POST'
         );
     }

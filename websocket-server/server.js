@@ -848,8 +848,9 @@ app.post('/api/sessions/:id/start-question', async (req, res) => {
 app.post('/api/sessions/:id/end-question', async (req, res) => {
     try {
         const sessionId = req.params.id;
+        const { correct_answer } = req.body;
 
-        logger.info('Ending question', { sessionId });
+        logger.info('Ending question', { sessionId, correct_answer });
 
         // Update session status
         await redisClient.hSet(`session:${sessionId}`, 'status', 'results');
@@ -857,12 +858,13 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
         // Get leaderboard
         const leaderboard = await RedisHelper.getLeaderboard(sessionId, 10);
 
-        // Broadcast results
+        // Broadcast results with correct answer
         io.to(`session:${sessionId}`).emit('question_end', {
+            correct_answer,
             leaderboard,
         });
 
-        res.json({ success: true, leaderboard });
+        res.json({ success: true, leaderboard, correct_answer });
     } catch (error) {
         logger.error('Error ending question', { error, sessionId: req.params.id });
         res.status(500).json({ error: 'Failed to end question' });

@@ -249,15 +249,24 @@ class Live_Quiz_Session_Manager {
         
         update_post_meta($session_id, '_session_status', self::STATE_RESULTS);
         
+        // Find correct answer first
+        $correct_answer = null;
+        foreach ($session['questions'][$session['current_question_index']]['choices'] as $index => $choice) {
+            if (!empty($choice['is_correct'])) {
+                $correct_answer = $index;
+                break;
+            }
+        }
+        
         // Update Redis if enabled
         if (self::is_redis_enabled()) {
             self::$redis->update_session_field($session_id, 'status', self::STATE_RESULTS);
             self::$redis->clear_current_question($session_id);
-            
-            // Notify WebSocket server
-            if (class_exists('Live_Quiz_WebSocket_Helper')) {
-                Live_Quiz_WebSocket_Helper::end_question($session_id);
-            }
+        }
+        
+        // Notify WebSocket server (always, not just when Redis enabled)
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            Live_Quiz_WebSocket_Helper::end_question($session_id, $correct_answer);
         }
         
         self::clear_session_cache($session_id);
@@ -266,15 +275,6 @@ class Live_Quiz_Session_Manager {
         // Get current question stats
         $stats = Live_Quiz_Scoring::get_question_stats($session_id, $session['current_question_index']);
         $leaderboard = Live_Quiz_Scoring::get_leaderboard($session_id, 10);
-        
-        // Find correct answer
-        $correct_answer = null;
-        foreach ($session['questions'][$session['current_question_index']]['choices'] as $index => $choice) {
-            if (!empty($choice['is_correct'])) {
-                $correct_answer = $index;
-                break;
-            }
-        }
         
         // Broadcast results (SSE fallback)
         self::broadcast_event($session_id, 'question_end', array(
