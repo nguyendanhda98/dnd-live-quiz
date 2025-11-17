@@ -641,6 +641,15 @@
             
             console.log('Answer submitted:', data);
             
+            // Update timer text with actual score from server
+            if (data.score !== undefined) {
+                const timerText = document.querySelector('.timer-text');
+                if (timerText) {
+                    timerText.textContent = data.score + ' pts';
+                    console.log('[PLAYER] Updated display with server score:', data.score);
+                }
+            }
+            
             // Don't show correct/incorrect yet - wait for question_end
             // Just keep the 'selected' highlight
             

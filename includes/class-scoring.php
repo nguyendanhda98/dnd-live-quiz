@@ -152,6 +152,7 @@ class Live_Quiz_Scoring {
         if (self::is_redis_enabled()) {
             $score = self::$redis->get_user_score($session_id, $user_id);
             if ($score !== false) {
+                error_log("[SCORING] calculate_total_score (Redis) - User: $user_id, Score: $score");
                 return (int)$score;
             }
         }
@@ -159,12 +160,18 @@ class Live_Quiz_Scoring {
         // Fallback to calculating from answers (Phase 1)
         $answers = self::get_participant_answers($session_id, $user_id);
         
+        error_log("[SCORING] calculate_total_score - Session: $session_id, User: $user_id");
+        error_log("[SCORING] Answers: " . print_r($answers, true));
+        
         $total_score = 0;
         foreach ($answers as $answer) {
             if (!empty($answer['score'])) {
                 $total_score += (int)$answer['score'];
+                error_log("[SCORING] Adding score: " . $answer['score'] . ", Total now: $total_score");
             }
         }
+        
+        error_log("[SCORING] Final total score for user $user_id: $total_score");
         
         return $total_score;
     }
@@ -178,15 +185,14 @@ class Live_Quiz_Scoring {
      */
     public static function get_participant_answers($session_id, $user_id) {
         $cache_key = "live_quiz_answers_{$session_id}_{$user_id}";
-        $answers = get_transient($cache_key);
         
-        if ($answers === false) {
-            $answers = get_post_meta($session_id, "_answer_{$user_id}", true);
-            if (!is_array($answers)) {
-                $answers = array();
-            }
-            set_transient($cache_key, $answers, 300); // Cache 5 minutes
+        // Always get fresh data from database (transient cache was causing stale data)
+        $answers = get_post_meta($session_id, "_answer_{$user_id}", true);
+        if (!is_array($answers)) {
+            $answers = array();
         }
+        
+        error_log("[SCORING] get_participant_answers - Session: $session_id, User: $user_id, Count: " . count($answers));
         
         return $answers;
     }
@@ -210,8 +216,12 @@ class Live_Quiz_Scoring {
             'timestamp' => time(),
         );
         
+        error_log("[SCORING] save_answer - Session: $session_id, User: $user_id, Question: $question_index");
+        error_log("[SCORING] Answer data: " . print_r($answer, true));
+        
         // Save to Redis if enabled (Phase 2)
         if (self::is_redis_enabled()) {
+            error_log("[SCORING] Using Redis");
             // Update leaderboard with cumulative score
             $current_total = self::$redis->get_user_score($session_id, $user_id);
             $new_total = ($current_total !== false ? $current_total : 0) + $answer['score'];
@@ -219,16 +229,27 @@ class Live_Quiz_Scoring {
             
             // Save answer details
             self::$redis->save_answer($session_id, $user_id, $question_index, $answer);
+        } else {
+            error_log("[SCORING] Redis not enabled, using database fallback");
         }
         
         // Save to database (Phase 1 fallback)
         $answers = self::get_participant_answers($session_id, $user_id);
+        error_log("[SCORING] Previous answers count: " . count($answers));
+        
         $answers[$question_index] = $answer;
         $result = update_post_meta($session_id, "_answer_{$user_id}", $answers);
+        
+        error_log("[SCORING] update_post_meta result: " . ($result ? 'SUCCESS' : 'FAILED'));
+        error_log("[SCORING] New answers count: " . count($answers));
         
         // Update cache
         $cache_key = "live_quiz_answers_{$session_id}_{$user_id}";
         delete_transient($cache_key);
+        
+        // Verify saved data
+        $saved_answers = get_post_meta($session_id, "_answer_{$user_id}", true);
+        error_log("[SCORING] Verified saved answers: " . print_r($saved_answers, true));
         
         return $result;
     }

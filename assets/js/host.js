@@ -971,7 +971,8 @@
         },
         
         handleAnswerSubmitted: function(data) {
-            console.log('Answer submitted:', data);
+            console.log('[HOST] Answer submitted:', data);
+            console.log('[HOST] Score from WebSocket:', data.score);
             
             // Add player to answered list if not already there
             if (data.user_id && !this.answeredPlayers.includes(data.user_id)) {
@@ -980,7 +981,9 @@
                 // Find player info and display with score
                 const player = this.players[data.user_id];
                 if (player) {
-                    this.displayAnsweredPlayer(player, data.score || 0);
+                    const score = data.score !== undefined ? data.score : 0;
+                    console.log('[HOST] Displaying player with score:', score);
+                    this.displayAnsweredPlayer(player, score);
                 }
             }
             
