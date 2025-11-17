@@ -464,52 +464,115 @@
                 const playerId = player.user_id;
                 const initial = player.display_name ? player.display_name.charAt(0).toUpperCase() : '?';
                 html += `
-                    <div class="player-item" data-player-id="${playerId}">
+                    <div class="player-item" data-player-id="${playerId}" data-player-name="${self.escapeHtml(player.display_name)}">
                         <div class="player-avatar">${initial}</div>
                         <div class="player-name">${self.escapeHtml(player.display_name)}</div>
-                        <div class="player-status">✓ Sẵn sàng</div>
-                        <div class="player-actions">
-                            <button class="btn-kick-player" data-player-id="${playerId}" data-player-name="${self.escapeHtml(player.display_name)}" title="Kick người chơi">
-                                ✕ Kick
-                            </button>
-                            <button class="btn-ban-session" data-player-id="${playerId}" data-player-name="${self.escapeHtml(player.display_name)}" title="Ban khỏi phòng này">
-                                🚫 Ban phòng
-                            </button>
-                            <button class="btn-ban-permanent" data-player-id="${playerId}" data-player-name="${self.escapeHtml(player.display_name)}" title="Ban vĩnh viễn">
-                                ⛔ Ban vĩnh viễn
-                            </button>
-                        </div>
                     </div>
                 `;
             });
             
             $list.html(html);
             
-            // Bind kick button events
-            $('.btn-kick-player').on('click', function(e) {
+            // Bind click event to show action menu
+            $('.player-item').on('click', function(e) {
                 e.preventDefault();
-                e.stopPropagation();
                 const playerId = $(this).data('player-id');
                 const playerName = $(this).data('player-name');
-                self.kickPlayer(playerId, playerName);
+                self.showPlayerActionMenu(playerId, playerName, this);
+            });
+        },
+        
+        showPlayerActionMenu: function(playerId, playerName, playerElement) {
+            const self = this;
+            
+            // Remove any existing modal
+            $('.player-action-modal').remove();
+            
+            // Get player avatar initial
+            const initial = playerName ? playerName.charAt(0).toUpperCase() : '?';
+            
+            // Create modal popup
+            const modal = $(`
+                <div class="player-action-modal">
+                    <div class="modal-overlay"></div>
+                    <div class="modal-content">
+                        <button class="modal-close">&times;</button>
+                        <div class="modal-player-info">
+                            <div class="modal-player-avatar">${initial}</div>
+                            <h3 class="modal-player-name">${self.escapeHtml(playerName)}</h3>
+                        </div>
+                        <div class="modal-actions">
+                            <button class="modal-action-btn btn-kick" data-action="kick">
+                                <span class="action-icon">✕</span>
+                                <span class="action-text">Đá khỏi phòng</span>
+                                <span class="action-desc">Loại người chơi ra khỏi phòng hiện tại</span>
+                            </button>
+                            <button class="modal-action-btn btn-ban-session" data-action="ban-session">
+                                <span class="action-icon">🚫</span>
+                                <span class="action-text">Cấm vào phòng</span>
+                                <span class="action-desc">Không cho vào lại phòng này</span>
+                            </button>
+                            <button class="modal-action-btn btn-ban-permanent" data-action="ban-permanent">
+                                <span class="action-icon">⛔</span>
+                                <span class="action-text">Cấm vĩnh viễn</span>
+                                <span class="action-desc">Không cho tham gia bất kỳ phòng nào</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `);
+            
+            // Add to body
+            $('body').append(modal);
+            
+            // Animate in
+            setTimeout(function() {
+                modal.addClass('active');
+            }, 10);
+            
+            // Bind action button clicks
+            modal.find('.modal-action-btn').on('click', function(e) {
+                e.preventDefault();
+                const action = $(this).data('action');
+                
+                // Close modal
+                modal.removeClass('active');
+                setTimeout(function() {
+                    modal.remove();
+                }, 300);
+                
+                // Execute action
+                switch(action) {
+                    case 'kick':
+                        self.kickPlayer(playerId, playerName);
+                        break;
+                    case 'ban-session':
+                        self.banFromSession(playerId, playerName);
+                        break;
+                    case 'ban-permanent':
+                        self.banPermanently(playerId, playerName);
+                        break;
+                }
             });
             
-            // Bind ban from session button events
-            $('.btn-ban-session').on('click', function(e) {
+            // Close modal when clicking overlay or close button
+            modal.find('.modal-overlay, .modal-close').on('click', function(e) {
                 e.preventDefault();
-                e.stopPropagation();
-                const playerId = $(this).data('player-id');
-                const playerName = $(this).data('player-name');
-                self.banFromSession(playerId, playerName);
+                modal.removeClass('active');
+                setTimeout(function() {
+                    modal.remove();
+                }, 300);
             });
             
-            // Bind ban permanently button events
-            $('.btn-ban-permanent').on('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const playerId = $(this).data('player-id');
-                const playerName = $(this).data('player-name');
-                self.banPermanently(playerId, playerName);
+            // Close on ESC key
+            $(document).on('keydown.player-modal', function(e) {
+                if (e.key === 'Escape') {
+                    modal.removeClass('active');
+                    setTimeout(function() {
+                        modal.remove();
+                        $(document).off('keydown.player-modal');
+                    }, 300);
+                }
             });
         },
         

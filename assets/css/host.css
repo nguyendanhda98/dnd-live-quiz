@@ -421,32 +421,48 @@
     font-style: italic;
 }
 
+/* Players Grid Layout */
+.players-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 20px;
+    padding: 10px;
+}
+
 .player-item {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    padding: 12px;
+    justify-content: center;
+    padding: 15px 10px;
     background: white;
-    border-radius: 8px;
-    margin-bottom: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     animation: slideIn 0.3s ease-out;
     position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.player-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 @keyframes slideIn {
     from {
         opacity: 0;
-        transform: translateX(-20px);
+        transform: scale(0.8);
     }
     to {
         opacity: 1;
-        transform: translateX(0);
+        transform: scale(1);
     }
 }
 
 .player-item .player-avatar {
-    width: 40px;
-    height: 40px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     display: flex;
@@ -454,94 +470,198 @@
     justify-content: center;
     color: white;
     font-weight: 700;
-    font-size: 18px;
-    margin-right: 12px;
+    font-size: 24px;
+    margin-bottom: 10px;
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .player-item .player-name {
-    flex: 1;
     font-weight: 600;
     color: #333;
-    font-size: 16px;
-    margin-right: 8px;
+    font-size: 14px;
+    text-align: center;
+    word-break: break-word;
+    max-width: 100%;
 }
 
-.player-item .player-status {
-    color: #28a745;
-    font-size: 12px;
-    font-weight: 500;
-    margin-right: 8px;
-}
-
-.player-item .player-actions {
-    display: flex;
-    gap: 6px;
-    flex-shrink: 0;
-}
-
-.player-item .btn-kick-player,
-.player-item .btn-ban-session,
-.player-item .btn-ban-permanent {
-    height: 28px;
-    padding: 0 10px;
-    border-radius: 14px;
-    color: white;
-    border: none;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1;
-    cursor: pointer;
+/* Player Action Modal */
+.player-action-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.player-action-modal.active {
+    opacity: 1;
+}
+
+.player-action-modal .modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+}
+
+.player-action-modal .modal-content {
+    position: relative;
+    background: white;
+    border-radius: 20px;
+    padding: 40px 30px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.player-action-modal.active .modal-content {
+    transform: scale(1);
+}
+
+.player-action-modal .modal-close {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: #f8f9fa;
+    border-radius: 50%;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    color: #6c757d;
     transition: all 0.2s ease;
-    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.player-item .btn-kick-player {
-    background: #dc3545;
+.player-action-modal .modal-close:hover {
+    background: #e9ecef;
+    color: #333;
+    transform: rotate(90deg);
 }
 
-.player-item .btn-kick-player:hover {
-    background: #c82333;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.4);
+.player-action-modal .modal-player-info {
+    text-align: center;
+    margin-bottom: 30px;
 }
 
-.player-item .btn-ban-session {
-    background: #fd7e14;
+.player-action-modal .modal-player-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 32px;
+    margin: 0 auto 15px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
-.player-item .btn-ban-session:hover {
-    background: #e8590c;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(253, 126, 20, 0.4);
+.player-action-modal .modal-player-name {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    color: #333;
 }
 
-.player-item .btn-ban-permanent {
-    background: #6c757d;
+.player-action-modal .modal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.player-item .btn-ban-permanent:hover {
-    background: #5a6268;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(108, 117, 125, 0.4);
+.player-action-modal .modal-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
 }
 
-.player-item .btn-kick-player:active,
-.player-item .btn-ban-session:active,
-.player-item .btn-ban-permanent:active {
-    transform: translateY(0);
+.player-action-modal .modal-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.player-item .btn-kick-player:disabled,
-.player-item .btn-ban-session:disabled,
-.player-item .btn-ban-permanent:disabled {
-    background: #ccc;
-    cursor: not-allowed;
-    transform: none;
+.player-action-modal .modal-action-btn .action-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.player-action-modal .modal-action-btn .action-text {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.player-action-modal .modal-action-btn .action-desc {
+    font-size: 13px;
+    color: #6c757d;
+    display: block;
+}
+
+.player-action-modal .modal-action-btn.btn-kick {
+    border-color: #dc3545;
+}
+
+.player-action-modal .modal-action-btn.btn-kick:hover {
+    background: #fff5f5;
+    border-color: #dc3545;
+}
+
+.player-action-modal .modal-action-btn.btn-kick .action-text {
+    color: #dc3545;
+}
+
+.player-action-modal .modal-action-btn.btn-ban-session {
+    border-color: #fd7e14;
+}
+
+.player-action-modal .modal-action-btn.btn-ban-session:hover {
+    background: #fff9f5;
+    border-color: #fd7e14;
+}
+
+.player-action-modal .modal-action-btn.btn-ban-session .action-text {
+    color: #fd7e14;
+}
+
+.player-action-modal .modal-action-btn.btn-ban-permanent {
+    border-color: #6c757d;
+}
+
+.player-action-modal .modal-action-btn.btn-ban-permanent:hover {
+    background: #f8f9fa;
+    border-color: #6c757d;
+}
+
+.player-action-modal .modal-action-btn.btn-ban-permanent .action-text {
+    color: #6c757d;
 }
 
 /* Question Control Screen */
