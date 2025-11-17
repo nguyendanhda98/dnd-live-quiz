@@ -871,6 +871,28 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
     }
 });
 
+// Answer submitted notification
+app.post('/api/sessions/:id/answer-submitted', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+        const { user_id, answered_count, total_players } = req.body;
+
+        logger.info('Answer submitted', { sessionId, user_id, answered_count, total_players });
+
+        // Broadcast answer submission event
+        io.to(`session:${sessionId}`).emit('answer_submitted', {
+            user_id,
+            answered_count,
+            total_players,
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        logger.error('Error broadcasting answer submission', { error, sessionId: req.params.id });
+        res.status(500).json({ error: 'Failed to broadcast answer submission' });
+    }
+});
+
 // Kick player from session
 app.post('/api/sessions/:id/kick-player', async (req, res) => {
     try {

@@ -94,8 +94,8 @@ class Live_Quiz_Scoring {
     public static function validate_answer($answer, $question) {
         $result = array('valid' => true, 'reason' => '');
         
-        // Check required fields
-        if (empty($answer['choice_id']) || empty($answer['question_id'])) {
+        // Check required fields (use isset to allow 0 as valid choice_id)
+        if (!isset($answer['choice_id']) || !isset($answer['question_id'])) {
             return array('valid' => false, 'reason' => 'Missing required fields');
         }
         
@@ -176,7 +176,7 @@ class Live_Quiz_Scoring {
      * @param string $user_id User/participant ID
      * @return array Answers
      */
-    private static function get_participant_answers($session_id, $user_id) {
+    public static function get_participant_answers($session_id, $user_id) {
         $cache_key = "live_quiz_answers_{$session_id}_{$user_id}";
         $answers = get_transient($cache_key);
         

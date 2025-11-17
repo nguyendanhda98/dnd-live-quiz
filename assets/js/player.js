@@ -608,7 +608,22 @@
                 }),
             });
             
-            const data = await response.json();
+            // Log response details
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+            
+            // Get text first to see what we receive
+            const text = await response.text();
+            console.log('Response text:', text);
+            
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error('JSON parse error:', e);
+                console.error('Response was not JSON:', text);
+                throw new Error('Server returned invalid response');
+            }
             
             if (!response.ok) {
                 throw new Error(data.message || 'Failed to submit answer');

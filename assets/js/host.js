@@ -350,8 +350,9 @@
                 self.handlePlayerLeft(data);
             });
             
-            // Listen for answer submitted
-            this.socket.on('answer:submitted', function(data) {
+            // Listen for answer submitted (WebSocket uses underscore, not colon)
+            this.socket.on('answer_submitted', function(data) {
+                console.log('[HOST] Received answer_submitted event:', data);
                 self.handleAnswerSubmitted(data);
             });
             
@@ -772,6 +773,10 @@
             $('#answer-stats').hide();
             $('#next-question-btn').hide();
             
+            // Reset answer count display
+            $('.answer-count-display').hide();
+            $('.answer-count-text').text('0/0 đã trả lời');
+            
             // Update question display
             $('.question-number').text('Câu ' + (data.question_index + 1));
             
@@ -892,6 +897,24 @@
         
         handleAnswerSubmitted: function(data) {
             console.log('Answer submitted:', data);
+            
+            // Update answer count display
+            if (data.answered_count !== undefined && data.total_players !== undefined) {
+                const $answerCount = $('.answer-count-display');
+                const $answerText = $('.answer-count-text');
+                
+                $answerText.text(data.answered_count + '/' + data.total_players + ' đã trả lời');
+                $answerCount.fadeIn();
+                
+                // If all players answered, auto-end question after 1 second
+                if (data.answered_count >= data.total_players && data.total_players > 0) {
+                    console.log('All players answered! Auto-ending question...');
+                    setTimeout(() => {
+                        this.endQuestion();
+                    }, 1000);
+                }
+            }
+            
             // Update stats in real-time if needed
             this.updateAnswerStats();
         },

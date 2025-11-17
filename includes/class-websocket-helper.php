@@ -210,6 +210,24 @@ class Live_Quiz_WebSocket_Helper {
     }
     
     /**
+     * Notify that a user submitted an answer
+     * 
+     * @param int $session_id Session ID
+     * @param array $data Answer data (user_id, answered_count, total_players)
+     * @return bool Success
+     */
+    public static function answer_submitted($session_id, $data) {
+        error_log('[LiveQuiz WebSocket Helper] answer_submitted() - Session: ' . $session_id);
+        error_log('Answer data: ' . print_r($data, true));
+        
+        return self::send_request(
+            '/sessions/' . $session_id . '/answer-submitted',
+            $data,
+            'POST'
+        );
+    }
+    
+    /**
      * Ban user from session (stores in Redis with 24h TTL)
      * 
      * @param int $session_id Session ID

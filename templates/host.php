@@ -170,6 +170,9 @@ if ($has_session) {
                             <div class="timer-fill"></div>
                         </div>
                         <div class="timer-text"></div>
+                        <div class="answer-count-display" style="display: none;">
+                            <span class="answer-count-text">0/0 đã trả lời</span>
+                        </div>
                     </div>
                 </div>
 

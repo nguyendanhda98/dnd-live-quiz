@@ -635,39 +635,63 @@ class Live_Quiz_REST_API {
      * Submit answer
      */
     public static function submit_answer($request) {
-        $session_id = $request->get_param('session_id');
-        $choice_id = $request->get_param('choice_id');
+        error_log('=== SUBMIT ANSWER START ===');
         
-        if (!$session_id || !is_numeric($choice_id)) {
-            return new WP_Error('missing_params', __('Thiếu thông tin', 'live-quiz'), array('status' => 400));
+        try {
+            $session_id = $request->get_param('session_id');
+            $choice_id = $request->get_param('choice_id');
+            
+            error_log("Session ID: $session_id, Choice ID: $choice_id");
+            
+            if (!$session_id || !is_numeric($choice_id)) {
+                error_log('ERROR: Missing params');
+                return new WP_Error('missing_params', __('Thiếu thông tin', 'live-quiz'), array('status' => 400));
+            }
+            
+            // Get WordPress user ID
+            $user_id = get_current_user_id();
+            error_log("User ID: $user_id");
+            
+            if (!$user_id) {
+                error_log('ERROR: Not logged in');
+                return new WP_Error('not_logged_in', __('Bạn cần đăng nhập', 'live-quiz'), array('status' => 401));
+            }
+            
+            // Validate session access
+            $access_check = Live_Quiz_Security::validate_session_access($session_id, $user_id);
+            if (is_wp_error($access_check)) {
+                error_log('ERROR: Access check failed: ' . $access_check->get_error_message());
+                return $access_check;
+            }
+            
+            // Check rate limit
+            $rate_check = Live_Quiz_Security::check_rate_limit('answer', $user_id, 10);
+            if (is_wp_error($rate_check)) {
+                error_log('ERROR: Rate limit failed: ' . $rate_check->get_error_message());
+                return $rate_check;
+            }
+            
+            error_log('About to call Session_Manager::submit_answer');
+            
+            // Submit answer
+            $result = Live_Quiz_Session_Manager::submit_answer($session_id, $user_id, (int)$choice_id);
+            
+            error_log('Session_Manager::submit_answer returned: ' . print_r($result, true));
+            
+            if (is_wp_error($result)) {
+                error_log('ERROR: Result is WP_Error: ' . $result->get_error_message());
+                return $result;
+            }
+            
+            error_log('=== SUBMIT ANSWER SUCCESS ===');
+            return rest_ensure_response($result);
+            
+        } catch (Exception $e) {
+            error_log('=== SUBMIT ANSWER EXCEPTION ===');
+            error_log('Exception: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            return new WP_Error('exception', $e->getMessage(), array('status' => 500));
         }
-        
-        // Get WordPress user ID
-        $user_id = get_current_user_id();
-        if (!$user_id) {
-            return new WP_Error('not_logged_in', __('Bạn cần đăng nhập', 'live-quiz'), array('status' => 401));
-        }
-        
-        // Validate session access
-        $access_check = Live_Quiz_Security::validate_session_access($session_id, $user_id);
-        if (is_wp_error($access_check)) {
-            return $access_check;
-        }
-        
-        // Check rate limit
-        $rate_check = Live_Quiz_Security::check_rate_limit('answer', $user_id, 10);
-        if (is_wp_error($rate_check)) {
-            return $rate_check;
-        }
-        
-        // Submit answer
-        $result = Live_Quiz_Session_Manager::submit_answer($session_id, $user_id, (int)$choice_id);
-        
-        if (is_wp_error($result)) {
-            return $result;
-        }
-        
-        return rest_ensure_response($result);
     }
     
     /**

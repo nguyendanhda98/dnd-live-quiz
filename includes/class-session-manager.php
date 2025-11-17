@@ -683,84 +683,170 @@ class Live_Quiz_Session_Manager {
      * @return array|WP_Error Result or error
      */
     public static function submit_answer($session_id, $user_id, $choice_id) {
-        $session = self::get_session($session_id);
+        error_log("SessionManager::submit_answer called - Session: $session_id, User: $user_id, Choice: $choice_id");
         
-        if (!$session) {
-            return new WP_Error('invalid_session', __('Phiên không tồn tại', 'live-quiz'));
-        }
-        
-        if ($session['status'] !== self::STATE_QUESTION) {
-            return new WP_Error('not_accepting_answers', __('Không nhận câu trả lời lúc này', 'live-quiz'));
-        }
-        
-        $question_index = $session['current_question_index'];
-        $question = $session['questions'][$question_index];
-        
-        // Check if already answered
-        $existing = Live_Quiz_Scoring::get_participant_answers($session_id, $user_id);
-        if (isset($existing[$question_index])) {
-            return new WP_Error('already_answered', __('Đã trả lời câu hỏi này', 'live-quiz'));
-        }
-        
-        // Calculate time taken (server-side)
-        $answer_time = microtime(true);
-        $time_taken = Live_Quiz_Scoring::calculate_time_taken(
-            (float)$session['question_start_time'],
-            $answer_time
-        );
-        
-        // Validate answer
-        $validation = Live_Quiz_Scoring::validate_answer(
-            array(
-                'choice_id' => $choice_id,
-                'question_id' => $question_index,
-                'server_time_taken' => $time_taken,
-            ),
-            $question
-        );
-        
-        if (!$validation['valid']) {
-            return new WP_Error('invalid_answer', $validation['reason']);
-        }
-        
-        // Check if correct
-        $is_correct = Live_Quiz_Scoring::is_correct($choice_id, $question);
-        
-        // Calculate score
-        $score = 0;
-        if ($is_correct) {
-            $score = Live_Quiz_Scoring::calculate_score(
-                $question['base_points'],
-                $question['time_limit'],
-                $time_taken,
-                $session['alpha']
+        try {
+            $session = self::get_session($session_id);
+            
+            if (!$session) {
+                error_log("ERROR: Session not found");
+                return new WP_Error('invalid_session', __('Phiên không tồn tại', 'live-quiz'));
+            }
+            
+            error_log("Session status: " . $session['status']);
+            
+            if ($session['status'] !== self::STATE_QUESTION) {
+                error_log("ERROR: Session not in question state");
+                return new WP_Error('not_accepting_answers', __('Không nhận câu trả lời lúc này', 'live-quiz'));
+            }
+            
+            $question_index = $session['current_question_index'];
+            $question = $session['questions'][$question_index];
+            
+            error_log("Question index: $question_index");
+            
+            // Check if already answered
+            $existing = Live_Quiz_Scoring::get_participant_answers($session_id, $user_id);
+            if (isset($existing[$question_index])) {
+                error_log("ERROR: User already answered this question");
+                return new WP_Error('already_answered', __('Đã trả lời câu hỏi này', 'live-quiz'));
+            }
+            
+            // Calculate time taken (server-side)
+            $answer_time = microtime(true);
+            $time_taken = Live_Quiz_Scoring::calculate_time_taken(
+                (float)$session['question_start_time'],
+                $answer_time
             );
+            
+            error_log("Time taken: $time_taken seconds");
+            
+            // Validate answer
+            $validation = Live_Quiz_Scoring::validate_answer(
+                array(
+                    'choice_id' => $choice_id,
+                    'question_id' => $question_index,
+                    'server_time_taken' => $time_taken,
+                ),
+                $question
+            );
+            
+            if (!$validation['valid']) {
+                error_log("ERROR: Answer validation failed: " . $validation['reason']);
+                return new WP_Error('invalid_answer', $validation['reason']);
+            }
+            
+            // Check if correct
+            $is_correct = Live_Quiz_Scoring::is_correct($choice_id, $question);
+            error_log("Is correct: " . ($is_correct ? 'yes' : 'no'));
+            
+            // Calculate score
+            $score = 0;
+            if ($is_correct) {
+                $score = Live_Quiz_Scoring::calculate_score(
+                    $question['base_points'],
+                    $question['time_limit'],
+                    $time_taken,
+                    $session['alpha']
+                );
+            }
+            
+            error_log("Score: $score");
+            
+            // Save answer (Redis if enabled, otherwise transient)
+            $answer_data = array(
+                'question_id' => $question_index,
+                'choice_id' => $choice_id,
+                'is_correct' => $is_correct,
+                'time_taken' => $time_taken,
+                'score' => $score,
+            );
+            
+            if (self::is_redis_enabled()) {
+                self::$redis->save_answer($session_id, $user_id, $question_index, $answer_data);
+            }
+            
+            Live_Quiz_Scoring::save_answer($session_id, $user_id, $question_index, $answer_data);
+            
+            // Clear leaderboard cache
+            Live_Quiz_Scoring::clear_leaderboard_cache($session_id);
+            
+            // Track answer count
+            $answer_count = self::increment_answer_count($session_id, $question_index);
+            $participants = self::get_participants($session_id);
+            $total_players = is_array($participants) ? count($participants) : 0;
+            
+            error_log("Answer count: $answer_count/$total_players");
+            
+            // Notify via WebSocket about answer submission
+            Live_Quiz_WebSocket_Helper::answer_submitted($session_id, array(
+                'user_id' => $user_id,
+                'answered_count' => $answer_count,
+                'total_players' => $total_players,
+            ));
+            
+            // Check if all players answered - auto end question
+            if ($answer_count >= $total_players && $total_players > 0) {
+                error_log("All players answered! Auto-ending question.");
+                // Schedule auto-end after a brief delay (1 second)
+                // We'll use a transient to trigger this
+                set_transient("live_quiz_auto_end_{$session_id}_{$question_index}", true, 60);
+            }
+            
+            error_log("Submit answer completed successfully");
+            
+            return array(
+                'success' => true,
+                'is_correct' => $is_correct,
+                'score' => $score,
+                'time_taken' => $time_taken,
+                'answered_count' => $answer_count,
+                'total_players' => $total_players,
+            );
+            
+        } catch (Exception $e) {
+            error_log("EXCEPTION in submit_answer: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            return new WP_Error('exception', $e->getMessage());
         }
-        
-        // Save answer (Redis if enabled, otherwise transient)
-        $answer_data = array(
-            'question_id' => $question_index,
-            'choice_id' => $choice_id,
-            'is_correct' => $is_correct,
-            'time_taken' => $time_taken,
-            'score' => $score,
-        );
-        
-        if (self::is_redis_enabled()) {
-            self::$redis->save_answer($session_id, $user_id, $question_index, $answer_data);
-        }
-        
-        Live_Quiz_Scoring::save_answer($session_id, $user_id, $question_index, $answer_data);
-        
-        // Clear leaderboard cache
-        Live_Quiz_Scoring::clear_leaderboard_cache($session_id);
-        
-        return array(
-            'success' => true,
-            'is_correct' => $is_correct,
-            'score' => $score,
-            'time_taken' => $time_taken,
-        );
+    }
+    
+    /**
+     * Increment answer count for current question
+     * 
+     * @param int $session_id Session ID
+     * @param int $question_index Question index
+     * @return int Current answer count
+     */
+    public static function increment_answer_count($session_id, $question_index) {
+        $key = "live_quiz_answer_count_{$session_id}_{$question_index}";
+        $count = (int)get_transient($key);
+        $count++;
+        set_transient($key, $count, 3600); // 1 hour
+        return $count;
+    }
+    
+    /**
+     * Get answer count for current question
+     * 
+     * @param int $session_id Session ID
+     * @param int $question_index Question index
+     * @return int Answer count
+     */
+    public static function get_answer_count($session_id, $question_index) {
+        $key = "live_quiz_answer_count_{$session_id}_{$question_index}";
+        return (int)get_transient($key);
+    }
+    
+    /**
+     * Reset answer count for a question
+     * 
+     * @param int $session_id Session ID
+     * @param int $question_index Question index
+     */
+    public static function reset_answer_count($session_id, $question_index) {
+        $key = "live_quiz_answer_count_{$session_id}_{$question_index}";
+        delete_transient($key);
     }
     
     /**

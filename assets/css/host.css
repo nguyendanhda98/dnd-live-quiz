@@ -599,6 +599,22 @@
     color: #667eea;
 }
 
+.answer-count-display {
+    text-align: center;
+    margin-top: 8px;
+    padding: 8px 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.answer-count-text {
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
 /* Choices Preview */
 .choices-preview {
     display: grid;
