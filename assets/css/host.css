@@ -826,6 +826,17 @@
     max-width: 100%;
 }
 
+.answered-player-score {
+    font-size: 14px;
+    font-weight: 700;
+    color: #28a745;
+    text-align: center;
+    margin-top: 4px;
+    padding: 2px 8px;
+    background: rgba(40, 167, 69, 0.1);
+    border-radius: 10px;
+}
+
 /* Answer Stats */
 .answer-stats {
     margin: 30px 0;

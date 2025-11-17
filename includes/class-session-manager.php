@@ -783,6 +783,7 @@ class Live_Quiz_Session_Manager {
                 'user_id' => $user_id,
                 'answered_count' => $answer_count,
                 'total_players' => $total_players,
+                'score' => $score,
             ));
             
             // Check if all players answered - auto end question

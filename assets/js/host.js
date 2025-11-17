@@ -977,10 +977,10 @@
             if (data.user_id && !this.answeredPlayers.includes(data.user_id)) {
                 this.answeredPlayers.push(data.user_id);
                 
-                // Find player info and display
+                // Find player info and display with score
                 const player = this.players[data.user_id];
                 if (player) {
-                    this.displayAnsweredPlayer(player);
+                    this.displayAnsweredPlayer(player, data.score || 0);
                 }
             }
             
@@ -1055,7 +1055,7 @@
             requestAnimationFrame(animate);
         },
         
-        displayAnsweredPlayer: function(player) {
+        displayAnsweredPlayer: function(player, score) {
             const initial = player.display_name ? player.display_name.charAt(0).toUpperCase() : '?';
             const $list = $('#answered-players-list');
             
@@ -1063,6 +1063,7 @@
                 <div class="answered-player-item" data-player-id="${player.user_id}">
                     <div class="answered-player-avatar">${initial}</div>
                     <div class="answered-player-name">${this.escapeHtml(player.display_name)}</div>
+                    <div class="answered-player-score">${score} pts</div>
                 </div>
             `;
             

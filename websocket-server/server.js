@@ -875,15 +875,16 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
 app.post('/api/sessions/:id/answer-submitted', async (req, res) => {
     try {
         const sessionId = req.params.id;
-        const { user_id, answered_count, total_players } = req.body;
+        const { user_id, answered_count, total_players, score } = req.body;
 
-        logger.info('Answer submitted', { sessionId, user_id, answered_count, total_players });
+        logger.info('Answer submitted', { sessionId, user_id, answered_count, total_players, score });
 
         // Broadcast answer submission event
         io.to(`session:${sessionId}`).emit('answer_submitted', {
             user_id,
             answered_count,
             total_players,
+            score,
         });
 
         res.json({ success: true });
