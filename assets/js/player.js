@@ -477,7 +477,7 @@
         
         showScreen('quiz-question');
         displayQuestion(data);
-        startTimer(data.question.time_limit);
+        // Timer will be started by displayQuestion after 1 second delay
     }
     
     function displayQuestion(data) {
