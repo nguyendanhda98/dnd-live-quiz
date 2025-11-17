@@ -859,23 +859,19 @@
             if (questionElement) {
                 console.log('Starting typewriter effect for:', data.question.text);
                 this.typewriterEffect(questionElement, data.question.text, 50, () => {
-                    console.log('Typewriter complete, displaying choices');
+                    console.log('Typewriter complete, displaying choices and starting timer');
                     // Display choices after question is fully displayed
                     self.displayChoices(data.question.choices);
                     
-                    // Wait 1 second after choices are displayed, then start timer
-                    setTimeout(() => {
-                        self.startTimer(data.question.time_limit);
-                    }, 1000);
+                    // Start timer immediately after choices appear
+                    self.startTimer(data.question.time_limit);
                 });
             } else {
                 console.error('Question element not found!');
                 // Fallback: display immediately
                 $('.question-text').text(data.question.text);
                 this.displayChoices(data.question.choices);
-                setTimeout(() => {
-                    self.startTimer(data.question.time_limit);
-                }, 1000);
+                self.startTimer(data.question.time_limit);
             }
         },
         
@@ -924,7 +920,8 @@
             const $text = $('.timer-text');
             
             const maxPoints = 1000;
-            const pointsPerSecond = 50;
+            const minPoints = 0;
+            const freezeDuration = 1.0; // Freeze at 1000 pts for first 1 second
             const startTime = Date.now();
             const endTime = startTime + (seconds * 1000);
             
@@ -938,12 +935,13 @@
             this.timerInterval = setInterval(function() {
                 const now = Date.now();
                 const remaining = Math.max(0, (endTime - now) / 1000);
+                const elapsed = seconds - remaining;
                 
                 if (remaining <= 0) {
                     clearInterval(self.timerInterval);
                     self.timerInterval = null;
                     $fill.css('width', '0%');
-                    $text.text('0 pts');
+                    $text.text(minPoints + ' pts');
                     
                     // Auto end question and show correct answer
                     console.log('[HOST] Timer ended, auto-ending question');
@@ -954,15 +952,27 @@
                 const percent = (remaining / seconds) * 100;
                 $fill.css('width', percent + '%');
                 
-                // Calculate points (1000 - 50 per second)
-                const elapsedSeconds = seconds - remaining;
-                const currentPoints = Math.max(0, maxPoints - Math.floor(elapsedSeconds * pointsPerSecond));
+                let currentPoints;
+                
+                // First 1 second: freeze at 1000 points
+                if (elapsed < freezeDuration) {
+                    currentPoints = maxPoints;
+                } else {
+                    // After 1s: decrease from 1000 to 0 over remaining time
+                    const scoringTime = seconds - freezeDuration; // e.g., 20s - 1s = 19s
+                    const scoringElapsed = elapsed - freezeDuration; // time after freeze period
+                    const pointsToLose = maxPoints - minPoints; // 1000 - 0 = 1000
+                    const pointsPerSecond = pointsToLose / scoringTime; // 1000 / 19 ≈ 52.63
+                    
+                    currentPoints = Math.max(minPoints, maxPoints - Math.floor(scoringElapsed * pointsPerSecond));
+                }
+                
                 $text.text(currentPoints + ' pts');
                 
                 // Change color based on points
-                if (currentPoints < 200) {
+                if (currentPoints < 400) {
                     $text.css('color', '#dc3545');
-                } else if (currentPoints < 500) {
+                } else if (currentPoints < 700) {
                     $text.css('color', '#ffc107');
                 } else {
                     $text.css('color', '#28a745');

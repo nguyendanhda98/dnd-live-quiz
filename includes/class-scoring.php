@@ -29,14 +29,16 @@ class Live_Quiz_Scoring {
     }
     
     /**
-     * Calculate score based on answer speed
+     * Calculate score based on answer speed with freeze period
      * 
-     * Formula: score = base_points × (α + (1 - α) × (T_remain / T_total))
+     * New logic:
+     * - First 1 second (freeze period): 1000 points
+     * - Remaining time: decrease from 1000 to 0
      * 
-     * @param int $base_points Base points for the question
+     * @param int $base_points Base points for the question (default 1000)
      * @param float $time_total Total time allowed (seconds)
      * @param float $time_taken Time taken to answer (seconds)
-     * @param float $alpha Minimum score coefficient (0-1), default 0.3
+     * @param float $alpha Minimum score coefficient (0-1), default 0.3 (not used in new logic)
      * @return int Calculated score
      */
     public static function calculate_score($base_points, $time_total, $time_taken, $alpha = 0.3) {
@@ -44,21 +46,33 @@ class Live_Quiz_Scoring {
         $base_points = max(0, (int)$base_points);
         $time_total = max(0.1, (float)$time_total);
         $time_taken = max(0, (float)$time_taken);
-        $alpha = max(0, min(1, (float)$alpha));
         
-        // If answered after time limit, time_remain is negative -> 0 points
+        // If answered after time limit -> 0 points
         if ($time_taken > $time_total) {
             return 0;
         }
         
-        // Calculate remaining time
-        $time_remain = $time_total - $time_taken;
+        // Freeze period: first 1 second = full points
+        $freeze_period = 1.0;
         
-        // Calculate score ratio
-        $ratio = $time_remain / $time_total;
+        if ($time_taken <= $freeze_period) {
+            // Full points during freeze period
+            return $base_points;
+        }
         
-        // Apply formula
-        $score = $base_points * ($alpha + (1 - $alpha) * $ratio);
+        // After freeze: calculate decay from max (1000) to min (0) over remaining time
+        $scoring_time = $time_total - $freeze_period; // e.g., 20s - 1s = 19s
+        $scoring_elapsed = $time_taken - $freeze_period; // time after freeze
+        
+        $max_points = $base_points; // 1000
+        $min_points = 0; // 0
+        
+        // Linear decay: max -> min over scoring_time
+        $points_per_second = ($max_points - $min_points) / $scoring_time;
+        $score = $max_points - ($scoring_elapsed * $points_per_second);
+        
+        // Ensure score stays within bounds
+        $score = max($min_points, min($max_points, $score));
         
         // Round to nearest integer
         return (int)round($score);
@@ -110,9 +124,10 @@ class Live_Quiz_Scoring {
             $time_taken = (float)$answer['server_time_taken'];
             $time_limit = (float)$question['time_limit'];
             
-            // Too fast (< 0.1 second) - likely bot
-            if ($time_taken < 0.1) {
-                return array('valid' => false, 'reason' => 'Answer too fast');
+            // Only reject if answered before timer started (negative time)
+            // Allow instant answers (0-0.1s) for fast clickers to get full 1000 points
+            if ($time_taken < 0) {
+                return array('valid' => false, 'reason' => 'Answer submitted before timer started');
             }
             
             // Too slow (> time_limit + grace period)

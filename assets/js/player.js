@@ -542,7 +542,8 @@
         clearInterval(state.timerInterval);
         
         const maxPoints = 1000;
-        const pointsPerSecond = 50;
+        const minPoints = 0;
+        const freezeDuration = 1.0; // Freeze at 1000 pts for first 1 second
         const startTime = Date.now();
         const endTime = startTime + (seconds * 1000);
         
@@ -552,11 +553,12 @@
         const updateTimer = () => {
             const now = Date.now();
             const remaining = Math.max(0, (endTime - now) / 1000);
+            const elapsed = seconds - remaining;
             
             if (remaining <= 0) {
                 clearInterval(state.timerInterval);
                 timerFill.style.width = '0%';
-                timerText.textContent = '0 pts';
+                timerText.textContent = minPoints + ' pts';
                 disableChoices();
                 // Timer ended - wait for server to show correct answer
                 return;
@@ -565,16 +567,28 @@
             const percentage = (remaining / seconds) * 100;
             timerFill.style.width = percentage + '%';
             
-            // Calculate points (1000 - 50 per second)
-            const elapsedSeconds = seconds - remaining;
-            const currentPoints = Math.max(0, maxPoints - Math.floor(elapsedSeconds * pointsPerSecond));
+            let currentPoints;
+            
+            // First 1 second: freeze at 1000 points
+            if (elapsed < freezeDuration) {
+                currentPoints = maxPoints;
+            } else {
+                // After 1s: decrease from 1000 to 0 over remaining time
+                const scoringTime = seconds - freezeDuration; // e.g., 20s - 1s = 19s
+                const scoringElapsed = elapsed - freezeDuration; // time after freeze period
+                const pointsToLose = maxPoints - minPoints; // 1000 - 0 = 1000
+                const pointsPerSecond = pointsToLose / scoringTime; // 1000 / 19 ≈ 52.63
+                
+                currentPoints = Math.max(minPoints, maxPoints - Math.floor(scoringElapsed * pointsPerSecond));
+            }
+            
             timerText.textContent = currentPoints + ' pts';
             
             // Change color when points are low
-            if (currentPoints < 200) {
+            if (currentPoints < 400) {
                 timerFill.style.backgroundColor = '#e74c3c';
                 timerText.style.color = '#e74c3c';
-            } else if (currentPoints < 500) {
+            } else if (currentPoints < 700) {
                 timerFill.style.backgroundColor = '#f39c12';
                 timerText.style.color = '#f39c12';
             } else {

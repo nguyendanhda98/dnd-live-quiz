@@ -179,9 +179,23 @@ class Live_Quiz_Session_Manager {
         
         $start_time = microtime(true);
         
+        // Calculate timer delay for client-side animations
+        // Typewriter effect: 50ms per character
+        $question_text = $session['questions'][$question_index]['text'];
+        $typewriter_duration = (strlen($question_text) * 0.05); // 50ms = 0.05s per char
+        
+        // Timer starts immediately after typewriter + 0.5s buffer
+        $timer_delay = $typewriter_duration + 0.5;
+        $actual_timer_start = $start_time + $timer_delay;
+        
+        // First 1 second is "freeze period" at 1000 points
+        $freeze_period = 1.0;
+        $scoring_start = $actual_timer_start + $freeze_period;
+        
         update_post_meta($session_id, '_session_status', self::STATE_QUESTION);
         update_post_meta($session_id, '_session_current_question', $question_index);
-        update_post_meta($session_id, '_question_start_time', $start_time);
+        update_post_meta($session_id, '_question_start_time', $actual_timer_start);
+        update_post_meta($session_id, '_question_broadcast_time', $start_time);
         
         // Update Redis if enabled
         if (self::is_redis_enabled()) {
@@ -206,6 +220,8 @@ class Live_Quiz_Session_Manager {
                 }, $session['questions'][$question_index]['choices']),
                 'time_limit' => $session['questions'][$question_index]['time_limit'],
                 'start_time' => $start_time,
+                'timer_delay' => $timer_delay,
+                'actual_timer_start' => $actual_timer_start,
             ));
             
             if ($result) {
