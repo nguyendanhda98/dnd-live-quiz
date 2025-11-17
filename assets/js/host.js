@@ -992,26 +992,67 @@
                 $answerText.text(data.answered_count + '/' + data.total_players + ' đã trả lời');
                 $answerCount.fadeIn();
                 
-                // If all players answered, stop timer and auto-end question after 1 second
+                // If all players answered, animate timer to 0 then end question
                 if (data.answered_count >= data.total_players && data.total_players > 0) {
-                    console.log('All players answered! Stopping timer...');
+                    console.log('All players answered! Animating timer to 0...');
                     
-                    // Stop the timer
+                    // Stop the current timer
                     if (this.timerInterval) {
                         clearInterval(this.timerInterval);
                         this.timerInterval = null;
                     }
                     
-                    // Wait 1 second then end question
-                    setTimeout(() => {
-                        console.log('1 second passed, ending question...');
+                    // Animate timer bar to 0 in 1 second
+                    this.animateTimerToZero(1000, () => {
+                        console.log('Timer reached 0, ending question...');
                         this.autoEndQuestion();
-                    }, 1000);
+                    });
                 }
             }
             
             // Update stats in real-time if needed
             this.updateAnswerStats();
+        },
+        
+        animateTimerToZero: function(duration, callback) {
+            const $fill = $('.timer-fill');
+            const $text = $('.timer-text');
+            
+            // Get current width
+            const currentWidth = parseFloat($fill.css('width')) || 0;
+            const totalWidth = parseFloat($fill.parent().css('width')) || 1;
+            const currentPercent = (currentWidth / totalWidth) * 100;
+            
+            console.log('[HOST] Animating timer from', currentPercent + '%', 'to 0% in', duration + 'ms');
+            
+            const startTime = Date.now();
+            const startPercent = currentPercent;
+            
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Ease out animation
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                const currentPercent = startPercent * (1 - easeProgress);
+                
+                $fill.css('width', currentPercent + '%');
+                
+                // Update points text proportionally
+                const currentPoints = Math.floor(currentPercent * 10);
+                $text.text(currentPoints + ' pts');
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Ensure it's exactly 0
+                    $fill.css('width', '0%');
+                    $text.text('0 pts');
+                    if (callback) callback();
+                }
+            };
+            
+            requestAnimationFrame(animate);
         },
         
         displayAnsweredPlayer: function(player) {

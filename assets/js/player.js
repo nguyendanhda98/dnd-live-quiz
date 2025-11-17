@@ -588,6 +588,16 @@
     }
     
     async function handleAnswerSelect(choiceId) {
+        // Stop the timer immediately and freeze the points
+        clearInterval(state.timerInterval);
+        state.timerInterval = null;
+        
+        // Get current points value to freeze it
+        const timerText = document.querySelector('.timer-text');
+        const currentPoints = timerText.textContent; // Keep the current display
+        
+        console.log('[PLAYER] Answer selected, timer stopped at:', currentPoints);
+        
         // Disable all choices
         disableChoices();
         
