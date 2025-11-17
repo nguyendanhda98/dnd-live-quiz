@@ -631,12 +631,8 @@
             
             console.log('Answer submitted:', data);
             
-            // Show feedback
-            if (data.is_correct) {
-                buttons[choiceId].classList.add('correct');
-            } else {
-                buttons[choiceId].classList.add('incorrect');
-            }
+            // Don't show correct/incorrect yet - wait for question_end
+            // Just keep the 'selected' highlight
             
         } catch (error) {
             console.error('Answer error:', error);
@@ -659,10 +655,14 @@
         
         // Wait 1 second before showing correct answer
         setTimeout(() => {
-            // Show correct answer in current question screen
+            // Show correct answer and mark selected answer
             const buttons = document.querySelectorAll('.choice-button');
             buttons.forEach((button, index) => {
-                if (data.correct_answer !== undefined && index === data.correct_answer) {
+                const isCorrect = data.correct_answer !== undefined && index === data.correct_answer;
+                const isSelected = button.classList.contains('selected');
+                
+                if (isCorrect) {
+                    // Mark correct answer
                     button.classList.add('correct-answer');
                     button.style.borderColor = '#2ecc71';
                     button.style.borderWidth = '5px';
@@ -673,6 +673,18 @@
                     // Add checkmark
                     const originalText = button.textContent;
                     button.innerHTML = '✓ ' + originalText;
+                } else if (isSelected) {
+                    // Mark selected wrong answer
+                    button.classList.add('incorrect');
+                    button.style.borderColor = '#e74c3c';
+                    button.style.borderWidth = '5px';
+                    button.style.backgroundColor = '#e74c3c';
+                    button.style.color = 'white';
+                    button.style.fontWeight = 'bold';
+                    
+                    // Add X mark
+                    const originalText = button.textContent;
+                    button.innerHTML = '✗ ' + originalText;
                 }
             });
             
