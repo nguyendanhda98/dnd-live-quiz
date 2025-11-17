@@ -569,12 +569,6 @@ class Live_Quiz_REST_API {
         // Add WebSocket connection info if available (Phase 2)
         if (isset($participant['websocket'])) {
             $response['websocket'] = $participant['websocket'];
-        } elseif (class_exists('Live_Quiz_WebSocket_Adapter')) {
-            $adapter = Live_Quiz_WebSocket_Adapter::get_instance();
-            $connection_info = $adapter->get_connection_info($session_id, $participant['user_id'], $participant['display_name']);
-            if ($connection_info) {
-                $response['websocket'] = $connection_info;
-            }
         }
         
         // Save active session to user meta (for session restore on other devices)

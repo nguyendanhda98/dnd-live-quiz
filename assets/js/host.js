@@ -355,18 +355,21 @@
                 self.handleAnswerSubmitted(data);
             });
             
-            // Listen for question start
-            this.socket.on('question:start', function(data) {
+            // Listen for question start (WebSocket uses underscore, not colon)
+            this.socket.on('question_start', function(data) {
+                console.log('[HOST] Received question_start event:', data);
                 self.handleQuestionStart(data);
             });
             
             // Listen for question end
-            this.socket.on('question:end', function(data) {
+            this.socket.on('question_end', function(data) {
+                console.log('[HOST] Received question_end event:', data);
                 self.handleQuestionEnd(data);
             });
             
             // Listen for session end
-            this.socket.on('session:ended', function(data) {
+            this.socket.on('session_end', function(data) {
+                console.log('[HOST] Received session_end event:', data);
                 self.handleSessionEnded(data);
             });
         },
@@ -762,22 +765,68 @@
             
             this.currentQuestionIndex = data.question_index;
             
-            // Update question display
-            $('.question-number').text('Câu ' + (data.question_index + 1));
-            $('.question-text').text(data.question.text);
-            
-            // Display choices
-            this.displayChoices(data.question.choices);
-            
-            // Start timer
-            this.startTimer(data.question.time_limit);
-            
-            // Show question screen
+            // Show question screen first
             this.showScreen('host-question');
             
             // Reset stats
             $('#answer-stats').hide();
             $('#next-question-btn').hide();
+            
+            // Update question display
+            $('.question-number').text('Câu ' + (data.question_index + 1));
+            
+            // Clear choices container
+            $('#choices-preview').html('');
+            
+            // Typewriter effect for question text
+            const self = this;
+            const questionElement = $('.question-text')[0];
+            
+            if (questionElement) {
+                console.log('Starting typewriter effect for:', data.question.text);
+                this.typewriterEffect(questionElement, data.question.text, 50, () => {
+                    console.log('Typewriter complete, displaying choices');
+                    // Display choices after question is fully displayed
+                    self.displayChoices(data.question.choices);
+                    
+                    // Wait 1 second after choices are displayed, then start timer
+                    setTimeout(() => {
+                        self.startTimer(data.question.time_limit);
+                    }, 1000);
+                });
+            } else {
+                console.error('Question element not found!');
+                // Fallback: display immediately
+                $('.question-text').text(data.question.text);
+                this.displayChoices(data.question.choices);
+                setTimeout(() => {
+                    self.startTimer(data.question.time_limit);
+                }, 1000);
+            }
+        },
+        
+        /**
+         * Typewriter effect - display text character by character
+         * @param {HTMLElement} element - Element to display text in
+         * @param {string} text - Text to display
+         * @param {number} speed - Speed in milliseconds per character
+         * @param {function} callback - Callback function when complete
+         */
+        typewriterEffect: function(element, text, speed, callback) {
+            let index = 0;
+            element.textContent = '';
+            
+            function typeNextCharacter() {
+                if (index < text.length) {
+                    element.textContent += text.charAt(index);
+                    index++;
+                    setTimeout(typeNextCharacter, speed);
+                } else if (callback) {
+                    callback();
+                }
+            }
+            
+            typeNextCharacter();
         },
         
         displayChoices: function(choices) {
@@ -801,24 +850,40 @@
             const $text = $('.timer-text');
             
             let remaining = seconds;
+            const maxPoints = 1000;
+            const pointsPerSecond = 50;
+            let elapsed = 0;
+            
             $fill.css('width', '100%');
-            $text.text(remaining + 's');
             
             const timer = setInterval(function() {
-                remaining--;
+                elapsed += 0.1;
+                remaining -= 0.1;
                 
                 if (remaining <= 0) {
                     clearInterval(timer);
                     $fill.css('width', '0%');
-                    $text.text('0s');
+                    $text.text('0 pts');
                     self.endQuestion();
                     return;
                 }
                 
                 const percent = (remaining / seconds) * 100;
                 $fill.css('width', percent + '%');
-                $text.text(remaining + 's');
-            }, 1000);
+                
+                // Calculate points (1000 - 50 per second)
+                const currentPoints = Math.max(0, maxPoints - Math.floor(elapsed * pointsPerSecond));
+                $text.text(currentPoints + ' pts');
+                
+                // Change color based on points
+                if (currentPoints < 200) {
+                    $text.css('color', '#dc3545');
+                } else if (currentPoints < 500) {
+                    $text.css('color', '#ffc107');
+                } else {
+                    $text.css('color', '#28a745');
+                }
+            }, 100);
         },
         
         handleAnswerSubmitted: function(data) {

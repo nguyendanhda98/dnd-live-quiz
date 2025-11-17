@@ -167,14 +167,26 @@ class Live_Quiz_WebSocket_Helper {
      * @return bool Success
      */
     public static function start_question($session_id, $question_index, $question_data) {
-        return self::send_request(
+        error_log('[WebSocket Helper] start_question() called');
+        error_log('[WebSocket Helper] Session: ' . $session_id);
+        error_log('[WebSocket Helper] Question Index: ' . $question_index);
+        error_log('[WebSocket Helper] Question Data: ' . json_encode($question_data));
+        
+        // Extract start_time from question_data
+        $start_time = isset($question_data['start_time']) ? $question_data['start_time'] : microtime(true);
+        
+        $result = self::send_request(
             '/sessions/' . $session_id . '/start-question',
             array(
                 'question_index' => $question_index,
-                'question' => $question_data,
+                'question_data' => $question_data,
+                'start_time' => $start_time,
             ),
             'POST'
         );
+        
+        error_log('[WebSocket Helper] Result: ' . ($result ? 'SUCCESS' : 'FAILED'));
+        return $result;
     }
     
     /**

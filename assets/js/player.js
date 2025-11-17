@@ -485,26 +485,66 @@
         
         document.querySelector('.question-number').textContent = 
             config.i18n.question + ' ' + questionNumber;
-        document.querySelector('.question-text').textContent = data.question.text;
         
-        // Display choices
+        // Typewriter effect for question text
+        const questionElement = document.querySelector('.question-text');
+        questionElement.textContent = '';
+        
+        // Clear choices first
         const container = document.getElementById('choices-container');
         container.innerHTML = '';
         
-        data.question.choices.forEach((choice, index) => {
-            const button = document.createElement('button');
-            button.className = 'choice-button';
-            button.dataset.choiceId = index;
-            button.textContent = choice.text;
-            button.addEventListener('click', () => handleAnswerSelect(index));
-            container.appendChild(button);
+        // Display question with typewriter effect, then show choices
+        typewriterEffect(questionElement, data.question.text, 50, () => {
+            // Display choices after question is fully displayed
+            data.question.choices.forEach((choice, index) => {
+                const button = document.createElement('button');
+                button.className = 'choice-button';
+                button.dataset.choiceId = index;
+                button.textContent = choice.text;
+                button.addEventListener('click', () => handleAnswerSelect(index));
+                container.appendChild(button);
+            });
+            
+            // Wait 1 second after choices are displayed, then start timer
+            setTimeout(() => {
+                startTimer(data.question.time_limit);
+            }, 1000);
         });
+    }
+    
+    /**
+     * Typewriter effect - display text character by character
+     * @param {HTMLElement} element - Element to display text in
+     * @param {string} text - Text to display
+     * @param {number} speed - Speed in milliseconds per character
+     * @param {function} callback - Optional callback when complete
+     */
+    function typewriterEffect(element, text, speed = 50, callback) {
+        let index = 0;
+        element.textContent = '';
+        
+        function typeNextCharacter() {
+            if (index < text.length) {
+                element.textContent += text.charAt(index);
+                index++;
+                setTimeout(typeNextCharacter, speed);
+            } else if (callback) {
+                // Call callback after typewriter is complete
+                callback();
+            }
+        }
+        
+        typeNextCharacter();
     }
     
     function startTimer(seconds) {
         clearInterval(state.timerInterval);
         
         let remaining = seconds;
+        const maxPoints = 1000;
+        const pointsPerSecond = 50;
+        
         const timerFill = document.querySelector('.timer-fill');
         const timerText = document.querySelector('.timer-text');
         
@@ -519,13 +559,22 @@
             
             const percentage = (remaining / seconds) * 100;
             timerFill.style.width = percentage + '%';
-            timerText.textContent = Math.ceil(remaining) + 's';
             
-            // Change color when time is running out
-            if (percentage < 20) {
+            // Calculate points (1000 - 50 per second)
+            const elapsedSeconds = seconds - remaining;
+            const currentPoints = Math.max(0, maxPoints - Math.floor(elapsedSeconds * pointsPerSecond));
+            timerText.textContent = currentPoints + ' pts';
+            
+            // Change color when points are low
+            if (currentPoints < 200) {
                 timerFill.style.backgroundColor = '#e74c3c';
-            } else if (percentage < 50) {
+                timerText.style.color = '#e74c3c';
+            } else if (currentPoints < 500) {
                 timerFill.style.backgroundColor = '#f39c12';
+                timerText.style.color = '#f39c12';
+            } else {
+                timerFill.style.backgroundColor = '#2ecc71';
+                timerText.style.color = '#2ecc71';
             }
         };
         

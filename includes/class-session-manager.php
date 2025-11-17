@@ -192,19 +192,29 @@ class Live_Quiz_Session_Manager {
                 'start_time' => $start_time,
                 'question' => $session['questions'][$question_index],
             ));
+        }
+        
+        // Notify WebSocket server if available (regardless of Redis)
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            error_log('[Session Manager] Notifying WebSocket server about question start');
+            error_log('[Session Manager] Session: ' . $session_id . ', Question: ' . $question_index);
             
-            // Notify WebSocket server if available
-            if (class_exists('Live_Quiz_WebSocket_Adapter')) {
-                $adapter = Live_Quiz_WebSocket_Adapter::get_instance();
-                $adapter->start_question($session_id, $question_index, array(
-                    'text' => $session['questions'][$question_index]['text'],
-                    'choices' => array_map(function($choice) {
-                        return array('text' => $choice['text']);
-                    }, $session['questions'][$question_index]['choices']),
-                    'time_limit' => $session['questions'][$question_index]['time_limit'],
-                    'start_time' => $start_time,
-                ));
+            $result = Live_Quiz_WebSocket_Helper::start_question($session_id, $question_index, array(
+                'text' => $session['questions'][$question_index]['text'],
+                'choices' => array_map(function($choice) {
+                    return array('text' => $choice['text']);
+                }, $session['questions'][$question_index]['choices']),
+                'time_limit' => $session['questions'][$question_index]['time_limit'],
+                'start_time' => $start_time,
+            ));
+            
+            if ($result) {
+                error_log('[Session Manager] ✓ WebSocket notification successful');
+            } else {
+                error_log('[Session Manager] ✗ WebSocket notification FAILED');
             }
+        } else {
+            error_log('[Session Manager] ✗ Live_Quiz_WebSocket_Helper class not found');
         }
         
         self::clear_session_cache($session_id);
@@ -245,9 +255,8 @@ class Live_Quiz_Session_Manager {
             self::$redis->clear_current_question($session_id);
             
             // Notify WebSocket server
-            if (class_exists('Live_Quiz_WebSocket_Adapter')) {
-                $adapter = Live_Quiz_WebSocket_Adapter::get_instance();
-                $adapter->end_question($session_id);
+            if (class_exists('Live_Quiz_WebSocket_Helper')) {
+                Live_Quiz_WebSocket_Helper::end_question($session_id);
             }
         }
         
@@ -483,9 +492,8 @@ class Live_Quiz_Session_Manager {
             error_log("Updated session status in Redis");
             
             // Notify WebSocket server and save final results
-            if (class_exists('Live_Quiz_WebSocket_Adapter')) {
-                $adapter = Live_Quiz_WebSocket_Adapter::get_instance();
-                $adapter->end_session($session_id);
+            if (class_exists('Live_Quiz_WebSocket_Helper')) {
+                Live_Quiz_WebSocket_Helper::end_session($session_id);
             }
         }
         
@@ -558,15 +566,6 @@ class Live_Quiz_Session_Manager {
         // Save to Redis if enabled
         if (self::is_redis_enabled()) {
             self::$redis->add_participant($session_id, $user_id, $participant['display_name']);
-            
-            // Get WebSocket connection info if available
-            if (class_exists('Live_Quiz_WebSocket_Adapter')) {
-                $adapter = Live_Quiz_WebSocket_Adapter::get_instance();
-                $ws_info = $adapter->add_participant($session_id, $user_id, $participant['display_name']);
-                if ($ws_info) {
-                    $participant['websocket'] = $ws_info;
-                }
-            }
         }
         
         // Always save to post meta for persistence and fallback
@@ -613,12 +612,6 @@ class Live_Quiz_Session_Manager {
         // Remove from Redis if enabled
         if (self::is_redis_enabled()) {
             self::$redis->remove_participant($session_id, $user_id);
-            
-            // Remove from WebSocket if available
-            if (class_exists('Live_Quiz_WebSocket_Adapter')) {
-                $adapter = Live_Quiz_WebSocket_Adapter::get_instance();
-                $adapter->remove_participant($session_id, $user_id);
-            }
         }
         
         // Remove from post meta
