@@ -27,6 +27,8 @@
         isConfigured: false,
         answeredPlayers: [], // Track players who answered current question
         timerInterval: null, // Track timer interval for stopping
+        serverStartTime: null, // Server timestamp when question started
+        displayStartTime: null, // Local timestamp when we start displaying
         
         // Helper to get API config safely
         getApiConfig: function() {
@@ -830,6 +832,8 @@
             console.log('Question started:', data);
             
             this.currentQuestionIndex = data.question_index;
+            this.serverStartTime = data.start_time; // Store server timestamp
+            this.displayStartTime = Date.now() / 1000; // Record when we start displaying
             
             // Reset answered players list
             this.answeredPlayers = [];
@@ -849,30 +853,22 @@
             // Update question display
             $('.question-number').text('Câu ' + (data.question_index + 1));
             
-            // Clear choices container
-            $('#choices-preview').html('');
+            // Clear and hide choices container
+            $('#choices-preview').html('').hide();
             
-            // Typewriter effect for question text
+            // Display question immediately
             const self = this;
-            const questionElement = $('.question-text')[0];
+            $('.question-text').text(data.question.text);
             
-            if (questionElement) {
-                console.log('Starting typewriter effect for:', data.question.text);
-                this.typewriterEffect(questionElement, data.question.text, 50, () => {
-                    console.log('Typewriter complete, displaying choices and starting timer');
-                    // Display choices after question is fully displayed
-                    self.displayChoices(data.question.choices);
-                    
-                    // Start timer immediately after choices appear
-                    self.startTimer(data.question.time_limit);
-                });
-            } else {
-                console.error('Question element not found!');
-                // Fallback: display immediately
-                $('.question-text').text(data.question.text);
-                this.displayChoices(data.question.choices);
+            // After 3 seconds: show choices and start timer immediately
+            setTimeout(() => {
+                // Display choices
+                self.displayChoices(data.question.choices);
+                $('#choices-preview').show();
+                
+                // Start timer immediately when choices appear
                 self.startTimer(data.question.time_limit);
-            }
+            }, 3000);
         },
         
         /**
@@ -922,8 +918,17 @@
             const maxPoints = 1000;
             const minPoints = 0;
             const freezeDuration = 1.0; // Freeze at 1000 pts for first 1 second
-            const startTime = Date.now();
-            const endTime = startTime + (seconds * 1000);
+            
+            // Calculate display offset (time from server start to now)
+            // This includes: network delay + display time + 3s fixed delay
+            const displayOffset = this.displayStartTime ? (Date.now() / 1000) - this.displayStartTime + 3 : 3;
+            console.log('[HOST] Display offset:', displayOffset.toFixed(2), 'seconds');
+            
+            // Use server timestamp if available, otherwise fallback to local time
+            const serverStartTime = this.serverStartTime || (Date.now() / 1000);
+            // Adjust server start time by display offset so timer starts from "now"
+            const adjustedStartTime = serverStartTime + displayOffset;
+            const endTime = adjustedStartTime + seconds;
             
             $fill.css('width', '100%');
             
@@ -933,9 +938,9 @@
             }
             
             this.timerInterval = setInterval(function() {
-                const now = Date.now();
-                const remaining = Math.max(0, (endTime - now) / 1000);
-                const elapsed = seconds - remaining;
+                const nowSeconds = Date.now() / 1000;
+                const remaining = Math.max(0, endTime - nowSeconds);
+                const elapsed = nowSeconds - adjustedStartTime;
                 
                 if (remaining <= 0) {
                     clearInterval(self.timerInterval);

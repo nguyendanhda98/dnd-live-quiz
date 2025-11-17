@@ -19,6 +19,8 @@
         websocketToken: null,
         currentQuestion: null,
         questionStartTime: null,
+        serverStartTime: null, // Server timestamp when question started
+        displayStartTime: null, // Local timestamp when we start displaying (for offset calculation)
         timerInterval: null,
         connectionId: null, // Unique ID for this tab/device
         
@@ -474,6 +476,7 @@
         
         state.currentQuestion = data;
         state.questionStartTime = data.start_time;
+        state.serverStartTime = data.start_time; // Store server timestamp
         
         showScreen('quiz-question');
         displayQuestion(data);
@@ -486,17 +489,21 @@
         document.querySelector('.question-number').textContent = 
             config.i18n.question + ' ' + questionNumber;
         
-        // Typewriter effect for question text
+        // Display question text immediately
         const questionElement = document.querySelector('.question-text');
-        questionElement.textContent = '';
+        questionElement.textContent = data.question.text;
         
-        // Clear choices first
+        // Clear choices container (don't show yet)
         const container = document.getElementById('choices-container');
         container.innerHTML = '';
+        container.style.display = 'none'; // Hide initially
         
-        // Display question with typewriter effect, then show choices
-        typewriterEffect(questionElement, data.question.text, 50, () => {
-            // Display choices after question is fully displayed
+        // Record when we finish displaying question (for offset calculation)
+        state.displayStartTime = Date.now() / 1000;
+        
+        // After 3 seconds: show choices and start timer immediately
+        setTimeout(() => {
+            // Display all choices
             data.question.choices.forEach((choice, index) => {
                 const button = document.createElement('button');
                 button.className = 'choice-button';
@@ -506,11 +513,12 @@
                 container.appendChild(button);
             });
             
-            // Wait 1 second after choices are displayed, then start timer
-            setTimeout(() => {
-                startTimer(data.question.time_limit);
-            }, 1000);
-        });
+            // Show choices container
+            container.style.display = '';
+            
+            // Start timer immediately when choices appear
+            startTimer(data.question.time_limit);
+        }, 3000);
     }
     
     /**
@@ -544,16 +552,26 @@
         const maxPoints = 1000;
         const minPoints = 0;
         const freezeDuration = 1.0; // Freeze at 1000 pts for first 1 second
-        const startTime = Date.now();
-        const endTime = startTime + (seconds * 1000);
+        
+        // Calculate display offset (time from server start to now)
+        // This includes: network delay + display time + 3s fixed delay
+        const displayOffset = state.displayStartTime ? (Date.now() / 1000) - state.displayStartTime + 3 : 3;
+        console.log('[PLAYER] Display offset:', displayOffset.toFixed(2), 'seconds');
+        
+        // Use server timestamp if available, otherwise fallback to local time
+        const serverStartTime = state.serverStartTime || (Date.now() / 1000);
+        // Adjust server start time by display offset so timer starts from "now"
+        const adjustedStartTime = serverStartTime + displayOffset;
+        const endTime = adjustedStartTime + seconds;
         
         const timerFill = document.querySelector('.timer-fill');
         const timerText = document.querySelector('.timer-text');
         
         const updateTimer = () => {
-            const now = Date.now();
-            const remaining = Math.max(0, (endTime - now) / 1000);
-            const elapsed = seconds - remaining;
+            // Calculate elapsed time based on adjusted timestamp
+            const nowSeconds = Date.now() / 1000;
+            const elapsed = nowSeconds - adjustedStartTime;
+            const remaining = Math.max(0, endTime - nowSeconds);
             
             if (remaining <= 0) {
                 clearInterval(state.timerInterval);

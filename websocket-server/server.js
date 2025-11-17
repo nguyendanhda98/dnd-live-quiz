@@ -536,6 +536,36 @@ io.on('connection', async (socket) => {
             user_id,
             room_size: io.sockets.adapter.rooms.get(`session:${session_id}`)?.size || 0
         });
+        
+        // Send current session state to the newly joined user
+        // This ensures they sync with ongoing question if quiz is in progress
+        const session = await redisClient.hGetAll(`session:${session_id}`);
+        if (session && session.status === 'question') {
+            // Session is currently in a question - send question_start to sync
+            const questionIndex = parseInt(session.current_question_index || 0);
+            const startTime = parseFloat(session.question_start_time || 0);
+            
+            // Retrieve question data from session questions list
+            const questionsJson = session.questions || '[]';
+            const questions = JSON.parse(questionsJson);
+            const currentQuestion = questions[questionIndex];
+            
+            if (currentQuestion && startTime) {
+                logger.info('Sending current question state to newly joined user', {
+                    user_id,
+                    session_id,
+                    questionIndex,
+                    startTime
+                });
+                
+                // Send to this specific socket only
+                socket.emit('question_start', {
+                    question_index: questionIndex,
+                    question: currentQuestion,
+                    start_time: startTime,
+                });
+            }
+        }
     });
     
     // Handle leave_session event
