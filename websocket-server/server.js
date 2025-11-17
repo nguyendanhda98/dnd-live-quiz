@@ -848,15 +848,21 @@ app.post('/api/sessions/:id/start-question', async (req, res) => {
 app.post('/api/sessions/:id/end-question', async (req, res) => {
     try {
         const sessionId = req.params.id;
-        const { correct_answer } = req.body;
+        const { correct_answer, leaderboard: phpLeaderboard } = req.body;
 
-        logger.info('Ending question', { sessionId, correct_answer });
+        logger.info('Ending question', { sessionId, correct_answer, leaderboardFromPHP: phpLeaderboard ? phpLeaderboard.length : 0 });
 
         // Update session status
         await redisClient.hSet(`session:${sessionId}`, 'status', 'results');
 
-        // Get leaderboard
-        const leaderboard = await RedisHelper.getLeaderboard(sessionId, 10);
+        // Use leaderboard from PHP if provided, otherwise get from Redis
+        let leaderboard = phpLeaderboard;
+        if (!leaderboard || leaderboard.length === 0) {
+            logger.info('Getting leaderboard from Redis');
+            leaderboard = await RedisHelper.getLeaderboard(sessionId, 10);
+        } else {
+            logger.info('Using leaderboard from PHP', { count: leaderboard.length });
+        }
 
         // Broadcast results with correct answer
         io.to(`session:${sessionId}`).emit('question_end', {

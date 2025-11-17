@@ -264,17 +264,17 @@ class Live_Quiz_Session_Manager {
             self::$redis->clear_current_question($session_id);
         }
         
-        // Notify WebSocket server (always, not just when Redis enabled)
-        if (class_exists('Live_Quiz_WebSocket_Helper')) {
-            Live_Quiz_WebSocket_Helper::end_question($session_id, $correct_answer);
-        }
-        
         self::clear_session_cache($session_id);
         Live_Quiz_Scoring::clear_leaderboard_cache($session_id);
         
         // Get current question stats
         $stats = Live_Quiz_Scoring::get_question_stats($session_id, $session['current_question_index']);
         $leaderboard = Live_Quiz_Scoring::get_leaderboard($session_id, 10);
+        
+        // Notify WebSocket server with leaderboard (always, not just when Redis enabled)
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            Live_Quiz_WebSocket_Helper::end_question($session_id, $correct_answer, $leaderboard);
+        }
         
         // Broadcast results (SSE fallback)
         self::broadcast_event($session_id, 'question_end', array(

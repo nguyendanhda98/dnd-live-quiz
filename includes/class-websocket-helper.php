@@ -190,17 +190,23 @@ class Live_Quiz_WebSocket_Helper {
     }
     
     /**
-     * End question
+     * End question (show correct answer)
      * 
      * @param int $session_id Session ID
      * @param int $correct_answer Correct answer index
+     * @param array $leaderboard Leaderboard data
      * @return bool Success
      */
-    public static function end_question($session_id, $correct_answer = null) {
+    public static function end_question($session_id, $correct_answer = null, $leaderboard = null) {
         $data = array();
         if ($correct_answer !== null) {
             $data['correct_answer'] = $correct_answer;
         }
+        if ($leaderboard !== null) {
+            $data['leaderboard'] = $leaderboard;
+        }
+        
+        error_log('[LiveQuiz WebSocket Helper] end_question - Leaderboard items: ' . (is_array($leaderboard) ? count($leaderboard) : 'none'));
         
         return self::send_request(
             '/sessions/' . $session_id . '/end-question',

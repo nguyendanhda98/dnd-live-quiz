@@ -198,6 +198,16 @@ if ($has_session) {
                     <?php _e('Câu hỏi tiếp theo', 'live-quiz'); ?>
                 </button>
             </div>
+            
+            <!-- Leaderboard Overlay -->
+            <div id="leaderboard-overlay" class="leaderboard-overlay" style="display: none;">
+                <div class="leaderboard-container">
+                    <h2><?php _e('Bảng xếp hạng', 'live-quiz'); ?></h2>
+                    <div id="animated-leaderboard" class="animated-leaderboard">
+                        <!-- Leaderboard items will be inserted here -->
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Results Screen -->

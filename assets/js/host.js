@@ -1063,10 +1063,9 @@
             const $list = $('#answered-players-list');
             
             const playerHtml = `
-                <div class="answered-player-item" data-player-id="${player.user_id}">
+                <div class="answered-player-item" data-player-id="${player.user_id}" data-score="${score}">
                     <div class="answered-player-avatar">${initial}</div>
                     <div class="answered-player-name">${this.escapeHtml(player.display_name)}</div>
-                    <div class="answered-player-score">${score} pts</div>
                 </div>
             `;
             
@@ -1158,12 +1157,15 @@
                 },
                 success: function(response) {
                     console.log('[HOST] Question ended');
-                    // handleQuestionEnd will show correct answer after 1 second
-                    // Then we wait 5 more seconds before next question (total 6 seconds)
+                    // handleQuestionEnd will:
+                    // 1. Show correct answer after 1s
+                    // 2. Wait 2s
+                    // 3. Show leaderboard animation (3s + 1s + 1.5s + 2s = 7.5s)
+                    // Total: 1s + 2s + 7.5s = 10.5s, then auto next
                     setTimeout(function() {
-                        console.log('[HOST] 6 seconds passed (1s wait + 5s display), auto next question now...');
+                        console.log('[HOST] Animation complete, auto next question now...');
                         self.autoNextQuestion();
-                    }, 6000); // 1 second wait + 5 seconds display
+                    }, 10500); // Total animation time
                 },
                 error: function(xhr) {
                     console.error('[HOST] Error ending question:', xhr);
@@ -1198,6 +1200,8 @@
             console.log('Question end event:', data);
             console.log('Correct answer index:', data.correct_answer);
             
+            const self = this;
+            
             // Wait 1 second before showing correct answer
             setTimeout(() => {
                 // Highlight correct answer in current screen
@@ -1215,11 +1219,192 @@
                 const originalText = $correctChoice.text();
                 $correctChoice.html('✓ ' + originalText);
                 
-                console.log('[HOST] Correct answer shown, will auto-next in ~4 seconds...');
+                console.log('[HOST] Correct answer shown');
+                
+                // After showing correct answer for 2 seconds, show leaderboard animation
+                setTimeout(() => {
+                    self.showLeaderboardAnimation(data);
+                }, 2000);
             }, 1000);
+        },
+        
+        showLeaderboardAnimation: function(data) {
+            const self = this;
+            console.log('[HOST] Starting leaderboard animation');
+            console.log('[HOST] Data received:', data);
             
-            // Note: After 5 seconds total (1s + 4s in autoEndQuestion) server will call next question
-            // which will trigger handleQuestionStart again
+            // Get current leaderboard (before adding new scores)
+            const leaderboard = data.leaderboard || [];
+            console.log('[HOST] Leaderboard data:', leaderboard);
+            console.log('[HOST] Leaderboard length:', leaderboard.length);
+            
+            if (leaderboard.length === 0) {
+                console.error('[HOST] Leaderboard is empty!');
+                // Hide overlay and continue
+                $('#leaderboard-overlay').fadeOut(300);
+                return;
+            }
+            
+            // Get answered players with scores from this question
+            const questionScores = {};
+            $('.answered-player-item').each(function() {
+                const userId = $(this).data('player-id');
+                const score = parseInt($(this).data('score')) || 0;
+                questionScores[userId] = score;
+            });
+            
+            console.log('[HOST] Question scores:', questionScores);
+            
+            // Create leaderboard with old scores (subtract current question scores)
+            const oldLeaderboard = leaderboard.map(entry => ({
+                ...entry,
+                old_score: entry.total_score - (questionScores[entry.user_id] || 0),
+                new_score: entry.total_score,
+                score_gain: questionScores[entry.user_id] || 0
+            }));
+            
+            console.log('[HOST] Old leaderboard prepared:', oldLeaderboard);
+            
+            // Show overlay
+            $('#leaderboard-overlay').fadeIn(300);
+            
+            // Step 1: Show current leaderboard (3 seconds)
+            this.renderLeaderboard(oldLeaderboard, false);
+            
+            setTimeout(() => {
+                // Step 2: Show +score for correct answers (1 second)
+                this.showScoreGains(oldLeaderboard);
+                
+                setTimeout(() => {
+                    // Step 3: Animate score addition and re-sort
+                    this.animateScoreAddition(oldLeaderboard);
+                }, 1000);
+            }, 3000);
+        },
+        
+        renderLeaderboard: function(leaderboard, showNewScores) {
+            console.log('[HOST] renderLeaderboard called');
+            console.log('[HOST] Leaderboard:', leaderboard);
+            console.log('[HOST] showNewScores:', showNewScores);
+            
+            const $container = $('#animated-leaderboard');
+            console.log('[HOST] Container found:', $container.length);
+            
+            $container.empty();
+            
+            if (!leaderboard || leaderboard.length === 0) {
+                console.error('[HOST] No leaderboard data to render');
+                $container.html('<p style="text-align: center; color: #999;">Chưa có dữ liệu xếp hạng</p>');
+                return;
+            }
+            
+            const displayData = showNewScores ? 
+                [...leaderboard].sort((a, b) => b.new_score - a.new_score) :
+                [...leaderboard].sort((a, b) => b.old_score - a.old_score);
+            
+            console.log('[HOST] Display data:', displayData);
+            
+            displayData.slice(0, 10).forEach((entry, index) => {
+                const score = showNewScores ? entry.new_score : entry.old_score;
+                const rankClass = index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : index === 2 ? 'rank-3' : '';
+                
+                const html = `
+                    <div class="leaderboard-item ${rankClass}" data-user-id="${entry.user_id}">
+                        <div class="rank">#${index + 1}</div>
+                        <div class="player-name">${this.escapeHtml(entry.display_name)}</div>
+                        <div class="score-container">
+                            <span class="current-score">${score}</span>
+                            <span class="score-gain" style="display: none;">+${entry.score_gain}</span>
+                        </div>
+                    </div>
+                `;
+                $container.append(html);
+                console.log('[HOST] Added item:', entry.display_name, score);
+            });
+            
+            console.log('[HOST] Render complete, items:', $container.children().length);
+        },
+        
+        showScoreGains: function(leaderboard) {
+            leaderboard.forEach(entry => {
+                if (entry.score_gain > 0) {
+                    const $item = $(`.leaderboard-item[data-user-id="${entry.user_id}"]`);
+                    $item.find('.score-gain').fadeIn(300);
+                }
+            });
+        },
+        
+        animateScoreAddition: function(leaderboard) {
+            const self = this;
+            
+            // Fade out score gains and animate score increase
+            leaderboard.forEach(entry => {
+                if (entry.score_gain > 0) {
+                    const $item = $(`.leaderboard-item[data-user-id="${entry.user_id}"]`);
+                    const $scoreGain = $item.find('.score-gain');
+                    const $currentScore = $item.find('.current-score');
+                    
+                    // Fade out +score
+                    $scoreGain.fadeOut(500);
+                    
+                    // Animate score increase
+                    $({ score: entry.old_score }).animate({ score: entry.new_score }, {
+                        duration: 1000,
+                        step: function(now) {
+                            $currentScore.text(Math.round(now));
+                        }
+                    });
+                }
+            });
+            
+            // After animation, re-sort
+            setTimeout(() => {
+                this.reorderLeaderboard(leaderboard);
+                
+                // Hide overlay after 2 seconds
+                setTimeout(() => {
+                    $('#leaderboard-overlay').fadeOut(300);
+                }, 2000);
+            }, 1500);
+        },
+        
+        reorderLeaderboard: function(leaderboard) {
+            const $container = $('#animated-leaderboard');
+            
+            // Sort by new scores
+            const sorted = [...leaderboard].sort((a, b) => b.new_score - a.new_score);
+            
+            // Reorder items with animation
+            sorted.slice(0, 10).forEach((entry, newIndex) => {
+                const $item = $(`.leaderboard-item[data-user-id="${entry.user_id}"]`);
+                const currentIndex = $item.index();
+                
+                if (currentIndex !== newIndex) {
+                    // Animate position change
+                    $item.fadeOut(200, function() {
+                        if (newIndex === 0) {
+                            $container.prepend($item);
+                        } else {
+                            $container.children().eq(newIndex - 1).after($item);
+                        }
+                        
+                        // Update rank and styling
+                        $item.find('.rank').text('#' + (newIndex + 1));
+                        $item.removeClass('rank-1 rank-2 rank-3');
+                        if (newIndex === 0) $item.addClass('rank-1');
+                        else if (newIndex === 1) $item.addClass('rank-2');
+                        else if (newIndex === 2) $item.addClass('rank-3');
+                        
+                        $item.fadeIn(200);
+                    });
+                } else {
+                    // Just update rank styling
+                    $item.removeClass('rank-1 rank-2 rank-3');
+                    if (newIndex === 0) $item.addClass('rank-1');
+                    else if (newIndex === 1) $item.addClass('rank-2');
+                    else if (newIndex === 2) $item.addClass('rank-3');
+                }
+            });
         },
         
         showResultsScreen: function(data) {
