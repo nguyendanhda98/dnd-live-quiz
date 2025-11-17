@@ -180,6 +180,13 @@ if ($has_session) {
                     <!-- Choices will be displayed here -->
                 </div>
 
+                <div class="answered-players-section">
+                    <h4><?php _e('Người chơi đã trả lời', 'live-quiz'); ?></h4>
+                    <div id="answered-players-list" class="answered-players-list">
+                        <!-- Answered players will be displayed here -->
+                    </div>
+                </div>
+
                 <div class="answer-stats" id="answer-stats">
                     <h4><?php _e('Thống kê trả lời', 'live-quiz'); ?></h4>
                     <div class="stats-bars" id="stats-bars">

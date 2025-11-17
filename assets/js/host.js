@@ -25,6 +25,8 @@
         selectedQuizzes: [],
         searchTimeout: null,
         isConfigured: false,
+        answeredPlayers: [], // Track players who answered current question
+        timerInterval: null, // Track timer interval for stopping
         
         // Helper to get API config safely
         getApiConfig: function() {
@@ -829,6 +831,10 @@
             
             this.currentQuestionIndex = data.question_index;
             
+            // Reset answered players list
+            this.answeredPlayers = [];
+            $('#answered-players-list').empty();
+            
             // Show question screen first
             this.showScreen('host-question');
             
@@ -924,12 +930,18 @@
             
             $fill.css('width', '100%');
             
-            const timer = setInterval(function() {
+            // Clear any existing timer
+            if (this.timerInterval) {
+                clearInterval(this.timerInterval);
+            }
+            
+            this.timerInterval = setInterval(function() {
                 const now = Date.now();
                 const remaining = Math.max(0, (endTime - now) / 1000);
                 
                 if (remaining <= 0) {
-                    clearInterval(timer);
+                    clearInterval(self.timerInterval);
+                    self.timerInterval = null;
                     $fill.css('width', '0%');
                     $text.text('0 pts');
                     
@@ -961,6 +973,17 @@
         handleAnswerSubmitted: function(data) {
             console.log('Answer submitted:', data);
             
+            // Add player to answered list if not already there
+            if (data.user_id && !this.answeredPlayers.includes(data.user_id)) {
+                this.answeredPlayers.push(data.user_id);
+                
+                // Find player info and display
+                const player = this.players[data.user_id];
+                if (player) {
+                    this.displayAnsweredPlayer(player);
+                }
+            }
+            
             // Update answer count display
             if (data.answered_count !== undefined && data.total_players !== undefined) {
                 const $answerCount = $('.answer-count-display');
@@ -969,17 +992,44 @@
                 $answerText.text(data.answered_count + '/' + data.total_players + ' đã trả lời');
                 $answerCount.fadeIn();
                 
-                // If all players answered, auto-end question after 1 second
+                // If all players answered, stop timer and auto-end question after 1 second
                 if (data.answered_count >= data.total_players && data.total_players > 0) {
-                    console.log('All players answered! Auto-ending question...');
+                    console.log('All players answered! Stopping timer...');
+                    
+                    // Stop the timer
+                    if (this.timerInterval) {
+                        clearInterval(this.timerInterval);
+                        this.timerInterval = null;
+                    }
+                    
+                    // Wait 1 second then end question
                     setTimeout(() => {
-                        this.endQuestion();
+                        console.log('1 second passed, ending question...');
+                        this.autoEndQuestion();
                     }, 1000);
                 }
             }
             
             // Update stats in real-time if needed
             this.updateAnswerStats();
+        },
+        
+        displayAnsweredPlayer: function(player) {
+            const initial = player.display_name ? player.display_name.charAt(0).toUpperCase() : '?';
+            const $list = $('#answered-players-list');
+            
+            const playerHtml = `
+                <div class="answered-player-item" data-player-id="${player.user_id}">
+                    <div class="answered-player-avatar">${initial}</div>
+                    <div class="answered-player-name">${this.escapeHtml(player.display_name)}</div>
+                </div>
+            `;
+            
+            $list.append(playerHtml);
+            
+            // Animate in
+            const $newItem = $list.find('.answered-player-item').last();
+            $newItem.css('opacity', '0').animate({ opacity: 1 }, 300);
         },
         
         fetchQuestionStats: function() {
@@ -1064,11 +1114,11 @@
                 success: function(response) {
                     console.log('[HOST] Question ended');
                     // handleQuestionEnd will show correct answer after 1 second
-                    // Then we wait 4 more seconds (total 5 seconds) before next question
+                    // Then we wait 5 more seconds before next question (total 6 seconds)
                     setTimeout(function() {
-                        console.log('[HOST] 5 seconds passed, auto next question now...');
+                        console.log('[HOST] 6 seconds passed (1s wait + 5s display), auto next question now...');
                         self.autoNextQuestion();
-                    }, 5000); // 5 seconds total from when question ended
+                    }, 6000); // 1 second wait + 5 seconds display
                 },
                 error: function(xhr) {
                     console.error('[HOST] Error ending question:', xhr);
