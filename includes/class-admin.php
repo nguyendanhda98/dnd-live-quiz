@@ -17,6 +17,8 @@ class Live_Quiz_Admin {
     public static function init() {
         add_action('admin_menu', array(__CLASS__, 'add_admin_menu'), 20);
         add_action('admin_init', array(__CLASS__, 'register_settings'));
+        add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue_admin_scripts'));
+        add_action('wp_ajax_live_quiz_search_pages', array(__CLASS__, 'ajax_search_pages'));
     }
     
     /**
@@ -51,6 +53,10 @@ class Live_Quiz_Admin {
         register_setting('live_quiz_settings', 'live_quiz_base_points');
         register_setting('live_quiz_settings', 'live_quiz_time_limit');
         register_setting('live_quiz_settings', 'live_quiz_max_players');
+        
+        // Page settings
+        register_setting('live_quiz_settings', 'live_quiz_host_page');
+        register_setting('live_quiz_settings', 'live_quiz_player_page');
         
         // AI settings
         register_setting('live_quiz_settings', 'live_quiz_gemini_api_key');
@@ -143,6 +149,14 @@ class Live_Quiz_Admin {
             update_option('live_quiz_time_limit', intval($_POST['live_quiz_time_limit']));
             update_option('live_quiz_max_players', intval($_POST['live_quiz_max_players']));
             
+            // Page settings
+            if (isset($_POST['live_quiz_host_page'])) {
+                update_option('live_quiz_host_page', intval($_POST['live_quiz_host_page']));
+            }
+            if (isset($_POST['live_quiz_player_page'])) {
+                update_option('live_quiz_player_page', intval($_POST['live_quiz_player_page']));
+            }
+            
             // AI settings
             if (isset($_POST['live_quiz_gemini_api_key'])) {
                 $new_key = sanitize_text_field($_POST['live_quiz_gemini_api_key']);
@@ -186,6 +200,53 @@ class Live_Quiz_Admin {
         }
         
         include LIVE_QUIZ_PLUGIN_DIR . 'templates/admin-settings.php';
+    }
+    
+    /**
+     * Enqueue admin scripts and styles
+     */
+    public static function enqueue_admin_scripts($hook) {
+        // Only load on settings page
+        if ($hook !== 'live_quiz_page_live-quiz-settings') {
+            return;
+        }
+        
+        // Enqueue Select2
+        wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+        wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
+    }
+    
+    /**
+     * AJAX handler for searching pages
+     */
+    public static function ajax_search_pages() {
+        check_ajax_referer('live_quiz_search_pages');
+        
+        $search = isset($_GET['search']) ? sanitize_text_field($_GET['search']) : '';
+        
+        $args = array(
+            'post_type' => 'page',
+            'post_status' => 'publish',
+            'posts_per_page' => 50,
+            'orderby' => 'title',
+            'order' => 'ASC',
+        );
+        
+        if (!empty($search)) {
+            $args['s'] = $search;
+        }
+        
+        $pages = get_posts($args);
+        
+        $results = array();
+        foreach ($pages as $page) {
+            $results[] = array(
+                'id' => $page->ID,
+                'text' => $page->post_title . ' (ID: ' . $page->ID . ')'
+            );
+        }
+        
+        wp_send_json_success($results);
     }
     
     /**

@@ -428,9 +428,15 @@ final class Live_Quiz {
         $websocket_url = get_option('live_quiz_websocket_url', 'http://localhost:3000');
         $websocket_secret = get_option('live_quiz_websocket_secret', '');
         
+        // Get player page URL
+        $player_page_id = get_option('live_quiz_player_page', 0);
+        $player_page_url = $player_page_id ? get_permalink($player_page_id) : home_url('/');
+        
         $config = array(
             'restUrl' => rest_url('live-quiz/v1'),
             'nonce' => wp_create_nonce('wp_rest'),
+            'playerPageUrl' => $player_page_url,
+            'homeUrl' => home_url('/'),
             'websocket' => array(
                 'enabled' => true,
                 'url' => $websocket_url,
@@ -510,11 +516,21 @@ final class Live_Quiz {
         $websocket_url = get_option('live_quiz_websocket_url', 'http://localhost:3000');
         $websocket_secret = get_option('live_quiz_websocket_secret', '');
         
+        // Get page URLs for redirect after ending session
+        $player_page_id = get_option('live_quiz_player_page', 0);
+        $player_page_url = $player_page_id ? get_permalink($player_page_id) : home_url('/');
+        
+        $host_page_id = get_option('live_quiz_host_page', 0);
+        $host_page_url = $host_page_id ? get_permalink($host_page_id) : home_url('/');
+        
         $config = array(
             'apiUrl' => rest_url('live-quiz/v1'),
             'nonce' => wp_create_nonce('wp_rest'),
             'wsUrl' => $websocket_url,
             'wsSecret' => $websocket_secret,
+            'playerPageUrl' => $player_page_url,
+            'hostPageUrl' => $host_page_url,
+            'homeUrl' => home_url('/'),
         );
         
         wp_localize_script('live-quiz-host', 'liveQuizPlayer', $config);

@@ -1677,9 +1677,10 @@
                     
                     // Wait 1.5 seconds to ensure players receive kick event
                     setTimeout(function() {
-                        console.log('[HOST] Redirecting to home...');
-                        // Redirect to host setup page
-                        window.location.href = '/host';
+                        console.log('[HOST] Redirecting to host page...');
+                        // Redirect to host page (or home if not configured)
+                        const hostPageUrl = api.hostPageUrl || api.homeUrl || '/';
+                        window.location.href = hostPageUrl;
                     }, 1500);
                 },
                 error: function(xhr, status, error) {

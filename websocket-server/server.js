@@ -1143,14 +1143,14 @@ app.post('/api/sessions/:id/end', async (req, res) => {
             // Continue anyway with empty leaderboard
         }
 
-        // Broadcast session_end event to all participants (including host)
-        io.to(`session:${sessionId}`).emit('session_end', {
-            leaderboard: leaderboard,
-            message: 'Quiz đã kết thúc'
+        // Broadcast kicked event to all participants (to kick them out and redirect)
+        io.to(`session:${sessionId}`).emit('kicked', {
+            reason: 'Host đã kết thúc phòng',
+            message: 'Host đã kết thúc phòng. Bạn sẽ được chuyển về trang player.'
         });
         
-        logger.info('✓ Broadcasted session_end event to all participants');
-        logger.info('=== END SESSION COMPLETED (natural end, players not kicked) ===');
+        logger.info('✓ Broadcasted kicked event to all participants');
+        logger.info('=== END SESSION COMPLETED (all players kicked) ===');
 
         res.json({ 
             success: true, 

@@ -445,6 +445,14 @@
             handleSessionKicked(data);
         });
         
+        // Listen for kicked event (when host ends room)
+        state.socket.on('kicked', (data) => {
+            console.log('[PLAYER] ✗ KICKED BY HOST (END ROOM) ✗');
+            console.log('[PLAYER] Message:', data.message);
+            console.log('[PLAYER] Data:', data);
+            handleSessionEndedKicked(data);
+        });
+        
         // Listen for kicked from session by host
         state.socket.on('kicked_from_session', (data) => {
             console.log('[PLAYER] ✗ KICKED BY HOST ✗');
@@ -1087,12 +1095,12 @@
         
         console.log('[PLAYER] Redirecting to home...');
         
-        // Show alert with clear message
+                // Show alert with clear message
         const endMessage = data.message || 'Host đã kết thúc phòng.';
-        alert('🚪 ' + endMessage + '\n\nBạn sẽ được chuyển về trang chủ.');
+        alert('🚺 ' + endMessage + '\n\nBạn sẽ được chuyển về trang player.');
         
-        // Redirect to home immediately after alert is dismissed
-        window.location.href = config.homeUrl || '/';
+        // Redirect to player page immediately after alert is dismissed
+        window.location.href = config.playerPageUrl || config.homeUrl || '/';
     }
     
     function displayFinalResults(data) {

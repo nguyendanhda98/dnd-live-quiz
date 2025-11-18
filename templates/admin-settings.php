@@ -272,6 +272,95 @@ if (!defined('ABSPATH')) {
             </tr>
         </table>
         
+        <h2><?php _e('Cài đặt trang (Pages)', 'live-quiz'); ?></h2>
+        <table class="form-table">
+            <tr>
+                <th scope="row">
+                    <label for="live_quiz_host_page"><?php _e('Trang Host', 'live-quiz'); ?></label>
+                </th>
+                <td>
+                    <?php
+                    $host_page_id = get_option('live_quiz_host_page', 0);
+                    $host_page = $host_page_id ? get_post($host_page_id) : null;
+                    ?>
+                    <select name="live_quiz_host_page" id="live_quiz_host_page" class="regular-text live-quiz-page-select" style="width: 400px;">
+                        <option value="0"><?php _e('-- Chọn trang --', 'live-quiz'); ?></option>
+                        <?php if ($host_page): ?>
+                            <option value="<?php echo esc_attr($host_page_id); ?>" selected>
+                                <?php echo esc_html($host_page->post_title); ?>
+                            </option>
+                        <?php endif; ?>
+                    </select>
+                    <p class="description">
+                        <?php _e('Chọn trang dùng để host quiz (trang có shortcode [live_quiz_host]). Có thể tìm kiếm theo tên trang.', 'live-quiz'); ?>
+                    </p>
+                </td>
+            </tr>
+            
+            <tr>
+                <th scope="row">
+                    <label for="live_quiz_player_page"><?php _e('Trang Player', 'live-quiz'); ?></label>
+                </th>
+                <td>
+                    <?php
+                    $player_page_id = get_option('live_quiz_player_page', 0);
+                    $player_page = $player_page_id ? get_post($player_page_id) : null;
+                    ?>
+                    <select name="live_quiz_player_page" id="live_quiz_player_page" class="regular-text live-quiz-page-select" style="width: 400px;">
+                        <option value="0"><?php _e('-- Chọn trang --', 'live-quiz'); ?></option>
+                        <?php if ($player_page): ?>
+                            <option value="<?php echo esc_attr($player_page_id); ?>" selected>
+                                <?php echo esc_html($player_page->post_title); ?>
+                            </option>
+                        <?php endif; ?>
+                    </select>
+                    <p class="description">
+                        <?php _e('Chọn trang dùng để người chơi tham gia quiz (trang có shortcode [live_quiz_player]). Có thể tìm kiếm theo tên trang.', 'live-quiz'); ?>
+                    </p>
+                </td>
+            </tr>
+        </table>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            // Initialize Select2 for page selection with AJAX search
+            $('.live-quiz-page-select').select2({
+                ajax: {
+                    url: ajaxurl,
+                    dataType: 'json',
+                    delay: 250,
+                    data: function(params) {
+                        return {
+                            action: 'live_quiz_search_pages',
+                            search: params.term,
+                            _wpnonce: '<?php echo wp_create_nonce('live_quiz_search_pages'); ?>'
+                        };
+                    },
+                    processResults: function(data) {
+                        return {
+                            results: data.data || []
+                        };
+                    },
+                    cache: true
+                },
+                minimumInputLength: 0,
+                placeholder: '<?php _e('-- Chọn trang --', 'live-quiz'); ?>',
+                allowClear: true,
+                language: {
+                    inputTooShort: function() {
+                        return '<?php _e('Nhập để tìm kiếm...', 'live-quiz'); ?>';
+                    },
+                    searching: function() {
+                        return '<?php _e('Đang tìm...', 'live-quiz'); ?>';
+                    },
+                    noResults: function() {
+                        return '<?php _e('Không tìm thấy trang nào', 'live-quiz'); ?>';
+                    }
+                }
+            });
+        });
+        </script>
+        
         <h2><?php _e('Phase 2: WebSocket + Redis (Mở rộng)', 'live-quiz'); ?></h2>
         <table class="form-table">
             <tr>
