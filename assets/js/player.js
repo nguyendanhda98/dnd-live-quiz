@@ -609,6 +609,16 @@
         state.questionStartTime = data.start_time;
         state.serverStartTime = data.start_time; // Store server timestamp
         
+        // Hide leaderboard overlay if visible
+        const overlay = document.getElementById('player-leaderboard-overlay');
+        if (overlay && overlay.style.display !== 'none') {
+            overlay.style.transition = 'opacity 0.3s';
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 300);
+        }
+        
         showScreen('quiz-question');
         displayQuestion(data);
         // Timer will be started by displayQuestion after question is displayed
@@ -872,10 +882,12 @@
                 }
             });
             
-            console.log('[PLAYER] Correct answer shown, waiting 5 seconds...');
+            console.log('[PLAYER] Correct answer shown');
             
-            // After 5 seconds, show results screen (or wait for next question)
-            // Actually, let's keep showing the answer until next question starts
+            // After showing correct answer for 2 seconds, show leaderboard animation
+            setTimeout(() => {
+                showLeaderboardAnimation(data);
+            }, 2000);
         }, 1000);
     }
     
@@ -1347,6 +1359,320 @@
         return text.replace(/[&<>"']/g, function(m) { return map[m]; });
     }
     
+    /**
+     * Show leaderboard animation after question ends
+     */
+    function showLeaderboardAnimation(data) {
+        console.log('[PLAYER] Starting leaderboard animation');
+        console.log('[PLAYER] Data received:', data);
+        
+        // Get current leaderboard
+        const leaderboard = data.leaderboard || [];
+        console.log('[PLAYER] Leaderboard data:', leaderboard);
+        console.log('[PLAYER] Leaderboard length:', leaderboard.length);
+        
+        if (leaderboard.length === 0) {
+            console.error('[PLAYER] Leaderboard is empty!');
+            // Hide overlay and continue
+            const overlay = document.getElementById('player-leaderboard-overlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+            return;
+        }
+        
+        // Check if user answered to get their score
+        const selectedButton = document.querySelector('.choice-button.selected');
+        let userScore = 0;
+        if (selectedButton && data.correct_answer !== undefined) {
+            const isCorrect = parseInt(selectedButton.dataset.choiceId) === data.correct_answer;
+            if (isCorrect) {
+                // Get score from timer text
+                const timerText = document.querySelector('.timer-text');
+                if (timerText) {
+                    const scoreMatch = timerText.textContent.match(/(\d+)/);
+                    if (scoreMatch) {
+                        userScore = parseInt(scoreMatch[1]);
+                    }
+                }
+            }
+        }
+        
+        console.log('[PLAYER] User score for this question:', userScore);
+        
+        // Create leaderboard with old scores
+        const oldLeaderboard = leaderboard.map(entry => {
+            // For current user, calculate old score
+            let scoreGain = 0;
+            if (entry.user_id === state.userId) {
+                scoreGain = userScore;
+            }
+            
+            return {
+                ...entry,
+                old_score: entry.total_score - scoreGain,
+                new_score: entry.total_score,
+                score_gain: scoreGain
+            };
+        });
+        
+        console.log('[PLAYER] Old leaderboard prepared:', oldLeaderboard);
+        
+        // Show overlay
+        const overlay = document.getElementById('player-leaderboard-overlay');
+        if (overlay) {
+            overlay.style.display = 'block';
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.style.transition = 'opacity 0.3s';
+                overlay.style.opacity = '1';
+            }, 10);
+        }
+        
+        // Step 1: Show current leaderboard (1 second)
+        renderLeaderboard(oldLeaderboard, false);
+        
+        setTimeout(() => {
+            // Step 2: Show +score for correct answers (1 second)
+            showScoreGains(oldLeaderboard);
+            
+            setTimeout(() => {
+                // Step 3: Animate score addition and re-sort (1.5 seconds)
+                animateScoreAddition(oldLeaderboard);
+            }, 1000);
+        }, 1000);
+    }
+    
+    /**
+     * Render leaderboard
+     */
+    function renderLeaderboard(leaderboard, showNewScores) {
+        console.log('[PLAYER] renderLeaderboard called');
+        console.log('[PLAYER] Leaderboard:', leaderboard);
+        console.log('[PLAYER] showNewScores:', showNewScores);
+        
+        const container = document.getElementById('player-animated-leaderboard');
+        console.log('[PLAYER] Container found:', container ? 'yes' : 'no');
+        
+        if (!container) {
+            console.error('[PLAYER] Container not found!');
+            return;
+        }
+        
+        container.innerHTML = '';
+        
+        if (!leaderboard || leaderboard.length === 0) {
+            console.error('[PLAYER] No leaderboard data to render');
+            container.innerHTML = '<p style="text-align: center; color: #999;">Chưa có dữ liệu xếp hạng</p>';
+            return;
+        }
+        
+        const displayData = showNewScores ? 
+            [...leaderboard].sort((a, b) => b.new_score - a.new_score) :
+            [...leaderboard].sort((a, b) => b.old_score - a.old_score);
+        
+        console.log('[PLAYER] Display data:', displayData);
+        
+        displayData.slice(0, 10).forEach((entry, index) => {
+            const score = showNewScores ? entry.new_score : entry.old_score;
+            const rankClass = index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : index === 2 ? 'rank-3' : '';
+            
+            const displayName = entry.display_name || 'Player';
+            // Tách tên và username
+            let nameText = displayName;
+            let usernameText = '';
+            const parenIndex = displayName.indexOf(' (@');
+            if (parenIndex > 0) {
+                nameText = displayName.substring(0, parenIndex);
+                usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
+            }
+            
+            // Highlight current user
+            const isCurrentUser = entry.user_id === state.userId;
+            const userClass = isCurrentUser ? 'current-user' : '';
+            
+            const html = `
+                <div class="leaderboard-item ${rankClass} ${userClass}" data-user-id="${entry.user_id}">
+                    <div class="rank">#${index + 1}</div>
+                    <div class="player-name">
+                        <span class="name-text">${escapeHtml(nameText)}</span>
+                        ${usernameText ? `<span class="username-text">${escapeHtml(usernameText)}</span>` : ''}
+                    </div>
+                    <div class="score-container">
+                        <span class="current-score">${score}</span>
+                        <span class="score-gain" style="display: none;">+${entry.score_gain}</span>
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', html);
+            console.log('[PLAYER] Added item:', displayName, score);
+        });
+        
+        console.log('[PLAYER] Render complete, items:', container.children.length);
+    }
+    
+    /**
+     * Show score gains
+     */
+    function showScoreGains(leaderboard) {
+        leaderboard.forEach(entry => {
+            if (entry.score_gain > 0) {
+                const item = document.querySelector(`#player-animated-leaderboard .leaderboard-item[data-user-id="${entry.user_id}"]`);
+                if (item) {
+                    const scoreGain = item.querySelector('.score-gain');
+                    if (scoreGain) {
+                        scoreGain.style.display = 'inline';
+                        scoreGain.style.opacity = '0';
+                        setTimeout(() => {
+                            scoreGain.style.transition = 'opacity 0.3s';
+                            scoreGain.style.opacity = '1';
+                        }, 10);
+                    }
+                }
+            }
+        });
+    }
+    
+    /**
+     * Animate score addition
+     */
+    function animateScoreAddition(leaderboard) {
+        // Fade out score gains and animate score increase
+        leaderboard.forEach(entry => {
+            if (entry.score_gain > 0) {
+                const item = document.querySelector(`#player-animated-leaderboard .leaderboard-item[data-user-id="${entry.user_id}"]`);
+                if (!item) return;
+                
+                const scoreGain = item.querySelector('.score-gain');
+                const currentScore = item.querySelector('.current-score');
+                
+                // Fade out +score
+                if (scoreGain) {
+                    scoreGain.style.transition = 'opacity 0.5s';
+                    scoreGain.style.opacity = '0';
+                }
+                
+                // Animate score increase
+                if (currentScore) {
+                    let start = entry.old_score;
+                    const end = entry.new_score;
+                    const duration = 1000;
+                    const startTime = Date.now();
+                    
+                    const animate = () => {
+                        const elapsed = Date.now() - startTime;
+                        const progress = Math.min(elapsed / duration, 1);
+                        const current = Math.round(start + (end - start) * progress);
+                        currentScore.textContent = current;
+                        
+                        if (progress < 1) {
+                            requestAnimationFrame(animate);
+                        }
+                    };
+                    
+                    animate();
+                }
+            }
+        });
+        
+        // After animation, re-sort
+        setTimeout(() => {
+            reorderLeaderboard(leaderboard);
+            
+            // Hide overlay after 2 seconds (will be hidden by next question anyway)
+            setTimeout(() => {
+                const overlay = document.getElementById('player-leaderboard-overlay');
+                if (overlay) {
+                    overlay.style.transition = 'opacity 0.3s';
+                    overlay.style.opacity = '0';
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                    }, 300);
+                }
+            }, 2000);
+        }, 1500);
+    }
+    
+    /**
+     * Reorder leaderboard after score update
+     */
+    function reorderLeaderboard(leaderboard) {
+        const container = document.getElementById('player-animated-leaderboard');
+        if (!container) return;
+        
+        // Sort by new scores
+        const sorted = [...leaderboard].sort((a, b) => b.new_score - a.new_score);
+        
+        // Store current positions
+        const positions = [];
+        sorted.slice(0, 10).forEach((entry, newIndex) => {
+            const item = document.querySelector(`#player-animated-leaderboard .leaderboard-item[data-user-id="${entry.user_id}"]`);
+            if (!item) return;
+            
+            const currentIndex = Array.from(container.children).indexOf(item);
+            positions.push({ item, currentIndex, newIndex, entry });
+        });
+        
+        // Calculate movements and reorder
+        positions.forEach(({ item, currentIndex, newIndex, entry }) => {
+            if (currentIndex !== newIndex) {
+                // Get current position
+                const currentTop = item.offsetTop;
+                
+                // Move in DOM
+                if (newIndex === 0) {
+                    container.insertBefore(item, container.firstChild);
+                } else {
+                    const refNode = container.children[newIndex];
+                    if (refNode && refNode !== item) {
+                        container.insertBefore(item, refNode);
+                    }
+                }
+                
+                // Get new position
+                const newTop = item.offsetTop;
+                const distance = currentTop - newTop;
+                
+                // Animate from old position to new position
+                item.style.transform = `translateY(${distance}px)`;
+                item.style.transition = 'none';
+                
+                // Trigger reflow
+                item.offsetHeight;
+                
+                // Animate to new position
+                item.style.transition = 'transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1)';
+                item.style.transform = 'translateY(0)';
+            }
+            
+            // Update rank and styling
+            const rankEl = item.querySelector('.rank');
+            if (rankEl) {
+                rankEl.textContent = '#' + (newIndex + 1);
+            }
+            
+            // Update rank class
+            item.classList.remove('rank-1', 'rank-2', 'rank-3');
+            if (newIndex === 0) item.classList.add('rank-1');
+            else if (newIndex === 1) item.classList.add('rank-2');
+            else if (newIndex === 2) item.classList.add('rank-3');
+        });
+    }
+    
+    /**
+     * Escape HTML
+     */
+    function escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
     function showScreen(screenId) {
         document.querySelectorAll('.quiz-screen').forEach(screen => {
             screen.classList.remove('active');

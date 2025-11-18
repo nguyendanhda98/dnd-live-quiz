@@ -852,6 +852,9 @@
             this.serverStartTime = data.start_time; // Store server timestamp
             this.displayStartTime = Date.now() / 1000; // Record when we start displaying
             
+            // Hide leaderboard overlay if visible
+            $('#leaderboard-overlay').fadeOut(300);
+            
             // Show question immediately
             this.displayQuestionContent(data);
         },
@@ -1209,15 +1212,9 @@
                 },
                 success: function(response) {
                     console.log('[HOST] Question ended');
-                    // handleQuestionEnd will:
-                    // 1. Show correct answer after 1s
-                    // 2. Wait 2s
-                    // 3. Show leaderboard animation (3s + 1s + 1.5s + 2s = 7.5s)
-                    // Total: 1s + 2s + 7.5s = 10.5s, then auto next
-                    self.autoNextTimeout = setTimeout(function() {
-                        console.log('[HOST] Animation complete, auto next question now...');
-                        self.autoNextQuestion();
-                    }, 10500); // Total animation time
+                    // handleQuestionEnd will show leaderboard animation
+                    // and auto trigger next question after animation
+                    // No timeout needed here
                 },
                 error: function(xhr) {
                     console.error('[HOST] Error ending question:', xhr);
@@ -1284,6 +1281,13 @@
             const self = this;
             console.log('[HOST] Starting leaderboard animation');
             console.log('[HOST] Data received:', data);
+            
+            // Cancel any pending auto next timeout
+            if (this.autoNextTimeout) {
+                clearTimeout(this.autoNextTimeout);
+                this.autoNextTimeout = null;
+                console.log('[HOST] Cancelled old auto next timeout');
+            }
             
             // Get current leaderboard (before adding new scores)
             const leaderboard = data.leaderboard || [];
@@ -1424,11 +1428,15 @@
             
             // After animation, re-sort
             setTimeout(() => {
-                this.reorderLeaderboard(leaderboard);
+                self.reorderLeaderboard(leaderboard);
                 
-                // Hide overlay after 2 seconds
+                // Hide overlay and start next question after 2 seconds
                 setTimeout(() => {
-                    $('#leaderboard-overlay').fadeOut(300);
+                    $('#leaderboard-overlay').fadeOut(300, () => {
+                        // Auto trigger next question
+                        console.log('[HOST] Leaderboard animation complete, triggering next question...');
+                        self.autoNextQuestion();
+                    });
                 }, 2000);
             }, 1500);
         },
@@ -1439,36 +1447,53 @@
             // Sort by new scores
             const sorted = [...leaderboard].sort((a, b) => b.new_score - a.new_score);
             
-            // Reorder items with animation
+            // Store current positions
+            const positions = [];
             sorted.slice(0, 10).forEach((entry, newIndex) => {
                 const $item = $(`.leaderboard-item[data-user-id="${entry.user_id}"]`);
                 const currentIndex = $item.index();
-                
+                positions.push({ $item, currentIndex, newIndex, entry });
+            });
+            
+            // Calculate movements and reorder
+            positions.forEach(({ $item, currentIndex, newIndex, entry }) => {
                 if (currentIndex !== newIndex) {
-                    // Animate position change
-                    $item.fadeOut(200, function() {
-                        if (newIndex === 0) {
-                            $container.prepend($item);
-                        } else {
-                            $container.children().eq(newIndex - 1).after($item);
-                        }
-                        
-                        // Update rank and styling
-                        $item.find('.rank').text('#' + (newIndex + 1));
-                        $item.removeClass('rank-1 rank-2 rank-3');
-                        if (newIndex === 0) $item.addClass('rank-1');
-                        else if (newIndex === 1) $item.addClass('rank-2');
-                        else if (newIndex === 2) $item.addClass('rank-3');
-                        
-                        $item.fadeIn(200);
+                    // Get current position
+                    const currentTop = $item.position().top;
+                    
+                    // Move in DOM
+                    if (newIndex === 0) {
+                        $container.prepend($item);
+                    } else {
+                        $container.children().eq(newIndex - 1).after($item);
+                    }
+                    
+                    // Get new position
+                    const newTop = $item.position().top;
+                    const distance = currentTop - newTop;
+                    
+                    // Animate from old position to new position
+                    $item.css({
+                        'transform': `translateY(${distance}px)`,
+                        'transition': 'none'
                     });
-                } else {
-                    // Just update rank styling
-                    $item.removeClass('rank-1 rank-2 rank-3');
-                    if (newIndex === 0) $item.addClass('rank-1');
-                    else if (newIndex === 1) $item.addClass('rank-2');
-                    else if (newIndex === 2) $item.addClass('rank-3');
+                    
+                    // Trigger reflow
+                    $item[0].offsetHeight;
+                    
+                    // Animate to new position
+                    $item.css({
+                        'transform': 'translateY(0)',
+                        'transition': 'transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1)'
+                    });
                 }
+                
+                // Update rank and styling
+                $item.find('.rank').text('#' + (newIndex + 1));
+                $item.removeClass('rank-1 rank-2 rank-3');
+                if (newIndex === 0) $item.addClass('rank-1');
+                else if (newIndex === 1) $item.addClass('rank-2');
+                else if (newIndex === 2) $item.addClass('rank-3');
             });
         },
         

@@ -1102,11 +1102,185 @@ input:focus {
     font-weight: 700;
 }
 
+/* Leaderboard Overlay */
+.leaderboard-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.leaderboard-overlay .leaderboard-container {
+    background: white;
+    border-radius: 20px;
+    padding: 40px;
+    max-width: 800px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.leaderboard-overlay .leaderboard-container h2 {
+    text-align: center;
+    margin: 0 0 30px 0;
+    font-size: 32px;
+    color: #333;
+}
+
+.animated-leaderboard {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.animated-leaderboard .leaderboard-item {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.animated-leaderboard .leaderboard-item.rank-1 {
+    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+    transform: scale(1.05);
+}
+
+.animated-leaderboard .leaderboard-item.rank-2 {
+    background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+}
+
+.animated-leaderboard .leaderboard-item.rank-3 {
+    background: linear-gradient(135deg, #cd7f32 0%, #e5a76c 100%);
+}
+
+/* Highlight current user in leaderboard */
+.animated-leaderboard .leaderboard-item.current-user {
+    border: 3px solid #3498db;
+    box-shadow: 0 0 20px rgba(52, 152, 219, 0.5);
+}
+
+.animated-leaderboard .rank {
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 24px;
+    margin-right: 20px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+}
+
+.animated-leaderboard .player-name {
+    flex: 1;
+    font-weight: 700;
+    font-size: 20px;
+    color: #333;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.animated-leaderboard .player-name .name-text {
+    font-weight: 700;
+}
+
+.animated-leaderboard .player-name .username-text {
+    font-size: 16px;
+    color: #666;
+    font-weight: 500;
+}
+
+.animated-leaderboard .score-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.animated-leaderboard .current-score {
+    font-weight: 900;
+    font-size: 28px;
+    color: #667eea;
+}
+
+.animated-leaderboard .score-gain {
+    font-weight: 700;
+    font-size: 20px;
+    color: #28a745;
+    animation: pulseScore 0.5s ease-in-out;
+}
+
+@keyframes pulseScore {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+}
+
+/* Responsive for mobile */
+@media (max-width: 768px) {
+    .leaderboard-overlay .leaderboard-container {
+        padding: 20px;
+        width: 95%;
+    }
+    
+    .leaderboard-overlay .leaderboard-container h2 {
+        font-size: 24px;
+        margin-bottom: 20px;
+    }
+    
+    .animated-leaderboard {
+        gap: 10px;
+    }
+    
+    .animated-leaderboard .leaderboard-item {
+        padding: 15px;
+    }
+    
+    .animated-leaderboard .rank {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        margin-right: 15px;
+    }
+    
+    .animated-leaderboard .player-name {
+        font-size: 16px;
+    }
+    
+    .animated-leaderboard .player-name .username-text {
+        font-size: 14px;
+    }
+    
+    .animated-leaderboard .current-score {
+        font-size: 22px;
+    }
+    
+    .animated-leaderboard .score-gain {
+        font-size: 18px;
+    }
+}
+
 /* Print styles */
 @media print {
     .quiz-header,
     .btn,
-    .connection-status {
+    .connection-status,
+    .leaderboard-overlay {
         display: none;
     }
 }
