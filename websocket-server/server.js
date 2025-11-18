@@ -1111,31 +1111,28 @@ app.post('/api/sessions/:id/end', async (req, res) => {
         await redisClient.hSet(`session:${sessionId}`, 'status', 'ended');
         logger.info('✓ Session status updated to ended in Redis');
 
-        // Get final leaderboard from Redis using ZREVRANGE with WITHSCORES
+        // Get final leaderboard from WordPress API (since PHP doesn't have Redis extension)
         let leaderboard = [];
         try {
-            // Use ZREVRANGE to get sorted set in descending order
-            const leaderboardData = await redisClient.sendCommand([
-                'ZREVRANGE',
-                `leaderboard:${sessionId}`,
-                '0',
-                '-1',
-                'WITHSCORES'
-            ]);
+            const axios = require('axios');
+            const response = await axios.get(`https://dndenglish.com/wp-json/live-quiz/v1/sessions/${sessionId}/leaderboard`, {
+                timeout: 5000,
+                httpsAgent: new (require('https')).Agent({ rejectUnauthorized: false })
+            });
             
-            // Parse leaderboard data (format: [member1, score1, member2, score2, ...])
-            for (let i = 0; i < leaderboardData.length; i += 2) {
-                leaderboard.push({
-                    rank: (i / 2) + 1,
-                    user_id: leaderboardData[i],
-                    score: parseFloat(leaderboardData[i + 1]),
-                    display_name: leaderboardData[i] // Will be populated by client from players data
-                });
+            if (response.data && response.data.leaderboard) {
+                leaderboard = response.data.leaderboard.map((entry, index) => ({
+                    rank: index + 1,
+                    user_id: entry.user_id,
+                    total_score: entry.score || entry.total_score || 0,
+                    display_name: entry.display_name || entry.name || `Player ${entry.user_id}`
+                }));
+                logger.info('✓ Final leaderboard retrieved from WordPress', { playerCount: leaderboard.length });
+            } else {
+                logger.warn('Empty leaderboard from WordPress API');
             }
-            
-            logger.info('✓ Final leaderboard retrieved', { playerCount: leaderboard.length });
         } catch (error) {
-            logger.error('Error retrieving leaderboard', { error: error.message, sessionId });
+            logger.error('Error retrieving leaderboard from WordPress', { error: error.message, sessionId });
             // Continue anyway with empty leaderboard
         }
 

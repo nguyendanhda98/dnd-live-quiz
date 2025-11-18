@@ -174,12 +174,19 @@ if ($has_session) {
             </div>
         </div>
         
-        <!-- Top 3 Screen -->
+        <!-- Top 10 Screen with Podium for Top 3 -->
         <div id="host-top3" class="host-screen">
-            <div class="quiz-card text-center">
-                <h1 class="top3-title"><?php _e('🏆 Top 3 Cao Điểm Nhất 🏆', 'live-quiz'); ?></h1>
+            <div class="top10-container">
+                <h1 class="top10-title"><?php _e('🏆 Bảng Xếp Hạng Cuối Cùng 🏆', 'live-quiz'); ?></h1>
+                
+                <!-- Podium for Top 3 -->
                 <div id="host-top3-podium" class="top3-podium">
-                    <!-- Top 3 will be inserted here -->
+                    <!-- Top 3 podium will be inserted here -->
+                </div>
+                
+                <!-- Full Top 10 List -->
+                <div id="host-top10-list" class="top10-list">
+                    <!-- Top 10 list will be inserted here -->
                 </div>
             </div>
         </div>

@@ -554,6 +554,20 @@ class Live_Quiz_Session_Manager {
             self::$redis->add_participant($session_id, $user_id, $participant['display_name']);
         }
         
+        // Save display_name to Redis for leaderboard (direct connection)
+        try {
+            $redis_host = get_option('live_quiz_redis_host', '127.0.0.1');
+            $redis_port = get_option('live_quiz_redis_port', 6379);
+            $redis = new Redis();
+            if ($redis->connect($redis_host, $redis_port, 2)) {
+                $redis->hSet("player:{$session_id}:{$user_id}", 'display_name', $participant['display_name']);
+                error_log("Saved display_name to Redis: player:{$session_id}:{$user_id}");
+                $redis->close();
+            }
+        } catch (Exception $e) {
+            error_log("Failed to save display_name to Redis: " . $e->getMessage());
+        }
+        
         // Always save to post meta for persistence and fallback
         // Get fresh participants list from post_meta to avoid race conditions
         $stored_participants = get_post_meta($session_id, '_session_participants', true);
@@ -738,6 +752,28 @@ class Live_Quiz_Session_Manager {
             }
             
             Live_Quiz_Scoring::save_answer($session_id, $user_id, $question_index, $answer_data);
+            
+            // Update Redis leaderboard (for final leaderboard display)
+            try {
+                $redis_host = get_option('live_quiz_redis_host', '127.0.0.1');
+                $redis_port = get_option('live_quiz_redis_port', 6379);
+                $redis = new Redis();
+                if ($redis->connect($redis_host, $redis_port, 2)) {
+                    // Calculate total score from all answers
+                    $all_answers = Live_Quiz_Scoring::get_participant_answers($session_id, $user_id);
+                    $total_score = 0;
+                    foreach ($all_answers as $ans) {
+                        $total_score += isset($ans['score']) ? (float)$ans['score'] : 0;
+                    }
+                    // Update leaderboard sorted set with new total
+                    $redis->zAdd("leaderboard:{$session_id}", array(), $total_score, (string)$user_id);
+                    error_log("Updated Redis leaderboard: user $user_id score $total_score");
+                    $redis->close();
+                }
+            } catch (Exception $e) {
+                error_log("Redis leaderboard update failed: " . $e->getMessage());
+                // Continue anyway - not critical
+            }
             
             // Clear leaderboard cache
             Live_Quiz_Scoring::clear_leaderboard_cache($session_id);

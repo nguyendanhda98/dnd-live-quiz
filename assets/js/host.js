@@ -30,6 +30,7 @@
         timerInterval: null, // Track timer interval for stopping
         serverStartTime: null, // Server timestamp when question started
         displayStartTime: null, // Local timestamp when we start displaying
+        autoNextTimeout: null, // Track auto next question timeout
         
         // Helper to get API config safely
         getApiConfig: function() {
@@ -1170,7 +1171,7 @@
                     // 2. Wait 2s
                     // 3. Show leaderboard animation (3s + 1s + 1.5s + 2s = 7.5s)
                     // Total: 1s + 2s + 7.5s = 10.5s, then auto next
-                    setTimeout(function() {
+                    self.autoNextTimeout = setTimeout(function() {
                         console.log('[HOST] Animation complete, auto next question now...');
                         self.autoNextQuestion();
                     }, 10500); // Total animation time
@@ -1506,19 +1507,20 @@
             }, 3000);
         },
         
-        showTop3: function(leaderboard) {
+        showTop10WithPodium: function(leaderboard) {
             const self = this;
             this.showScreen('host-top3');
             
-            // Get top 3 from leaderboard
+            // Get top 10 from leaderboard
+            const top10 = leaderboard.slice(0, 10);
             const top3 = leaderboard.slice(0, 3);
             
             // Emit to all players
             if (this.socket) {
-                this.socket.emit('broadcast_top3', { top3: top3 });
+                this.socket.emit('broadcast_top3', { top3: top10 });
             }
             
-            // Display on host screen
+            // Display podium for top 3 on host screen
             const podiumEl = document.getElementById('host-top3-podium');
             if (podiumEl && top3.length > 0) {
                 podiumEl.innerHTML = '';
@@ -1532,8 +1534,8 @@
                     
                     placeDiv.innerHTML = `
                         <div class="podium-medal">${medals[index]}</div>
-                        <div class="podium-name">${player.display_name || player.name}</div>
-                        <div class="podium-score">${player.score} pts</div>
+                        <div class="podium-name">${this.escapeHtml(player.display_name || player.name || 'Player')}</div>
+                        <div class="podium-score">${Math.round(player.total_score || player.score || 0)} pts</div>
                         <div class="podium-stand">#${index + 1}</div>
                     `;
                     
@@ -1541,10 +1543,28 @@
                 });
             }
             
-            // Show for 5 seconds then show final results
-            setTimeout(() => {
-                self.showScreen('host-final');
-            }, 5000);
+            // Display full top 10 list below podium
+            const listEl = document.getElementById('host-top10-list');
+            if (listEl) {
+                listEl.innerHTML = '';
+                
+                top10.forEach((player, index) => {
+                    const itemDiv = document.createElement('div');
+                    const topClass = index === 0 ? 'top-1' : (index === 1 ? 'top-2' : (index === 2 ? 'top-3' : ''));
+                    itemDiv.className = `top10-item ${topClass}`;
+                    
+                    itemDiv.innerHTML = `
+                        <div class="top10-rank">#${index + 1}</div>
+                        <div class="top10-name">${this.escapeHtml(player.display_name || player.name || 'Player')}</div>
+                        <div class="top10-score">${Math.round(player.total_score || player.score || 0)}</div>
+                    `;
+                    
+                    listEl.appendChild(itemDiv);
+                });
+            }
+            
+            // Keep this screen permanently - no auto transition to host-final
+            console.log('[HOST] Top 10 with podium displayed - staying on this screen');
         },
         
         nextQuestion: function() {
@@ -1569,13 +1589,21 @@
         
         handleSessionEnded: function(data) {
             console.log('Session ended:', data);
+            console.log('Leaderboard received:', data.leaderboard);
+            
+            // Cancel any pending auto next question
+            if (this.autoNextTimeout) {
+                clearTimeout(this.autoNextTimeout);
+                this.autoNextTimeout = null;
+                console.log('[HOST] Cancelled auto next question - session ended');
+            }
             
             // Update final leaderboard
             this.updateLeaderboard(data.leaderboard, '#final-leaderboard');
             
-            // Show top 3 first, then final screen
-            if (data.leaderboard && data.leaderboard.length >= 3) {
-                this.showTop3(data.leaderboard);
+            // Show top 10 with podium for top 3
+            if (data.leaderboard && data.leaderboard.length > 0) {
+                this.showTop10WithPodium(data.leaderboard);
             } else {
                 this.showScreen('host-final');
             }
@@ -1663,19 +1691,23 @@
         },
         
         updateLeaderboard: function(players, selector) {
+            const self = this;
             const $leaderboard = $(selector);
             let html = '';
             
             if (!players || players.length === 0) {
                 html = '<p style="text-align: center; color: #999;">Chưa có dữ liệu</p>';
             } else {
-                players.forEach(function(player, index) {
+                // Show top 10
+                const top10 = players.slice(0, 10);
+                top10.forEach(function(player, index) {
                     const topClass = index === 0 ? 'top-1' : (index === 1 ? 'top-2' : (index === 2 ? 'top-3' : ''));
+                    const score = player.total_score || player.score || 0;
                     html += `
                         <div class="leaderboard-item ${topClass}">
                             <div class="leaderboard-rank">${index + 1}</div>
-                            <div class="leaderboard-name">${player.display_name}</div>
-                            <div class="leaderboard-score">${Math.round(player.score)}</div>
+                            <div class="leaderboard-name">${self.escapeHtml(player.display_name || player.name || 'Player')}</div>
+                            <div class="leaderboard-score">${Math.round(score)}</div>
                         </div>
                     `;
                 });

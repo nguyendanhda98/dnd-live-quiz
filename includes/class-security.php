@@ -183,7 +183,7 @@ class Live_Quiz_Security {
      * @param int $max_duplicates Max allowed duplicates
      * @return bool|WP_Error True if OK, WP_Error if too many duplicates
      */
-    public static function check_duplicate_participants($session_id, $ip, $max_duplicates = 3) {
+    public static function check_duplicate_participants($session_id, $ip, $max_duplicates = 6) {
         $participants = Live_Quiz_Session_Manager::get_participants($session_id);
         
         $count = 0;
