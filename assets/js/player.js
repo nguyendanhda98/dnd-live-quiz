@@ -491,27 +491,62 @@
         console.log('[PLAYER] Show top 3:', data);
         showScreen('quiz-top3');
         
+        const leaderboard = data.top3 || [];
+        const top10 = leaderboard.slice(0, 10);
+        const top3 = leaderboard.slice(0, 3);
+        
+        // Display podium for top 3
         const podiumEl = document.getElementById('top3-podium');
-        if (podiumEl && data.top3 && data.top3.length > 0) {
+        if (podiumEl && top3.length > 0) {
             podiumEl.innerHTML = '';
             
             const medals = ['🥇', '🥈', '🥉'];
             const places = ['first', 'second', 'third'];
             
-            data.top3.forEach((player, index) => {
-                if (index < 3) {
-                    const placeDiv = document.createElement('div');
-                    placeDiv.className = `podium-place ${places[index]}`;
-                    
-                    placeDiv.innerHTML = `
-                        <div class="podium-medal">${medals[index]}</div>
-                        <div class="podium-name">${player.display_name || player.name}</div>
-                        <div class="podium-score">${player.score} pts</div>
-                        <div class="podium-stand">#${index + 1}</div>
+            top3.forEach((player, index) => {
+                const placeDiv = document.createElement('div');
+                placeDiv.className = `podium-place ${places[index]}`;
+                
+                // Highlight current user
+                if (player.user_id === state.userId) {
+                    placeDiv.classList.add('current-user');
+                }
+                
+                placeDiv.innerHTML = `
+                    <div class="podium-medal">${medals[index]}</div>
+                    <div class="podium-name">${escapeHtml(player.display_name || player.name || 'Player')}</div>
+                    <div class="podium-score">${Math.round(player.total_score || player.score || 0)} pts</div>
+                    <div class="podium-stand">#${index + 1}</div>
                     `;
                     
-                    podiumEl.appendChild(placeDiv);
+                
+                podiumEl.appendChild(placeDiv);
+            });
+        }
+        
+        // Display ranks 4-10 below podium
+        const listEl = document.getElementById('top3-list');
+        if (listEl && top10.length > 3) {
+            listEl.innerHTML = '';
+            
+            const remaining = top10.slice(3);
+            remaining.forEach((player, index) => {
+                const actualRank = index + 4;
+                const itemDiv = document.createElement('div');
+                itemDiv.className = `top10-item`;
+                
+                // Highlight current user
+                if (player.user_id === state.userId) {
+                    itemDiv.classList.add('current-user');
                 }
+                
+                itemDiv.innerHTML = `
+                    <div class="top10-rank">#${actualRank}</div>
+                    <div class="top10-name">${escapeHtml(player.display_name || player.name || 'Player')}</div>
+                    <div class="top10-score">${Math.round(player.total_score || player.score || 0)}</div>
+                `;
+                
+                listEl.appendChild(itemDiv);
             });
         }
     }
@@ -1044,13 +1079,74 @@
     }
     
     function displayFinalResults(data) {
-        displayLeaderboard(data.leaderboard, 'final-leaderboard');
+        const leaderboard = data.leaderboard || [];
+        const top10 = leaderboard.slice(0, 10);
+        const top3 = leaderboard.slice(0, 3);
         
-        const userEntry = data.leaderboard.find(entry => entry.user_id === state.userId);
-        if (userEntry) {
-            document.getElementById('final-rank').textContent = userEntry.rank;
-            document.getElementById('final-score').textContent = userEntry.total_score;
+        // Display podium for top 3
+        const podiumEl = document.getElementById('player-top3-podium');
+        if (podiumEl && top3.length > 0) {
+            podiumEl.innerHTML = '';
+            
+            const medals = ['🥇', '🥈', '🥉'];
+            const places = ['first', 'second', 'third'];
+            
+            top3.forEach((player, index) => {
+                const placeDiv = document.createElement('div');
+                placeDiv.className = `podium-place ${places[index]}`;
+                
+                // Highlight current user
+                if (player.user_id === state.userId) {
+                    placeDiv.classList.add('current-user');
+                }
+                
+                placeDiv.innerHTML = `
+                    <div class="podium-medal">${medals[index]}</div>
+                    <div class="podium-name">${escapeHtml(player.display_name || player.name || 'Player')}</div>
+                    <div class="podium-score">${Math.round(player.total_score || player.score || 0)} pts</div>
+                    <div class="podium-stand">#${index + 1}</div>
+                `;
+                
+                podiumEl.appendChild(placeDiv);
+            });
         }
+        
+        // Display ranks 4-10 below podium
+        const listEl = document.getElementById('player-top10-list');
+        if (listEl) {
+            listEl.innerHTML = '';
+            
+            const remaining = top10.slice(3);
+            remaining.forEach((player, index) => {
+                const actualRank = index + 4;
+                const itemDiv = document.createElement('div');
+                itemDiv.className = `top10-item`;
+                
+                // Highlight current user
+                if (player.user_id === state.userId) {
+                    itemDiv.classList.add('current-user');
+                }
+                
+                itemDiv.innerHTML = `
+                    <div class="top10-rank">#${actualRank}</div>
+                    <div class="top10-name">${escapeHtml(player.display_name || player.name || 'Player')}</div>
+                    <div class="top10-score">${Math.round(player.total_score || player.score || 0)}</div>
+                `;
+                
+                listEl.appendChild(itemDiv);
+            });
+        }
+    }
+    
+    function escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
     }
     
     function displayLeaderboard(entries, containerId) {

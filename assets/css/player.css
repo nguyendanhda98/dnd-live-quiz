@@ -923,6 +923,106 @@ input:focus {
     background: linear-gradient(135deg, #cd7f32 0%, #b87333 100%);
 }
 
+/* Top 10 Container for Player */
+.top10-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.top10-title {
+    font-size: 42px;
+    color: #f39c12;
+    margin-bottom: 30px;
+    font-weight: 700;
+    text-align: center;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Top 3 Podium for Player */
+.top3-podium {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 20px;
+    margin: 40px auto;
+    min-height: 300px;
+    max-width: 600px;
+}
+
+/* Top 10 List for Player */
+.top10-list {
+    max-width: 800px;
+    margin: 40px auto;
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.top10-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.top10-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.top10-item.current-user {
+    background: linear-gradient(135deg, #e8f4f8 0%, #d1ecf7 100%);
+    border: 2px solid #3498db;
+    font-weight: 700;
+}
+
+.top10-rank {
+    font-size: 24px;
+    font-weight: 700;
+    color: #667eea;
+    min-width: 50px;
+    text-align: center;
+}
+
+.top10-name {
+    flex: 1;
+    font-size: 18px;
+    color: #333;
+    padding: 0 20px;
+}
+
+.top10-score {
+    font-size: 24px;
+    font-weight: 700;
+    color: #667eea;
+    min-width: 100px;
+    text-align: right;
+}
+
+/* Highlight current user in podium */
+.podium-place.current-user {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+.podium-place.current-user .podium-name {
+    color: #3498db;
+    font-weight: 700;
+}
+
 /* Print styles */
 @media print {
     .quiz-header,

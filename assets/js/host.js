@@ -1543,18 +1543,20 @@
                 });
             }
             
-            // Display full top 10 list below podium
+            // Display ranks 4-10 below podium (top 3 already shown in podium)
             const listEl = document.getElementById('host-top10-list');
             if (listEl) {
                 listEl.innerHTML = '';
                 
-                top10.forEach((player, index) => {
+                // Start from index 3 (rank 4) to show remaining players
+                const remaining = top10.slice(3);
+                remaining.forEach((player, index) => {
+                    const actualRank = index + 4; // Ranks 4-10
                     const itemDiv = document.createElement('div');
-                    const topClass = index === 0 ? 'top-1' : (index === 1 ? 'top-2' : (index === 2 ? 'top-3' : ''));
-                    itemDiv.className = `top10-item ${topClass}`;
+                    itemDiv.className = `top10-item`;
                     
                     itemDiv.innerHTML = `
-                        <div class="top10-rank">#${index + 1}</div>
+                        <div class="top10-rank">#${actualRank}</div>
                         <div class="top10-name">${this.escapeHtml(player.display_name || player.name || 'Player')}</div>
                         <div class="top10-score">${Math.round(player.total_score || player.score || 0)}</div>
                     `;

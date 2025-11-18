@@ -163,38 +163,34 @@ $show_title = get_query_var('show_title', 'yes');
     
     <!-- Top 3 Screen -->
     <div id="quiz-top3" class="quiz-screen">
-        <div class="quiz-card text-center">
-            <h1 class="top3-title"><?php _e('🏆 Top 3 Cao Điểm Nhất 🏆', 'live-quiz'); ?></h1>
+        <div class="top10-container">
+            <h1 class="top10-title"><?php _e('🏆 Bảng Xếp Hạng Cuối Cùng 🏆', 'live-quiz'); ?></h1>
+            
+            <!-- Podium for Top 3 -->
             <div id="top3-podium" class="top3-podium">
                 <!-- Top 3 will be inserted here -->
+            </div>
+            
+            <!-- Full Top 10 List (ranks 4-10) -->
+            <div id="top3-list" class="top10-list">
+                <!-- Ranks 4-10 will be inserted here -->
             </div>
         </div>
     </div>
     
     <!-- Final Results Screen -->
     <div id="quiz-final" class="quiz-screen">
-        <div class="quiz-card">
-            <h1><?php _e('🎉 Quiz đã kết thúc!', 'live-quiz'); ?></h1>
+        <div class="top10-container">
+            <h1 class="top10-title"><?php _e('🏆 Bảng Xếp Hạng Cuối Cùng 🏆', 'live-quiz'); ?></h1>
             
-            <div class="final-stats">
-                <h2><?php _e('Kết quả cuối cùng', 'live-quiz'); ?></h2>
-                <div class="your-final-rank">
-                    <div class="rank-display">
-                        <span class="rank-number" id="final-rank"></span>
-                        <span class="rank-label"><?php _e('Thứ hạng', 'live-quiz'); ?></span>
-                    </div>
-                    <div class="score-display">
-                        <span class="score-number" id="final-score"></span>
-                        <span class="score-label"><?php _e('Điểm', 'live-quiz'); ?></span>
-                    </div>
-                </div>
+            <!-- Podium for Top 3 -->
+            <div id="player-top3-podium" class="top3-podium">
+                <!-- Top 3 podium will be inserted here -->
             </div>
             
-            <div class="leaderboard-container">
-                <h3><?php _e('Top 10', 'live-quiz'); ?></h3>
-                <div id="final-leaderboard" class="leaderboard">
-                    <!-- Final leaderboard will be inserted here -->
-                </div>
+            <!-- Full Top 10 List (ranks 4-10) -->
+            <div id="player-top10-list" class="top10-list">
+                <!-- Ranks 4-10 will be inserted here -->
             </div>
             
             <button onclick="location.reload()" class="btn btn-primary">
