@@ -32,6 +32,11 @@
         displayStartTime: null, // Local timestamp when we start displaying
         autoNextTimeout: null, // Track auto next question timeout
         
+        // Ping measurement
+        pingInterval: null,
+        lastPing: null,
+        currentPing: null,
+        
         // Helper to get API config safely
         getApiConfig: function() {
             console.log('[HOST] Getting API config...');
@@ -300,6 +305,9 @@
                 console.log('Host WebSocket connected');
                 self.showConnectionStatus('Đã kết nối', true);
                 
+                // Start ping measurement
+                self.startPingMeasurement();
+                
                 // Host must also join the session room to receive participant_joined events
                 self.socket.emit('join_session', {
                     session_id: self.sessionId,
@@ -317,6 +325,7 @@
             
             this.socket.on('disconnect', function() {
                 console.log('WebSocket disconnected');
+                self.stopPingMeasurement();
                 self.showConnectionStatus('Mất kết nối', false);
             });
             
@@ -378,6 +387,14 @@
             this.socket.on('session_end', function(data) {
                 console.log('[HOST] Received session_end event:', data);
                 self.handleSessionEnded(data);
+            });
+            
+            // Listen for pong response to measure ping
+            this.socket.on('pong_measure', function(data) {
+                if (self.lastPing && data.timestamp === self.lastPing) {
+                    const ping = Date.now() - self.lastPing;
+                    self.updatePingDisplay(ping);
+                }
             });
         },
         
@@ -1721,6 +1738,59 @@
         showScreen: function(screenId) {
             $('.host-screen').removeClass('active');
             $('#' + screenId).addClass('active');
+        },
+        
+        /**
+         * Start ping measurement
+         */
+        startPingMeasurement: function() {
+            const self = this;
+            
+            if (!this.socket) {
+                return;
+            }
+            
+            // Clear existing interval
+            if (this.pingInterval) {
+                clearInterval(this.pingInterval);
+            }
+            
+            // Measure ping every 2 seconds
+            this.pingInterval = setInterval(function() {
+                if (self.socket && self.socket.connected) {
+                    self.lastPing = Date.now();
+                    self.socket.emit('ping_measure', { timestamp: self.lastPing });
+                }
+            }, 2000);
+            
+            // Show ping indicator
+            $('#host-ping-indicator').show();
+        },
+        
+        /**
+         * Stop ping measurement
+         */
+        stopPingMeasurement: function() {
+            if (this.pingInterval) {
+                clearInterval(this.pingInterval);
+                this.pingInterval = null;
+            }
+            
+            // Hide ping indicator
+            $('#host-ping-indicator').hide();
+        },
+        
+        /**
+         * Update ping display
+         */
+        updatePingDisplay: function(ping) {
+            this.currentPing = ping;
+            
+            const $pingEl = $('#host-ping-indicator');
+            if ($pingEl.length === 0) return;
+            
+            const $pingValue = $pingEl.find('.ping-value');
+            $pingValue.text(ping);
         },
         
         showConnectionStatus: function(text, connected) {

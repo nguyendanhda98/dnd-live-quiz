@@ -14,6 +14,11 @@ $show_title = get_query_var('show_title', 'yes');
 ?>
 
 <div class="live-quiz-player-wrapper">
+    <!-- Ping Indicator -->
+    <div id="ping-indicator" class="ping-indicator" style="display: none;">
+        Ping:&nbsp;<span class="ping-value">--</span>
+    </div>
+    
     <?php if ($show_title === 'yes') : ?>
         <div class="player-header">
             <h1><?php echo esc_html($player_title); ?></h1>

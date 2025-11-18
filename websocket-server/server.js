@@ -753,6 +753,13 @@ io.on('connection', async (socket) => {
         }
     });
 
+    // Handle ping measurement - respond immediately for RTT calculation
+    socket.on('ping_measure', (data) => {
+        socket.emit('pong_measure', {
+            timestamp: data.timestamp
+        });
+    });
+
     // Handle disconnect
     socket.on('disconnect', async (reason) => {
         stats.connections--;

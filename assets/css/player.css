@@ -10,6 +10,7 @@
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     padding: 40px 20px;
+    position: relative;
 }
 
 .live-quiz-player-wrapper .player-header {
@@ -704,6 +705,29 @@
     }
     50% {
         opacity: 0.5;
+    }
+}
+
+/* Ping Indicator */
+.live-quiz-player-wrapper .ping-indicator {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 100;
+}
+
+.live-quiz-player-wrapper .ping-indicator .ping-value {
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .live-quiz-player-wrapper .ping-indicator {
+        top: 8px;
+        right: 8px;
+        font-size: 12px;
     }
 }
 

@@ -29,6 +29,11 @@
         reconnectAttempts: 0,
         maxReconnectAttempts: 5,
         isConnected: false,
+        
+        // Ping measurement
+        pingInterval: null,
+        lastPing: null,
+        currentPing: null,
     };
     
     /**
@@ -381,6 +386,9 @@
             state.reconnectAttempts = 0;
             hideConnectionStatus();
             
+            // Start ping measurement
+            startPingMeasurement();
+            
             // Join the session room with connection ID
             state.socket.emit('join_session', {
                 session_id: state.sessionId,
@@ -393,6 +401,7 @@
         state.socket.on('disconnect', (reason) => {
             console.log('[Live Quiz] WebSocket disconnected:', reason);
             state.isConnected = false;
+            stopPingMeasurement();
             showConnectionStatus(config.i18n.connection_lost, 'warning');
         });
         
@@ -458,6 +467,14 @@
             console.log('[PLAYER] Reason:', data.reason);
             console.log('[PLAYER] Message:', data.message);
             handleForceDisconnect(data);
+        });
+        
+        // Listen for pong response to measure ping
+        state.socket.on('pong_measure', (data) => {
+            if (state.lastPing && data.timestamp === state.lastPing) {
+                const ping = Date.now() - state.lastPing;
+                updatePingDisplay(ping);
+            }
         });
     }
     
@@ -1270,6 +1287,64 @@
         const screen = document.getElementById(screenId);
         if (screen) {
             screen.classList.add('active');
+        }
+    }
+    /**
+     * Start ping measurement
+     */
+    function startPingMeasurement() {
+        if (!state.socket || !state.isConnected) {
+            return;
+        }
+        
+        // Clear existing interval
+        if (state.pingInterval) {
+            clearInterval(state.pingInterval);
+        }
+        
+        // Measure ping every 2 seconds
+        state.pingInterval = setInterval(() => {
+            if (state.socket && state.isConnected) {
+                state.lastPing = Date.now();
+                state.socket.emit('ping_measure', { timestamp: state.lastPing });
+            }
+        }, 2000);
+        
+        // Show ping indicator
+        const pingEl = document.getElementById('ping-indicator');
+        if (pingEl) {
+            pingEl.style.display = 'flex';
+        }
+    }
+    
+    /**
+     * Stop ping measurement
+     */
+    function stopPingMeasurement() {
+        if (state.pingInterval) {
+            clearInterval(state.pingInterval);
+            state.pingInterval = null;
+        }
+        
+        // Hide ping indicator
+        const pingEl = document.getElementById('ping-indicator');
+        if (pingEl) {
+            pingEl.style.display = 'none';
+        }
+    }
+    
+    /**
+     * Update ping display
+     */
+    function updatePingDisplay(ping) {
+        state.currentPing = ping;
+        
+        const pingEl = document.getElementById('ping-indicator');
+        if (!pingEl) return;
+        
+        const pingValue = pingEl.querySelector('.ping-value');
+        if (pingValue) {
+            pingValue.textContent = ping;
         }
     }
     

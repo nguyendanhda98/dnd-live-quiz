@@ -36,6 +36,11 @@ if ($has_session) {
 <?php if ($has_session): ?>
     <!-- Host Interface với session -->
     <div id="live-quiz-host" class="live-quiz-host-container">
+        <!-- Ping Indicator -->
+        <div id="host-ping-indicator" class="ping-indicator" style="display: none;">
+            Ping:&nbsp;<span class="ping-value">--</span>
+        </div>
+        
         <!-- Header -->
         <div class="host-header">
             <div class="quiz-info">
