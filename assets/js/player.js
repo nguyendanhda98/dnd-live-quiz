@@ -414,7 +414,6 @@
         // Quiz events
         state.socket.on('session_state', handleSessionState);
         state.socket.on('quiz_countdown', handleQuizCountdown);
-        state.socket.on('final_question_announcement', handleFinalQuestionAnnouncement);
         state.socket.on('question_start', handleQuestionStart);
         state.socket.on('question_end', handleQuestionEnd);
         state.socket.on('show_top3', handleShowTop3);
