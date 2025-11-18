@@ -358,17 +358,16 @@ class Live_Quiz_REST_API {
     public static function end_session($request) {
         $session_id = $request->get_param('id');
         
-        error_log("\n=== END ROOM REQUEST ===");
+        error_log("\n=== END ROOM REQUEST (MANUAL) ===");
         error_log("Session ID: {$session_id}");
         error_log("Timestamp: " . date('Y-m-d H:i:s'));
         
-        // Step 1: Update session status in database
-        $result = Live_Quiz_Session_Manager::end_session($session_id);
+        // Step 1: Update session status in database directly (don't call end_session which sends WebSocket events)
+        update_post_meta($session_id, '_session_status', 'ended');
+        update_post_meta($session_id, '_session_ended_at', time());
         
-        if (!$result) {
-            error_log("ERROR: Failed to update session status in database");
-            return new WP_Error('cannot_end', __('Không thể kết thúc phiên', 'live-quiz'), array('status' => 400));
-        }
+        // Clear session cache
+        Live_Quiz_Session_Manager::clear_session_cache($session_id);
         
         error_log("✓ Session status updated to 'ended' in database");
         

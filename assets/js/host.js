@@ -1729,6 +1729,12 @@
             // Disable the button to prevent multiple clicks
             $('#end-session-btn').prop('disabled', true).text('Đang kết thúc phòng...');
             
+            // Disconnect socket immediately to prevent receiving any WebSocket events
+            if (self.socket) {
+                console.log('[HOST] Disconnecting WebSocket to prevent receiving events...');
+                self.socket.disconnect();
+            }
+            
             $.ajax({
                 url: endUrl,
                 method: 'POST',
@@ -1741,13 +1747,10 @@
                     console.log('[HOST] ✓ All players have been kicked');
                     console.log('[HOST] Response:', response);
                     
-                    // Wait 1.5 seconds to ensure players receive kick event
-                    setTimeout(function() {
-                        console.log('[HOST] Redirecting to host page...');
-                        // Redirect to host page (or home if not configured)
-                        const hostPageUrl = api.hostPageUrl || api.homeUrl || '/';
-                        window.location.href = hostPageUrl;
-                    }, 1500);
+                    // Redirect immediately (no need to wait)
+                    console.log('[HOST] Redirecting to host page...');
+                    const hostPageUrl = api.hostPageUrl || api.homeUrl || '/';
+                    window.location.href = hostPageUrl;
                 },
                 error: function(xhr, status, error) {
                     console.error('[HOST] ==========================================');

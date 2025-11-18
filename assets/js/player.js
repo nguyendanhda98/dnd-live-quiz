@@ -1119,13 +1119,9 @@
             }
         }).catch(err => console.error('[PLAYER] Failed to clear session:', err));
         
-        console.log('[PLAYER] Redirecting to home...');
+        console.log('[PLAYER] Redirecting to player page immediately...');
         
-                // Show alert with clear message
-        const endMessage = data.message || 'Host đã kết thúc phòng.';
-        alert('🚺 ' + endMessage + '\n\nBạn sẽ được chuyển về trang player.');
-        
-        // Redirect to player page immediately after alert is dismissed
+        // Redirect immediately without showing alert
         window.location.href = config.playerPageUrl || config.homeUrl || '/';
     }
     

@@ -1119,34 +1119,9 @@ app.post('/api/sessions/:id/end', async (req, res) => {
         await redisClient.hSet(`session:${sessionId}`, 'status', 'ended');
         logger.info('✓ Session status updated to ended in Redis');
 
-        // Get final leaderboard from WordPress API (since PHP doesn't have Redis extension)
-        let leaderboard = [];
-        try {
-            const axios = require('axios');
-            const response = await axios.get(`https://dndenglish.com/wp-json/live-quiz/v1/sessions/${sessionId}/leaderboard`, {
-                timeout: 5000,
-                httpsAgent: new (require('https')).Agent({ rejectUnauthorized: false })
-            });
-            
-            if (response.data && response.data.leaderboard) {
-                leaderboard = response.data.leaderboard.map((entry, index) => ({
-                    rank: index + 1,
-                    user_id: entry.user_id,
-                    total_score: entry.score || entry.total_score || 0,
-                    display_name: entry.display_name || entry.name || `Player ${entry.user_id}`
-                }));
-                logger.info('✓ Final leaderboard retrieved from WordPress', { playerCount: leaderboard.length });
-            } else {
-                logger.warn('Empty leaderboard from WordPress API');
-            }
-        } catch (error) {
-            logger.error('Error retrieving leaderboard from WordPress', { error: error.message, sessionId });
-            // Continue anyway with empty leaderboard
-        }
-
         // Handle based on reason
         if (reason === 'manual') {
-            // Host manually ended - kick all players (no need to send leaderboard)
+            // Host manually ended - kick all players immediately (no leaderboard needed)
             logger.info('Host manually ended room - kicking all players');
             io.to(`session:${sessionId}`).emit('kicked', {
                 reason: 'Host đã kết thúc phòng',
@@ -1155,8 +1130,33 @@ app.post('/api/sessions/:id/end', async (req, res) => {
             });
             logger.info('✓ Broadcasted kicked event to all participants');
         } else {
-            // Quiz completed naturally - show final results with leaderboard
-            logger.info('Quiz completed naturally - showing final results');
+            // Quiz completed naturally - get leaderboard and show final results
+            logger.info('Quiz completed naturally - retrieving leaderboard');
+            
+            let leaderboard = [];
+            try {
+                const axios = require('axios');
+                const response = await axios.get(`https://dndenglish.com/wp-json/live-quiz/v1/sessions/${sessionId}/leaderboard`, {
+                    timeout: 5000,
+                    httpsAgent: new (require('https')).Agent({ rejectUnauthorized: false })
+                });
+                
+                if (response.data && response.data.leaderboard) {
+                    leaderboard = response.data.leaderboard.map((entry, index) => ({
+                        rank: index + 1,
+                        user_id: entry.user_id,
+                        total_score: entry.score || entry.total_score || 0,
+                        display_name: entry.display_name || entry.name || `Player ${entry.user_id}`
+                    }));
+                    logger.info('✓ Final leaderboard retrieved from WordPress', { playerCount: leaderboard.length });
+                } else {
+                    logger.warn('Empty leaderboard from WordPress API');
+                }
+            } catch (error) {
+                logger.error('Error retrieving leaderboard from WordPress', { error: error.message, sessionId });
+                // Continue anyway with empty leaderboard
+            }
+            
             io.to(`session:${sessionId}`).emit('session_end', {
                 leaderboard: leaderboard,
                 message: 'Quiz đã kết thúc',
