@@ -268,7 +268,11 @@
         },
         
         updateStartButton: function() {
-            if (this.selectedQuizzes.length > 0) {
+            const hasQuizzes = this.selectedQuizzes.length > 0;
+            const hasPlayers = Object.keys(this.players).length > 0;
+            
+            // Chỉ enable khi có cả người chơi và bộ câu hỏi
+            if (hasQuizzes && hasPlayers) {
                 $('#start-quiz-btn').prop('disabled', false);
             } else {
                 $('#start-quiz-btn').prop('disabled', true);
@@ -469,12 +473,8 @@
             // Update count
             $count.text(players.length);
             
-            // Enable/disable start button
-            if (players.length > 0) {
-                $('#start-quiz-btn').prop('disabled', false);
-            } else {
-                $('#start-quiz-btn').prop('disabled', true);
-            }
+            // Update start button based on both players and selected quizzes
+            this.updateStartButton();
             
             // Update list
             if (players.length === 0) {
@@ -795,9 +795,8 @@
             const api = this.getApiConfig();
             if (!api) return;
             
-            // Validate settings
+            // Nút đã được disable nếu không đủ điều kiện, không cần validate thêm
             if (this.selectedQuizzes.length === 0) {
-                alert('Vui lòng chọn ít nhất một bộ câu hỏi');
                 return;
             }
             
