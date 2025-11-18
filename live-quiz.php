@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('LIVE_QUIZ_VERSION', '2.2.3');
+define('LIVE_QUIZ_VERSION', '2.2.4');
 define('LIVE_QUIZ_PLUGIN_FILE', __FILE__);
 define('LIVE_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('LIVE_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -567,7 +567,6 @@ final class Live_Quiz {
         wp_localize_script('live-quiz-admin', 'liveQuizAdmin', array(
             'restUrl' => rest_url('live-quiz/v1'),
             'nonce' => wp_create_nonce('wp_rest'),
-            'sseUrl' => add_query_arg('live_quiz_sse', '1', home_url('/')),
             'hook' => $hook,
             'postType' => $current_post_type,
             'debug' => true,

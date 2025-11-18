@@ -239,19 +239,6 @@ class Live_Quiz_Session_Manager {
         
         self::clear_session_cache($session_id);
         
-        // Broadcast event via SSE (Phase 1 fallback)
-        self::broadcast_event($session_id, 'question_start', array(
-            'question_index' => $question_index,
-            'question' => array(
-                'text' => $session['questions'][$question_index]['text'],
-                'choices' => array_map(function($choice) {
-                    return array('text' => $choice['text']); // Don't send is_correct
-                }, $session['questions'][$question_index]['choices']),
-                'time_limit' => $session['questions'][$question_index]['time_limit'],
-            ),
-            'start_time' => $start_time,
-        ));
-        
         return true;
     }
     
@@ -296,14 +283,6 @@ class Live_Quiz_Session_Manager {
             Live_Quiz_WebSocket_Helper::end_question($session_id, $correct_answer, $leaderboard);
         }
         
-        // Broadcast results (SSE fallback)
-        self::broadcast_event($session_id, 'question_end', array(
-            'question_index' => $session['current_question_index'],
-            'correct_answer' => $correct_answer,
-            'stats' => $stats,
-            'leaderboard' => $leaderboard,
-        ));
-        
         return true;
     }
     
@@ -335,12 +314,6 @@ class Live_Quiz_Session_Manager {
         } else {
             error_log('[LiveQuiz Session Manager] Player removed from all storage successfully');
         }
-        
-        // Broadcast kick event
-        self::broadcast_event($session_id, 'player_kicked', array(
-            'user_id' => $user_id,
-            'timestamp' => time(),
-        ));
         
         return array(
             'success' => true,
@@ -510,11 +483,12 @@ class Live_Quiz_Session_Manager {
         if (self::is_redis_enabled()) {
             self::$redis->update_session_field($session_id, 'status', self::STATE_ENDED);
             error_log("Updated session status in Redis");
-            
-            // Notify WebSocket server and save final results
-            if (class_exists('Live_Quiz_WebSocket_Helper')) {
-                Live_Quiz_WebSocket_Helper::end_session($session_id);
-            }
+        }
+        
+        // Notify WebSocket server (regardless of Redis)
+        if (class_exists('Live_Quiz_WebSocket_Helper')) {
+            error_log("Notifying WebSocket server about session end");
+            Live_Quiz_WebSocket_Helper::end_session($session_id);
         }
         
         self::clear_session_cache($session_id);
@@ -522,14 +496,6 @@ class Live_Quiz_Session_Manager {
         // Clear active session from all participants' user meta
         error_log("Clearing all participants' active sessions...");
         self::clear_all_participants_session($session_id);
-        
-        // Get final leaderboard
-        $leaderboard = Live_Quiz_Scoring::get_leaderboard($session_id, 0); // All players
-        
-        // Broadcast end event (SSE fallback)
-        self::broadcast_event($session_id, 'session_end', array(
-            'leaderboard' => $leaderboard,
-        ));
         
         error_log("=== END SESSION COMPLETED ===");
         
@@ -604,15 +570,6 @@ class Live_Quiz_Session_Manager {
         delete_transient($cache_key);
         set_transient($cache_key, $stored_participants, 60);
         
-        // Broadcast join event (SSE fallback)
-        $participant_count = count($stored_participants);
-        
-        self::broadcast_event($session_id, 'participant_join', array(
-            'user_id' => $user_id,
-            'display_name' => $participant['display_name'],
-            'total_participants' => $participant_count,
-        ));
-        
         return $participant;
     }
     
@@ -652,12 +609,6 @@ class Live_Quiz_Session_Manager {
             delete_transient($cache_key);
             set_transient($cache_key, $stored_participants, 60);
         }
-        
-        // Broadcast leave event (optional - can notify other participants)
-        self::broadcast_event($session_id, 'participant_leave', array(
-            'user_id' => $user_id,
-            'total_participants' => count($stored_participants),
-        ));
         
         return true;
     }
@@ -868,51 +819,6 @@ class Live_Quiz_Session_Manager {
     public static function reset_answer_count($session_id, $question_index) {
         $key = "live_quiz_answer_count_{$session_id}_{$question_index}";
         delete_transient($key);
-    }
-    
-    /**
-     * Broadcast event to all session participants (via SSE)
-     * 
-     * @param int $session_id Session ID
-     * @param string $event Event name
-     * @param array $data Event data
-     */
-    public static function broadcast_event($session_id, $event, $data = array()) {
-        // Store event for SSE clients to pick up
-        $events = get_transient("live_quiz_events_{$session_id}") ?: array();
-        
-        $events[] = array(
-            'event' => $event,
-            'data' => $data,
-            'timestamp' => microtime(true),
-        );
-        
-        // Keep only last 100 events
-        if (count($events) > 100) {
-            $events = array_slice($events, -100);
-        }
-        
-        set_transient("live_quiz_events_{$session_id}", $events, 300); // 5 minutes
-    }
-    
-    /**
-     * Get events for SSE
-     * 
-     * @param int $session_id Session ID
-     * @param float $since Timestamp to get events since
-     * @return array Events
-     */
-    public static function get_events($session_id, $since = 0) {
-        $events = get_transient("live_quiz_events_{$session_id}") ?: array();
-        
-        // Filter events after $since
-        if ($since > 0) {
-            $events = array_filter($events, function($event) use ($since) {
-                return $event['timestamp'] > $since;
-            });
-        }
-        
-        return array_values($events);
     }
     
     /**

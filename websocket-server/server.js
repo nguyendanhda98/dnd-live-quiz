@@ -1111,74 +1111,46 @@ app.post('/api/sessions/:id/end', async (req, res) => {
         await redisClient.hSet(`session:${sessionId}`, 'status', 'ended');
         logger.info('✓ Session status updated to ended in Redis');
 
-        // Get all sockets in this session room
-        const room = io.sockets.adapter.rooms.get(`session:${sessionId}`);
-        const playerSockets = [];
-        
-        if (room) {
-            logger.info(`Found ${room.size} total connections in room`);
+        // Get final leaderboard from Redis using ZREVRANGE with WITHSCORES
+        let leaderboard = [];
+        try {
+            // Use ZREVRANGE to get sorted set in descending order
+            const leaderboardData = await redisClient.sendCommand([
+                'ZREVRANGE',
+                `leaderboard:${sessionId}`,
+                '0',
+                '-1',
+                'WITHSCORES'
+            ]);
             
-            room.forEach(socketId => {
-                const socket = io.sockets.sockets.get(socketId);
-                if (socket) {
-                    if (socket.isHost) {
-                        logger.info('Skipping host socket', { socketId, userId: socket.userId });
-                    } else {
-                        playerSockets.push(socket);
-                        logger.info('Found player to kick', { 
-                            socketId, 
-                            userId: socket.userId, 
-                            displayName: socket.displayName 
-                        });
-                    }
-                }
-            });
-        } else {
-            logger.warn('No room found for session', { sessionId });
+            // Parse leaderboard data (format: [member1, score1, member2, score2, ...])
+            for (let i = 0; i < leaderboardData.length; i += 2) {
+                leaderboard.push({
+                    rank: (i / 2) + 1,
+                    user_id: leaderboardData[i],
+                    score: parseFloat(leaderboardData[i + 1]),
+                    display_name: leaderboardData[i] // Will be populated by client from players data
+                });
+            }
+            
+            logger.info('✓ Final leaderboard retrieved', { playerCount: leaderboard.length });
+        } catch (error) {
+            logger.error('Error retrieving leaderboard', { error: error.message, sessionId });
+            // Continue anyway with empty leaderboard
         }
 
-        logger.info(`Kicking ${playerSockets.length} player(s) from room`);
-
-        // Send kick event to each player
-        let kickedCount = 0;
-        playerSockets.forEach(socket => {
-            try {
-                socket.emit('session_ended_kicked', {
-                    message: 'Host đã kết thúc phòng. Bạn sẽ được chuyển về trang chủ.',
-                    reason: 'host_ended_room',
-                    session_id: sessionId
-                });
-                kickedCount++;
-                logger.info('✓ Sent kick event to player', {
-                    userId: socket.userId,
-                    displayName: socket.displayName,
-                    socketId: socket.id
-                });
-            } catch (err) {
-                logger.error('Failed to send kick event', { error: err, userId: socket.userId });
-            }
+        // Broadcast session_end event to all participants (including host)
+        io.to(`session:${sessionId}`).emit('session_end', {
+            leaderboard: leaderboard,
+            message: 'Quiz đã kết thúc'
         });
-
-        logger.info(`✓ Kick events sent to ${kickedCount} player(s)`);
-
-        // Remove players from room after short delay
-        setTimeout(() => {
-            playerSockets.forEach(socket => {
-                try {
-                    socket.leave(`session:${sessionId}`);
-                } catch (err) {
-                    logger.error('Failed to remove socket from room', { error: err });
-                }
-            });
-            logger.info('✓ All players removed from room');
-        }, 1000);
-
-        logger.info('=== END ROOM COMPLETED ===');
+        
+        logger.info('✓ Broadcasted session_end event to all participants');
+        logger.info('=== END SESSION COMPLETED (natural end, players not kicked) ===');
 
         res.json({ 
             success: true, 
-            message: 'Room ended successfully',
-            players_kicked: kickedCount,
+            message: 'Session ended successfully',
             session_id: sessionId
         });
     } catch (error) {

@@ -1287,7 +1287,7 @@
                     // Step 3: Animate score addition and re-sort
                     this.animateScoreAddition(oldLeaderboard);
                 }, 1000);
-            }, 3000);
+            }, 1000);
         },
         
         renderLeaderboard: function(leaderboard, showNewScores) {

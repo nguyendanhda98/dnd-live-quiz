@@ -336,9 +336,19 @@ class Live_Quiz_REST_API {
             return new WP_Error('cannot_next', __('Không thể chuyển câu hỏi', 'live-quiz'), array('status' => 400));
         }
         
+        // Check if session ended (result is true but session status is 'ended')
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        if ($session && $session['status'] === 'ended') {
+            return rest_ensure_response(array(
+                'success' => true,
+                'session_ended' => true,
+                'message' => __('Quiz đã kết thúc', 'live-quiz'),
+            ));
+        }
+        
         return rest_ensure_response(array(
             'success' => true,
-            'session' => Live_Quiz_Session_Manager::get_session($session_id),
+            'session' => $session,
         ));
     }
     
