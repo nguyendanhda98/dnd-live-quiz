@@ -148,12 +148,15 @@ class Live_Quiz_WebSocket_Helper {
      * Notify session ended (kick all players)
      * 
      * @param int $session_id Session ID
+     * @param string $reason Reason for ending ('completed' = quiz finished, 'manual' = host ended)
      * @return bool Success
      */
-    public static function end_session($session_id) {
+    public static function end_session($session_id, $reason = 'completed') {
         return self::send_request(
             '/sessions/' . $session_id . '/end',
-            array(),
+            array(
+                'reason' => $reason
+            ),
             'POST'
         );
     }

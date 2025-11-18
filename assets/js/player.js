@@ -537,9 +537,22 @@
                     placeDiv.classList.add('current-user');
                 }
                 
+                const displayName = player.display_name || player.name || 'Player';
+                // Tách tên và username
+                let nameText = displayName;
+                let usernameText = '';
+                const parenIndex = displayName.indexOf(' (@');
+                if (parenIndex > 0) {
+                    nameText = displayName.substring(0, parenIndex);
+                    usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
+                }
+                
                 placeDiv.innerHTML = `
                     <div class="podium-medal">${medals[index]}</div>
-                    <div class="podium-name">${escapeHtml(player.display_name || player.name || 'Player')}</div>
+                    <div class="podium-name">
+                        <div>${escapeHtml(nameText)}</div>
+                        ${usernameText ? `<div style="font-size: 0.8em; color: #888;">${escapeHtml(usernameText)}</div>` : ''}
+                    </div>
                     <div class="podium-score">${Math.round(player.total_score || player.score || 0)} pts</div>
                     <div class="podium-stand">#${index + 1}</div>
                     `;
@@ -565,9 +578,22 @@
                     itemDiv.classList.add('current-user');
                 }
                 
+                const displayName = player.display_name || player.name || 'Player';
+                // Tách tên và username
+                let nameText = displayName;
+                let usernameText = '';
+                const parenIndex = displayName.indexOf(' (@');
+                if (parenIndex > 0) {
+                    nameText = displayName.substring(0, parenIndex);
+                    usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
+                }
+                
                 itemDiv.innerHTML = `
                     <div class="top10-rank">#${actualRank}</div>
-                    <div class="top10-name">${escapeHtml(player.display_name || player.name || 'Player')}</div>
+                    <div class="top10-name">
+                        <div>${escapeHtml(nameText)}</div>
+                        ${usernameText ? `<div style="font-size: 0.85em; color: #888;">${escapeHtml(usernameText)}</div>` : ''}
+                    </div>
                     <div class="top10-score">${Math.round(player.total_score || player.score || 0)}</div>
                 `;
                 
@@ -1192,9 +1218,30 @@
             else if (entry.rank === 3) rankBadge.classList.add('bronze');
             rankBadge.textContent = entry.rank;
             
-            const name = document.createElement('span');
+            const name = document.createElement('div');
             name.className = 'player-name';
-            name.textContent = entry.display_name;
+            
+            const displayName = entry.display_name || 'Player';
+            // Tách tên và username
+            let nameText = displayName;
+            let usernameText = '';
+            const parenIndex = displayName.indexOf(' (@');
+            if (parenIndex > 0) {
+                nameText = displayName.substring(0, parenIndex);
+                usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
+            }
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'name-text';
+            nameSpan.textContent = nameText;
+            name.appendChild(nameSpan);
+            
+            if (usernameText) {
+                const usernameSpan = document.createElement('span');
+                usernameSpan.className = 'username-text';
+                usernameSpan.textContent = usernameText;
+                name.appendChild(usernameSpan);
+            }
             
             const score = document.createElement('span');
             score.className = 'player-score';
@@ -1264,11 +1311,24 @@
         players.forEach(function(player) {
             const displayName = player.display_name || 'Unknown';
             const initial = displayName.charAt(0).toUpperCase();
+            const isCurrentUser = player.display_name === state.displayName;
+            
+            // Tách tên và username
+            let nameText = displayName;
+            let usernameText = '';
+            const parenIndex = displayName.indexOf(' (@');
+            if (parenIndex > 0) {
+                nameText = displayName.substring(0, parenIndex);
+                usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
+            }
             
             html += `
-                <div class="player-waiting-item">
+                <div class="player-waiting-item${isCurrentUser ? ' current-user' : ''}">
                     <div class="player-waiting-avatar">${escapeHtml(initial)}</div>
-                    <div class="player-waiting-name">${escapeHtml(displayName)}</div>
+                    <div class="player-waiting-name">
+                        <span class="name-text">${escapeHtml(nameText)}</span>
+                        ${usernameText ? `<span class="username-text">${escapeHtml(usernameText)}</span>` : ''}
+                    </div>
                 </div>
             `;
         });

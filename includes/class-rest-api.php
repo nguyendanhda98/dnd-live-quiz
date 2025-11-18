@@ -394,7 +394,8 @@ class Live_Quiz_REST_API {
                     'X-WordPress-Secret' => $websocket_secret,
                 ),
                 'body' => json_encode(array(
-                    'session_id' => $session_id
+                    'session_id' => $session_id,
+                    'reason' => 'manual' // Host manually ended the room
                 ))
             ));
             

@@ -507,6 +507,19 @@
     text-align: center;
     word-break: break-word;
     max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.player-item .player-name .name-text {
+    font-weight: 600;
+}
+
+.player-item .player-name .username-text {
+    font-size: 12px;
+    color: #666;
+    font-weight: 400;
 }
 
 /* Player Action Modal */
@@ -848,6 +861,19 @@
     text-align: center;
     word-break: break-word;
     max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.answered-player-name .name-text {
+    font-weight: 600;
+}
+
+.answered-player-name .username-text {
+    font-size: 10px;
+    color: #666;
+    font-weight: 400;
 }
 
 /* Answer Stats */
@@ -986,6 +1012,19 @@
     font-weight: 700;
     font-size: 20px;
     color: #333;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.animated-leaderboard .player-name .name-text {
+    font-weight: 700;
+}
+
+.animated-leaderboard .player-name .username-text {
+    font-size: 16px;
+    color: #666;
+    font-weight: 500;
 }
 
 .animated-leaderboard .score-container {
@@ -1062,6 +1101,19 @@
     flex: 1;
     font-weight: 600;
     font-size: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.leaderboard-name .name-text {
+    font-weight: 600;
+}
+
+.leaderboard-name .username-text {
+    font-size: 13px;
+    color: #666;
+    font-weight: 400;
 }
 
 .leaderboard-score {
@@ -1468,6 +1520,9 @@
     color: #333;
     margin-bottom: 5px;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .podium-score {
@@ -1588,6 +1643,9 @@
     font-size: 18px;
     color: #333;
     padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .top10-score {

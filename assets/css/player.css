@@ -65,6 +65,31 @@
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
+.player-waiting-item.current-user {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    border: 2px solid #667eea;
+}
+
+.player-waiting-item.current-user .player-waiting-avatar {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+}
+
+.player-waiting-item.current-user .player-waiting-name {
+    color: white;
+}
+
+.player-waiting-item.current-user .player-waiting-name .name-text {
+    color: white;
+    font-weight: 600;
+}
+
+.player-waiting-item.current-user .player-waiting-name .username-text {
+    color: rgba(255, 255, 255, 0.9);
+}
+
 .player-waiting-avatar {
     width: 50px;
     height: 50px;
@@ -83,9 +108,20 @@
     font-size: 13px;
     color: #333;
     font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: center;
+}
+
+.player-waiting-name .name-text {
+    font-weight: 500;
+}
+
+.player-waiting-name .username-text {
+    font-size: 11px;
+    color: #666;
+    font-weight: 400;
 }
 
 .players-waiting-list .no-players {
@@ -591,6 +627,19 @@
     flex: 1;
     font-weight: 600;
     color: #2c3e50;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.player-name .name-text {
+    font-weight: 600;
+}
+
+.player-name .username-text {
+    font-size: 13px;
+    color: #666;
+    font-weight: 400;
 }
 
 .player-score {
@@ -910,6 +959,9 @@ input:focus {
     color: #333;
     margin-bottom: 5px;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .podium-score {
@@ -1018,6 +1070,9 @@ input:focus {
     font-size: 18px;
     color: #333;
     padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .top10-score {

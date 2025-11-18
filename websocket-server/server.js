@@ -1111,8 +1111,9 @@ app.get('/api/sessions/:id/is-banned', async (req, res) => {
 app.post('/api/sessions/:id/end', async (req, res) => {
     try {
         const sessionId = req.params.id;
+        const reason = req.body.reason || 'manual'; // 'manual' = host clicked button, 'completed' = quiz finished naturally
 
-        logger.info('=== END ROOM REQUEST ===' , { sessionId, timestamp: new Date().toISOString() });
+        logger.info('=== END ROOM REQUEST ===' , { sessionId, reason, timestamp: new Date().toISOString() });
 
         // Update session status in Redis
         await redisClient.hSet(`session:${sessionId}`, 'status', 'ended');
@@ -1143,14 +1144,28 @@ app.post('/api/sessions/:id/end', async (req, res) => {
             // Continue anyway with empty leaderboard
         }
 
-        // Broadcast kicked event to all participants (to kick them out and redirect)
-        io.to(`session:${sessionId}`).emit('kicked', {
-            reason: 'Host đã kết thúc phòng',
-            message: 'Host đã kết thúc phòng. Bạn sẽ được chuyển về trang player.'
-        });
+        // Handle based on reason
+        if (reason === 'manual') {
+            // Host manually ended - kick all players (no need to send leaderboard)
+            logger.info('Host manually ended room - kicking all players');
+            io.to(`session:${sessionId}`).emit('kicked', {
+                reason: 'Host đã kết thúc phòng',
+                message: 'Host đã kết thúc phòng. Bạn sẽ được chuyển về trang player.',
+                timestamp: Date.now()
+            });
+            logger.info('✓ Broadcasted kicked event to all participants');
+        } else {
+            // Quiz completed naturally - show final results with leaderboard
+            logger.info('Quiz completed naturally - showing final results');
+            io.to(`session:${sessionId}`).emit('session_end', {
+                leaderboard: leaderboard,
+                message: 'Quiz đã kết thúc',
+                timestamp: Date.now()
+            });
+            logger.info('✓ Broadcasted session_end event to all participants');
+        }
         
-        logger.info('✓ Broadcasted kicked event to all participants');
-        logger.info('=== END SESSION COMPLETED (all players kicked) ===');
+        logger.info('=== END SESSION COMPLETED ===');
 
         res.json({ 
             success: true, 
