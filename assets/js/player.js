@@ -427,6 +427,7 @@
         state.socket.on('question_end', handleQuestionEnd);
         state.socket.on('show_top3', handleShowTop3);
         state.socket.on('session_end', handleSessionEnd);
+        state.socket.on('session:replay', handleSessionReplay);
         state.socket.on('participant_joined', (data) => {
             // Don't use data.total_participants as it may include host
             // Fetch actual list from API
@@ -967,6 +968,49 @@
         
         showScreen('quiz-final');
         displayFinalResults(data);
+    }
+    
+    /**
+     * Handle session replay - return to waiting room
+     */
+    function handleSessionReplay(data) {
+        console.log('[PLAYER] ==========================================');
+        console.log('[PLAYER] 🔄 SESSION REPLAY EVENT RECEIVED 🔄');
+        console.log('[PLAYER] ==========================================');
+        console.log('[PLAYER] Message:', data.message);
+        console.log('[PLAYER] Data:', data);
+        console.log('[PLAYER] Socket status:', {
+            connected: state.socket?.connected,
+            id: state.socket?.id
+        });
+        
+        // Show alert to user
+        alert('🔄 ' + (data.message || 'Host đã chọn chơi lại. Vui lòng đợi host bắt đầu.'));
+        
+        // Reset current question state
+        state.currentQuestion = null;
+        
+        // Return to waiting room (DO NOT reload page to maintain WebSocket connection)
+        console.log('[PLAYER] Returning to waiting screen...');
+        showScreen('quiz-waiting');
+        
+        // Update waiting screen UI
+        const waitingNameEl = document.getElementById('waiting-player-name');
+        const waitingCodeEl = document.getElementById('waiting-room-code');
+        
+        if (waitingNameEl) {
+            waitingNameEl.textContent = state.displayName || 'Player';
+        }
+        
+        if (waitingCodeEl) {
+            waitingCodeEl.textContent = state.roomCode || '';
+        }
+        
+        // Refresh players list
+        fetchPlayersList();
+        
+        console.log('[PLAYER] ✓ Ready for new game - waiting for host to start');
+        console.log('[PLAYER] ==========================================');
     }
     
     /**

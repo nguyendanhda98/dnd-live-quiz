@@ -1236,6 +1236,55 @@ app.post('/api/sessions/:id/end', async (req, res) => {
     }
 });
 
+// Replay session - Reset to lobby
+app.post('/api/sessions/:id/replay', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+        
+        logger.info('=== REPLAY SESSION REQUEST ===' , { sessionId, timestamp: new Date().toISOString() });
+        
+        // Clear ALL Redis data for this session (answers, scores, etc.)
+        logger.info('Clearing all Redis data for session...');
+        const answerKeys = await redisClient.keys(`answer:${sessionId}:*`);
+        const scoreKeys = await redisClient.keys(`score:${sessionId}:*`);
+        
+        logger.info(`Found ${answerKeys.length} answer keys and ${scoreKeys.length} score keys to delete`);
+        
+        if (answerKeys.length > 0) {
+            await Promise.all(answerKeys.map(key => redisClient.del(key)));
+            logger.info(`✓ Deleted ${answerKeys.length} answer keys`);
+        }
+        
+        if (scoreKeys.length > 0) {
+            await Promise.all(scoreKeys.map(key => redisClient.del(key)));
+            logger.info(`✓ Deleted ${scoreKeys.length} score keys`);
+        }
+        
+        // Update session status in Redis to lobby
+        await redisClient.hSet(`session:${sessionId}`, 'status', 'lobby');
+        await redisClient.hSet(`session:${sessionId}`, 'current_question', '0');
+        logger.info('✓ Session status updated to lobby in Redis');
+        
+        // Broadcast replay event to all players
+        io.to(`session:${sessionId}`).emit('session:replay', {
+            message: 'Host đã chọn chơi lại. Vui lòng đợi host bắt đầu.',
+            timestamp: Date.now()
+        });
+        logger.info('✓ Broadcasted session:replay event to all participants');
+        
+        logger.info('=== REPLAY SESSION COMPLETED ===');
+        
+        res.json({ 
+            success: true, 
+            message: 'Session replayed successfully',
+            session_id: sessionId
+        });
+    } catch (error) {
+        logger.error('Error replaying session', { error: error.message, stack: error.stack, sessionId: req.params.id });
+        res.status(500).json({ error: 'Failed to replay session' });
+    }
+});
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
     try {

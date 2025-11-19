@@ -52,6 +52,12 @@ class Live_Quiz_REST_API {
             'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
         ));
         
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/replay', array(
+            'methods' => 'POST',
+            'callback' => array(__CLASS__, 'replay_session'),
+            'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
+        ));
+        
         register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)', array(
             'methods' => 'GET',
             'callback' => array(__CLASS__, 'get_session'),
@@ -413,6 +419,86 @@ class Live_Quiz_REST_API {
         return rest_ensure_response(array(
             'success' => true,
             'message' => 'Room ended and all players kicked',
+            'session_id' => $session_id
+        ));
+    }
+    
+    /**
+     * Replay session - reset to lobby state
+     */
+    public static function replay_session($request) {
+        $session_id = $request->get_param('id');
+        
+        error_log("\n=== REPLAY SESSION REQUEST ===");
+        error_log("Session ID: {$session_id}");
+        error_log("Timestamp: " . date('Y-m-d H:i:s'));
+        
+        // Step 1: Reset session status to lobby in database
+        update_post_meta($session_id, '_session_status', 'lobby');
+        update_post_meta($session_id, '_current_question', 0);
+        update_post_meta($session_id, '_session_started_at', null);
+        
+        error_log("✓ Session status updated to 'lobby' in database");
+        
+        // Step 2: Clear all participant answers and scores
+        $participants = get_post_meta($session_id, '_participants', true);
+        if (is_array($participants)) {
+            error_log("Found " . count($participants) . " participants to reset");
+            foreach ($participants as $user_id => &$participant) {
+                $participant['answers'] = array();
+                $participant['score'] = 0;
+                
+                // CRITICAL: Delete the _answer_{user_id} post meta to prevent "already answered" error
+                delete_post_meta($session_id, "_answer_{$user_id}");
+                error_log("Deleted _answer_{$user_id} meta");
+            }
+            update_post_meta($session_id, '_participants', $participants);
+            error_log("✓ All participant scores and answers reset");
+        }
+        
+        // Clear session cache
+        Live_Quiz_Session_Manager::clear_session_cache($session_id);
+        error_log("✓ Session cache cleared");
+        
+        // Step 3: Call WebSocket server to broadcast replay event
+        error_log("Calling WebSocket server to broadcast replay event...");
+        $websocket_url = get_option('live_quiz_websocket_url', '');
+        
+        if (empty($websocket_url)) {
+            error_log("ERROR: WebSocket URL not configured!");
+        } else {
+            $endpoint = trailingslashit($websocket_url) . 'api/sessions/' . $session_id . '/replay';
+            error_log("WebSocket endpoint: {$endpoint}");
+            
+            // Get WebSocket secret for authentication
+            $websocket_secret = get_option('live_quiz_websocket_secret', '');
+            
+            $response = wp_remote_post($endpoint, array(
+                'timeout' => 10,
+                'headers' => array(
+                    'Content-Type' => 'application/json',
+                    'X-WordPress-Secret' => $websocket_secret,
+                ),
+                'body' => json_encode(array(
+                    'session_id' => $session_id
+                ))
+            ));
+            
+            if (is_wp_error($response)) {
+                error_log("ERROR: WebSocket request failed: " . $response->get_error_message());
+            } else {
+                $response_code = wp_remote_retrieve_response_code($response);
+                $response_body = wp_remote_retrieve_body($response);
+                error_log("✓ WebSocket server response code: {$response_code}");
+                error_log("✓ WebSocket server response: {$response_body}");
+            }
+        }
+        
+        error_log("=== REPLAY SESSION COMPLETED ===\n");
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => 'Session replayed successfully',
             'session_id' => $session_id
         ));
     }

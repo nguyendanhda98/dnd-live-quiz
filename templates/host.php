@@ -193,6 +193,19 @@ if ($has_session) {
                 <div id="host-top10-list" class="top10-list">
                     <!-- Top 10 list will be inserted here -->
                 </div>
+                
+                <!-- Action Buttons -->
+                <div class="final-actions" style="margin-top: 30px;">
+                    <button id="replay-session-btn-top3" class="btn btn-success">
+                        <?php _e('🔄 Chơi lại', 'live-quiz'); ?>
+                    </button>
+                    <button id="end-session-btn-top3" class="btn btn-danger">
+                        <?php _e('Kết thúc phiên', 'live-quiz'); ?>
+                    </button>
+                    <a href="<?php echo admin_url('edit.php?post_type=live_quiz'); ?>" class="btn btn-secondary">
+                        <?php _e('Quay về danh sách Quiz', 'live-quiz'); ?>
+                    </a>
+                </div>
             </div>
         </div>
 
@@ -285,12 +298,15 @@ if ($has_session) {
                 </div>
 
                 <div class="final-actions">
+                    <button id="replay-session-btn" class="btn btn-success">
+                        <?php _e('🔄 Chơi lại', 'live-quiz'); ?>
+                    </button>
+                    <button id="end-session-btn" class="btn btn-danger">
+                        <?php _e('Kết thúc phiên', 'live-quiz'); ?>
+                    </button>
                     <a href="<?php echo admin_url('edit.php?post_type=live_quiz'); ?>" class="btn btn-secondary">
                         <?php _e('Quay về danh sách Quiz', 'live-quiz'); ?>
                     </a>
-                    <button onclick="location.reload()" class="btn btn-primary">
-                        <?php _e('Tạo phòng mới', 'live-quiz'); ?>
-                    </button>
                 </div>
             </div>
         </div>

@@ -103,10 +103,36 @@
                 self.endSession();
             });
             
-            // Debug: Check if button exists on load
-            console.log('[HOST] Checking end session button on init...');
+            // Replay Session button
+            $('#replay-session-btn').on('click', function(e) {
+                e.preventDefault();
+                console.log('[HOST] ===========================================');
+                console.log('[HOST] Replay session button CLICK EVENT TRIGGERED');
+                console.log('[HOST] ===========================================');
+                self.replaySession();
+            });
+            
+            // Replay Session button (on top3 screen)
+            $('#replay-session-btn-top3').on('click', function(e) {
+                e.preventDefault();
+                console.log('[HOST] Replay session button (top3) clicked');
+                self.replaySession();
+            });
+            
+            // End Session button (on top3 screen)
+            $('#end-session-btn-top3').on('click', function(e) {
+                e.preventDefault();
+                console.log('[HOST] End session button (top3) clicked');
+                self.endSession();
+            });
+            
+            // Debug: Check if buttons exist on load
+            console.log('[HOST] Checking buttons on init...');
             console.log('[HOST] #end-session-btn exists:', $('#end-session-btn').length);
             console.log('[HOST] #end-session-btn element:', $('#end-session-btn')[0]);
+            console.log('[HOST] #replay-session-btn exists:', $('#replay-session-btn').length);
+            console.log('[HOST] #replay-session-btn-top3 exists:', $('#replay-session-btn-top3').length);
+            console.log('[HOST] #end-session-btn-top3 exists:', $('#end-session-btn-top3').length);
             
             // Settings Panel Events
             $('#lobby-quiz-search').on('input', function() {
@@ -1798,6 +1824,92 @@
                     }
                     
                     $('#end-session-btn').prop('disabled', false).text('Kết thúc phiên');
+                    alert(errorMsg);
+                }
+            });
+        },
+        
+        replaySession: function() {
+            console.log('[HOST] ==========================================');
+            console.log('[HOST] REPLAY SESSION BUTTON CLICKED');
+            console.log('[HOST] ==========================================');
+            
+            const self = this;
+            const api = this.getApiConfig();
+            
+            if (!api) {
+                console.error('[HOST] Failed to get API config!');
+                alert('Không thể kết nối API. Vui lòng tải lại trang.');
+                return;
+            }
+            
+            console.log('[HOST] API Config:', {
+                apiUrl: api.apiUrl,
+                hasNonce: !!api.nonce,
+                sessionId: this.sessionId
+            });
+            
+            if (!confirm('Bạn có chắc chắn muốn chơi lại? Tất cả điểm số sẽ được reset và quay về phần setup phòng.')) {
+                console.log('[HOST] User cancelled replay session');
+                return;
+            }
+            
+            const replayUrl = api.apiUrl + '/sessions/' + this.sessionId + '/replay';
+            console.log('[HOST] Replaying session...', {
+                sessionId: this.sessionId,
+                url: replayUrl,
+                method: 'POST'
+            });
+            
+            // Disable the button to prevent multiple clicks
+            $('#replay-session-btn').prop('disabled', true).text('Đang reset...');
+            $('#replay-session-btn-top3').prop('disabled', true).text('Đang reset...');
+            
+            $.ajax({
+                url: replayUrl,
+                method: 'POST',
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                timeout: 10000, // 10 second timeout
+                success: function(response) {
+                    console.log('[HOST] ==========================================');
+                    console.log('[HOST] ✓ SESSION REPLAYED SUCCESSFULLY');
+                    console.log('[HOST] ==========================================');
+                    console.log('[HOST] Response:', response);
+                    console.log('[HOST] Response status:', response.success);
+                    console.log('[HOST] Response message:', response.message);
+                    
+                    // DO NOT reload immediately - wait a bit for WebSocket event to broadcast
+                    console.log('[HOST] Waiting 500ms for event to broadcast...');
+                    setTimeout(function() {
+                        console.log('[HOST] Now reloading page to return to setup...');
+                        location.reload();
+                    }, 500);
+                },
+                error: function(xhr, status, error) {
+                    console.error('[HOST] ==========================================');
+                    console.error('[HOST] ✗ FAILED TO REPLAY SESSION');
+                    console.error('[HOST] ==========================================');
+                    console.error('[HOST] XHR Status:', xhr.status);
+                    console.error('[HOST] Status Text:', xhr.statusText);
+                    console.error('[HOST] Error:', error);
+                    console.error('[HOST] Response Text:', xhr.responseText);
+                    console.error('[HOST] Full XHR:', xhr);
+                    
+                    let errorMsg = 'Không thể chơi lại. ';
+                    if (xhr.status === 0) {
+                        errorMsg += 'Không thể kết nối đến server.';
+                    } else if (xhr.status === 403) {
+                        errorMsg += 'Không có quyền. Vui lòng đăng nhập lại.';
+                    } else if (xhr.status === 404) {
+                        errorMsg += 'Phòng không tồn tại.';
+                    } else {
+                        errorMsg += 'Lỗi: ' + (xhr.responseJSON?.message || xhr.statusText);
+                    }
+                    
+                    $('#replay-session-btn').prop('disabled', false).text('🔄 Chơi lại');
+                    $('#replay-session-btn-top3').prop('disabled', false).text('🔄 Chơi lại');
                     alert(errorMsg);
                 }
             });
