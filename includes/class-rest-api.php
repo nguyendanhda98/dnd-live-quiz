@@ -58,6 +58,13 @@ class Live_Quiz_REST_API {
             'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
         ));
         
+        // TEST endpoint to verify answer deletion
+        register_rest_route(self::NAMESPACE, '/test-delete-answers/(?P<id>\d+)', array(
+            'methods' => 'POST',
+            'callback' => array(__CLASS__, 'test_delete_answers'),
+            'permission_callback' => '__return_true', // Public for testing
+        ));
+        
         register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)', array(
             'methods' => 'GET',
             'callback' => array(__CLASS__, 'get_session'),
@@ -429,6 +436,9 @@ class Live_Quiz_REST_API {
     public static function replay_session($request) {
         $session_id = $request->get_param('id');
         
+        // CRITICAL: Write to a separate log file to ensure logging works
+        file_put_contents('/tmp/replay-debug.log', date('Y-m-d H:i:s') . " - REPLAY FUNCTION CALLED for session $session_id\n", FILE_APPEND);
+        
         error_log("\n=== REPLAY SESSION REQUEST ===");
         error_log("Session ID: {$session_id}");
         error_log("Timestamp: " . date('Y-m-d H:i:s'));
@@ -440,20 +450,28 @@ class Live_Quiz_REST_API {
         
         error_log("✓ Session status updated to 'lobby' in database");
         
-        // Step 2: Clear all participant answers and scores
+        // Step 2: Clear ALL _answer_* post meta directly from database
+        global $wpdb;
+        $deleted_count = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key LIKE '_answer_%%'",
+                $session_id
+            )
+        );
+        error_log("✓ Deleted {$deleted_count} _answer_* post meta entries");
+        
+        // Step 3: Clear participant answers and scores in _participants meta
         $participants = get_post_meta($session_id, '_participants', true);
         if (is_array($participants)) {
             error_log("Found " . count($participants) . " participants to reset");
             foreach ($participants as $user_id => &$participant) {
                 $participant['answers'] = array();
                 $participant['score'] = 0;
-                
-                // CRITICAL: Delete the _answer_{user_id} post meta to prevent "already answered" error
-                delete_post_meta($session_id, "_answer_{$user_id}");
-                error_log("Deleted _answer_{$user_id} meta");
             }
             update_post_meta($session_id, '_participants', $participants);
-            error_log("✓ All participant scores and answers reset");
+            error_log("✓ All participant scores reset in _participants meta");
+        } else {
+            error_log("! No participants found or invalid format");
         }
         
         // Clear session cache
@@ -500,6 +518,33 @@ class Live_Quiz_REST_API {
             'success' => true,
             'message' => 'Session replayed successfully',
             'session_id' => $session_id
+        ));
+    }
+    
+    /**
+     * TEST ONLY: Delete all answers for a session
+     */
+    public static function test_delete_answers($request) {
+        $session_id = $request->get_param('id');
+        
+        file_put_contents('/tmp/test-delete.log', date('Y-m-d H:i:s') . " - TEST DELETE CALLED for session $session_id\n", FILE_APPEND);
+        
+        global $wpdb;
+        $deleted_count = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key LIKE '_answer_%%'",
+                $session_id
+            )
+        );
+        
+        error_log("[TEST DELETE] Session: {$session_id}, Deleted: {$deleted_count} _answer_* entries");
+        file_put_contents('/tmp/test-delete.log', "Deleted: {$deleted_count} entries\n", FILE_APPEND);
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => 'Deleted answers',
+            'session_id' => $session_id,
+            'deleted_count' => $deleted_count
         ));
     }
     
