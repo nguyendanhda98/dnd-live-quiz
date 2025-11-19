@@ -611,11 +611,10 @@
         
         // Hide leaderboard overlay if visible
         const overlay = document.getElementById('player-leaderboard-overlay');
-        if (overlay && overlay.style.display !== 'none') {
-            overlay.style.transition = 'opacity 0.3s';
+        if (overlay && !overlay.classList.contains('leaderboard-overlay-hidden')) {
             overlay.style.opacity = '0';
             setTimeout(() => {
-                overlay.style.display = 'none';
+                overlay.classList.add('leaderboard-overlay-hidden');
             }, 300);
         }
         
@@ -1424,13 +1423,17 @@
         
         // Show overlay
         const overlay = document.getElementById('player-leaderboard-overlay');
+        console.log('[PLAYER] Showing overlay');
+        
         if (overlay) {
-            overlay.style.display = 'block';
+            // Remove hidden class and show with animation
+            overlay.classList.remove('leaderboard-overlay-hidden');
             overlay.style.opacity = '0';
             setTimeout(() => {
-                overlay.style.transition = 'opacity 0.3s';
                 overlay.style.opacity = '1';
             }, 10);
+        } else {
+            console.error('[PLAYER] Overlay element not found!');
         }
         
         // Step 1: Show current leaderboard (1 second)
@@ -1583,17 +1586,16 @@
         setTimeout(() => {
             reorderLeaderboard(leaderboard);
             
-            // Hide overlay after 2 seconds (will be hidden by next question anyway)
+            // Hide overlay after 3 seconds (will be hidden by next question anyway)
             setTimeout(() => {
                 const overlay = document.getElementById('player-leaderboard-overlay');
                 if (overlay) {
-                    overlay.style.transition = 'opacity 0.3s';
                     overlay.style.opacity = '0';
                     setTimeout(() => {
-                        overlay.style.display = 'none';
+                        overlay.classList.add('leaderboard-overlay-hidden');
                     }, 300);
                 }
-            }, 2000);
+            }, 3000);
         }, 1500);
     }
     

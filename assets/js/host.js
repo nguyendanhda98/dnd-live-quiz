@@ -1430,14 +1430,14 @@
             setTimeout(() => {
                 self.reorderLeaderboard(leaderboard);
                 
-                // Hide overlay and start next question after 2 seconds
+                // Hide overlay and start next question after 3 seconds
                 setTimeout(() => {
                     $('#leaderboard-overlay').fadeOut(300, () => {
                         // Auto trigger next question
                         console.log('[HOST] Leaderboard animation complete, triggering next question...');
                         self.autoNextQuestion();
                     });
-                }, 2000);
+                }, 3000);
             }, 1500);
         },
         

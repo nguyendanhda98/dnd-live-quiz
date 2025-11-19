@@ -209,7 +209,7 @@ $show_title = get_query_var('show_title', 'yes');
     </div>
     
     <!-- Leaderboard Overlay (Global - outside screens) -->
-    <div id="player-leaderboard-overlay" class="leaderboard-overlay" style="display: none;">
+    <div id="player-leaderboard-overlay" class="leaderboard-overlay leaderboard-overlay-hidden">
         <div class="leaderboard-container">
             <h2><?php _e('Bảng xếp hạng', 'live-quiz'); ?></h2>
             <div id="player-animated-leaderboard" class="animated-leaderboard">

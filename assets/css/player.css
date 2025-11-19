@@ -1109,6 +1109,10 @@ input:focus {
     left: 0;
     right: 0;
     bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
     background: rgba(0, 0, 0, 0.9);
     z-index: 9999;
     display: flex;
@@ -1116,6 +1120,11 @@ input:focus {
     justify-content: center;
     opacity: 0;
     transition: opacity 0.3s ease;
+}
+
+/* Hidden state */
+.leaderboard-overlay-hidden {
+    display: none !important;
 }
 
 .leaderboard-overlay .leaderboard-container {
