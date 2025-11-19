@@ -1419,7 +1419,14 @@
             };
         });
         
+        console.log('[PLAYER] ========================================');
+        console.log('[PLAYER] STARTING LEADERBOARD ANIMATION');
+        console.log('[PLAYER] ========================================');
         console.log('[PLAYER] Old leaderboard prepared:', oldLeaderboard);
+        console.log('[PLAYER] Detailed leaderboard entries:');
+        oldLeaderboard.forEach(entry => {
+            console.log(`  - ${entry.display_name}: old=${entry.old_score}, new=${entry.new_score}, gain=${entry.score_gain}`);
+        });
         
         // Show overlay
         const overlay = document.getElementById('player-leaderboard-overlay');
@@ -1436,15 +1443,18 @@
             console.error('[PLAYER] Overlay element not found!');
         }
         
-        // Step 1: Show current leaderboard (1 second)
+        // Step 1: Show OLD scores sorted by old_score (1 second)
+        console.log('[PLAYER] STEP 1: Rendering OLD scores...');
         renderLeaderboard(oldLeaderboard, false);
         
         setTimeout(() => {
             // Step 2: Show +score for correct answers (1 second)
+            console.log('[PLAYER] STEP 2: Showing score gains...');
             showScoreGains(oldLeaderboard);
             
             setTimeout(() => {
-                // Step 3: Animate score addition and re-sort (1.5 seconds)
+                // Step 3: Animate score addition (1 second)
+                console.log('[PLAYER] STEP 3: Animating score addition...');
                 animateScoreAddition(oldLeaderboard);
             }, 1000);
         }, 1000);
@@ -1522,8 +1532,11 @@
      * Show score gains
      */
     function showScoreGains(leaderboard) {
+        console.log('[PLAYER] showScoreGains - showing +score for users with gains');
+        let gainsShown = 0;
         leaderboard.forEach(entry => {
             if (entry.score_gain > 0) {
+                console.log(`[PLAYER] - ${entry.display_name}: +${entry.score_gain}`);
                 const item = document.querySelector(`#player-animated-leaderboard .leaderboard-item[data-user-id="${entry.user_id}"]`);
                 if (item) {
                     const scoreGain = item.querySelector('.score-gain');
@@ -1534,19 +1547,23 @@
                             scoreGain.style.transition = 'opacity 0.3s';
                             scoreGain.style.opacity = '1';
                         }, 10);
+                        gainsShown++;
                     }
                 }
             }
         });
+        console.log(`[PLAYER] Score gains shown: ${gainsShown} out of ${leaderboard.length}`);
     }
     
     /**
      * Animate score addition
      */
     function animateScoreAddition(leaderboard) {
+        console.log('[PLAYER] animateScoreAddition - animating score increases');
         // Fade out score gains and animate score increase
         leaderboard.forEach(entry => {
             if (entry.score_gain > 0) {
+                console.log(`[PLAYER] - Animating ${entry.display_name}: ${entry.old_score} → ${entry.new_score}`);
                 const item = document.querySelector(`#player-animated-leaderboard .leaderboard-item[data-user-id="${entry.user_id}"]`);
                 if (!item) return;
                 
@@ -1582,17 +1599,22 @@
             }
         });
         
-        // After animation, re-sort
+        // After animation (1s), re-sort (1s)
         setTimeout(() => {
+            console.log('[PLAYER] STEP 4: Reordering leaderboard by new scores...');
             reorderLeaderboard(leaderboard);
             
-            // Hide overlay after 3 seconds (will be hidden by next question anyway)
+            // Hide overlay after 3 seconds
             setTimeout(() => {
+                console.log('[PLAYER] STEP 5: Hiding overlay...');
                 const overlay = document.getElementById('player-leaderboard-overlay');
                 if (overlay) {
                     overlay.style.opacity = '0';
                     setTimeout(() => {
                         overlay.classList.add('leaderboard-overlay-hidden');
+                        console.log('[PLAYER] ========================================');
+                        console.log('[PLAYER] LEADERBOARD ANIMATION COMPLETE');
+                        console.log('[PLAYER] ========================================');
                     }, 300);
                 }
             }, 3000);
@@ -1603,11 +1625,13 @@
      * Reorder leaderboard after score update
      */
     function reorderLeaderboard(leaderboard) {
+        console.log('[PLAYER] reorderLeaderboard - sorting by new scores and animating positions');
         const container = document.getElementById('player-animated-leaderboard');
         if (!container) return;
         
         // Sort by new scores
         const sorted = [...leaderboard].sort((a, b) => b.new_score - a.new_score);
+        console.log('[PLAYER] New order:', sorted.map((e, i) => `#${i + 1} ${e.display_name} (${e.new_score})`));
         
         // Store current positions
         const positions = [];

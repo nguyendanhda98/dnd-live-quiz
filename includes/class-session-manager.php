@@ -278,9 +278,20 @@ class Live_Quiz_Session_Manager {
         $stats = Live_Quiz_Scoring::get_question_stats($session_id, $session['current_question_index']);
         $leaderboard = Live_Quiz_Scoring::get_leaderboard($session_id, 10);
         
-        // Notify WebSocket server with leaderboard (always, not just when Redis enabled)
+        // Get scores for current question (for animation)
+        $question_scores = array();
+        foreach ($leaderboard as $entry) {
+            $answers = Live_Quiz_Scoring::get_participant_answers($session_id, $entry['user_id']);
+            if (isset($answers[$session['current_question_index']])) {
+                $question_scores[$entry['user_id']] = (int)$answers[$session['current_question_index']]['score'];
+            } else {
+                $question_scores[$entry['user_id']] = 0;
+            }
+        }
+        
+        // Notify WebSocket server with leaderboard and question scores (always, not just when Redis enabled)
         if (class_exists('Live_Quiz_WebSocket_Helper')) {
-            Live_Quiz_WebSocket_Helper::end_question($session_id, $correct_answer, $leaderboard);
+            Live_Quiz_WebSocket_Helper::end_question($session_id, $correct_answer, $leaderboard, $question_scores);
         }
         
         return true;

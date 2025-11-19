@@ -918,18 +918,17 @@ app.post('/api/sessions/:id/start-question', async (req, res) => {
 app.post('/api/sessions/:id/end-question', async (req, res) => {
     try {
         const sessionId = req.params.id;
-        const { correct_answer, leaderboard: phpLeaderboard } = req.body;
+        const { correct_answer, leaderboard: phpLeaderboard, question_scores: phpQuestionScores } = req.body;
 
-        logger.info('Ending question', { sessionId, correct_answer, leaderboardFromPHP: phpLeaderboard ? phpLeaderboard.length : 0 });
+        logger.info('Ending question', { 
+            sessionId, 
+            correct_answer, 
+            leaderboardFromPHP: phpLeaderboard ? phpLeaderboard.length : 0,
+            questionScoresFromPHP: phpQuestionScores ? Object.keys(phpQuestionScores).length : 0
+        });
 
         // Update session status
         await redisClient.hSet(`session:${sessionId}`, 'status', 'results');
-
-        // Get current question index from session
-        const session = await RedisHelper.getSession(sessionId);
-        const currentQuestionIndex = session ? parseInt(session.current_question_index) : 0;
-        
-        logger.info('Current question index', { sessionId, currentQuestionIndex });
 
         // Use leaderboard from PHP if provided, otherwise get from Redis
         let leaderboard = phpLeaderboard;
@@ -941,25 +940,44 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
         }
 
         // Enrich leaderboard with old_score and score_gain for animation
-        const enrichedLeaderboard = await Promise.all(
-            leaderboard.map(async (entry) => {
-                // Get answer for this question to find score gained
-                const answer = await RedisHelper.getAnswer(sessionId, entry.user_id, currentQuestionIndex);
-                const scoreGain = answer && answer.score ? answer.score : 0;
-                const oldScore = entry.total_score - scoreGain;
-                
-                return {
-                    ...entry,
-                    old_score: oldScore,
-                    score_gain: scoreGain,
-                    new_score: entry.total_score
-                };
-            })
-        );
+        // Use question_scores from PHP (from database) instead of Redis
+        logger.info('Enriching leaderboard with question scores from PHP', { 
+            sessionId,
+            questionScores: phpQuestionScores
+        });
+        
+        const enrichedLeaderboard = leaderboard.map(entry => {
+            // Use score from PHP question_scores
+            const scoreGain = phpQuestionScores && phpQuestionScores[entry.user_id] 
+                ? parseInt(phpQuestionScores[entry.user_id]) 
+                : 0;
+            const oldScore = entry.total_score - scoreGain;
+            
+            logger.info('User score details', {
+                userId: entry.user_id,
+                displayName: entry.display_name,
+                scoreGain,
+                oldScore,
+                newScore: entry.total_score
+            });
+            
+            return {
+                ...entry,
+                old_score: oldScore,
+                score_gain: scoreGain,
+                new_score: entry.total_score
+            };
+        });
 
-        logger.info('Enriched leaderboard with animation data', { 
-            sessionId, 
-            sampleEntry: enrichedLeaderboard[0] 
+        logger.info('Enriched leaderboard complete', { 
+            sessionId,
+            enrichedCount: enrichedLeaderboard.length,
+            sample: enrichedLeaderboard.map(e => ({
+                name: e.display_name,
+                old: e.old_score,
+                gain: e.score_gain,
+                new: e.new_score
+            }))
         });
 
         // Broadcast results with correct answer and enriched leaderboard

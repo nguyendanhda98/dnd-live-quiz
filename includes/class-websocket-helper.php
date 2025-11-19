@@ -198,9 +198,10 @@ class Live_Quiz_WebSocket_Helper {
      * @param int $session_id Session ID
      * @param int $correct_answer Correct answer index
      * @param array $leaderboard Leaderboard data
+     * @param array $question_scores Question scores by user_id
      * @return bool Success
      */
-    public static function end_question($session_id, $correct_answer = null, $leaderboard = null) {
+    public static function end_question($session_id, $correct_answer = null, $leaderboard = null, $question_scores = null) {
         $data = array();
         if ($correct_answer !== null) {
             $data['correct_answer'] = $correct_answer;
@@ -208,8 +209,12 @@ class Live_Quiz_WebSocket_Helper {
         if ($leaderboard !== null) {
             $data['leaderboard'] = $leaderboard;
         }
+        if ($question_scores !== null) {
+            $data['question_scores'] = $question_scores;
+        }
         
         error_log('[LiveQuiz WebSocket Helper] end_question - Leaderboard items: ' . (is_array($leaderboard) ? count($leaderboard) : 'none'));
+        error_log('[LiveQuiz WebSocket Helper] end_question - Question scores: ' . (is_array($question_scores) ? json_encode($question_scores) : 'none'));
         
         return self::send_request(
             '/sessions/' . $session_id . '/end-question',
