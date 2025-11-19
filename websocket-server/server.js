@@ -300,6 +300,18 @@ const RedisHelper = {
         }
     },
 
+    // Get answer for a specific user and question
+    async getAnswer(sessionId, userId, questionIndex) {
+        try {
+            const key = `session:${sessionId}:answer:${userId}:${questionIndex}`;
+            const data = await redisClient.get(key);
+            return data ? JSON.parse(data) : null;
+        } catch (error) {
+            logger.error('Error getting answer', { sessionId, userId, questionIndex, error });
+            return null;
+        }
+    },
+
     // Store active connection for multi-device enforcement
     async setActiveConnection(userId, sessionId, socketId, connectionId, role = 'player') {
         try {
@@ -913,6 +925,12 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
         // Update session status
         await redisClient.hSet(`session:${sessionId}`, 'status', 'results');
 
+        // Get current question index from session
+        const session = await RedisHelper.getSession(sessionId);
+        const currentQuestionIndex = session ? parseInt(session.current_question_index) : 0;
+        
+        logger.info('Current question index', { sessionId, currentQuestionIndex });
+
         // Use leaderboard from PHP if provided, otherwise get from Redis
         let leaderboard = phpLeaderboard;
         if (!leaderboard || leaderboard.length === 0) {
@@ -922,13 +940,35 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
             logger.info('Using leaderboard from PHP', { count: leaderboard.length });
         }
 
-        // Broadcast results with correct answer
-        io.to(`session:${sessionId}`).emit('question_end', {
-            correct_answer,
-            leaderboard,
+        // Enrich leaderboard with old_score and score_gain for animation
+        const enrichedLeaderboard = await Promise.all(
+            leaderboard.map(async (entry) => {
+                // Get answer for this question to find score gained
+                const answer = await RedisHelper.getAnswer(sessionId, entry.user_id, currentQuestionIndex);
+                const scoreGain = answer && answer.score ? answer.score : 0;
+                const oldScore = entry.total_score - scoreGain;
+                
+                return {
+                    ...entry,
+                    old_score: oldScore,
+                    score_gain: scoreGain,
+                    new_score: entry.total_score
+                };
+            })
+        );
+
+        logger.info('Enriched leaderboard with animation data', { 
+            sessionId, 
+            sampleEntry: enrichedLeaderboard[0] 
         });
 
-        res.json({ success: true, leaderboard, correct_answer });
+        // Broadcast results with correct answer and enriched leaderboard
+        io.to(`session:${sessionId}`).emit('question_end', {
+            correct_answer,
+            leaderboard: enrichedLeaderboard,
+        });
+
+        res.json({ success: true, leaderboard: enrichedLeaderboard, correct_answer });
     } catch (error) {
         logger.error('Error ending question', { error, sessionId: req.params.id });
         res.status(500).json({ error: 'Failed to end question' });

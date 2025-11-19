@@ -1381,31 +1381,35 @@
             return;
         }
         
-        // Check if user answered to get their score
-        const selectedButton = document.querySelector('.choice-button.selected');
-        let userScore = 0;
-        if (selectedButton && data.correct_answer !== undefined) {
-            const isCorrect = parseInt(selectedButton.dataset.choiceId) === data.correct_answer;
-            if (isCorrect) {
-                // Get score from timer text
-                const timerText = document.querySelector('.timer-text');
-                if (timerText) {
-                    const scoreMatch = timerText.textContent.match(/(\d+)/);
-                    if (scoreMatch) {
-                        userScore = parseInt(scoreMatch[1]);
-                    }
-                }
-            }
-        }
-        
-        console.log('[PLAYER] User score for this question:', userScore);
-        
-        // Create leaderboard with old scores
+        // Server now sends old_score and score_gain for each entry
+        // If not present, calculate for backward compatibility
         const oldLeaderboard = leaderboard.map(entry => {
-            // For current user, calculate old score
+            // Use server-provided data if available
+            if (entry.old_score !== undefined && entry.score_gain !== undefined) {
+                return {
+                    ...entry,
+                    old_score: entry.old_score,
+                    new_score: entry.new_score || entry.total_score,
+                    score_gain: entry.score_gain
+                };
+            }
+            
+            // Fallback: try to calculate for current user only
             let scoreGain = 0;
             if (entry.user_id === state.userId) {
-                scoreGain = userScore;
+                const selectedButton = document.querySelector('.choice-button.selected');
+                if (selectedButton && data.correct_answer !== undefined) {
+                    const isCorrect = parseInt(selectedButton.dataset.choiceId) === data.correct_answer;
+                    if (isCorrect) {
+                        const timerText = document.querySelector('.timer-text');
+                        if (timerText) {
+                            const scoreMatch = timerText.textContent.match(/(\d+)/);
+                            if (scoreMatch) {
+                                scoreGain = parseInt(scoreMatch[1]);
+                            }
+                        }
+                    }
+                }
             }
             
             return {

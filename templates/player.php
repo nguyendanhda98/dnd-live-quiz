@@ -164,16 +164,6 @@ $show_title = get_query_var('show_title', 'yes');
                 <?php _e('Rời khỏi phòng', 'live-quiz'); ?>
             </button>
         </div>
-        
-        <!-- Leaderboard Overlay -->
-        <div id="player-leaderboard-overlay" class="leaderboard-overlay" style="display: none;">
-            <div class="leaderboard-container">
-                <h2><?php _e('Bảng xếp hạng', 'live-quiz'); ?></h2>
-                <div id="player-animated-leaderboard" class="animated-leaderboard">
-                    <!-- Leaderboard items will be inserted here -->
-                </div>
-            </div>
-        </div>
     </div>
     
     <!-- Top 3 Screen -->
@@ -215,6 +205,16 @@ $show_title = get_query_var('show_title', 'yes');
             <button class="btn btn-secondary leave-room-btn" style="margin-top: 10px;">
                 <?php _e('Rời khỏi phòng', 'live-quiz'); ?>
             </button>
+        </div>
+    </div>
+    
+    <!-- Leaderboard Overlay (Global - outside screens) -->
+    <div id="player-leaderboard-overlay" class="leaderboard-overlay" style="display: none;">
+        <div class="leaderboard-container">
+            <h2><?php _e('Bảng xếp hạng', 'live-quiz'); ?></h2>
+            <div id="player-animated-leaderboard" class="animated-leaderboard">
+                <!-- Leaderboard items will be inserted here -->
+            </div>
         </div>
     </div>
     
