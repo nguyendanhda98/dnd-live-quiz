@@ -177,6 +177,10 @@ class Live_Quiz_Session_Manager {
         );
         error_log("[START SESSION] Deleted {$deleted_answers} answer entries");
         
+        // 3a. Reset current game question tracking metadata
+        delete_post_meta($session_id, '_current_game_question_indexes');
+        delete_post_meta($session_id, '_answer_count_reset_time');
+        
         // 3. Reset participant scores to 0
         $participants = get_post_meta($session_id, '_participants', true);
         if (is_array($participants)) {
@@ -219,6 +223,9 @@ class Live_Quiz_Session_Manager {
         if (!$session || !isset($session['questions'][$question_index])) {
             return false;
         }
+        // Reset answer count for this question to avoid carrying over stale data
+        self::reset_answer_count($session_id, $question_index);
+        error_log("[START QUESTION] Reset answer count for session {$session_id} question {$question_index}");
         
         $start_time = microtime(true);
         
@@ -1057,6 +1064,20 @@ class Live_Quiz_Session_Manager {
     public static function reset_answer_count($session_id, $question_index) {
         $key = "live_quiz_answer_count_{$session_id}_{$question_index}";
         delete_transient($key);
+        
+        // Remove this question_index from current game tracking
+        $current_game_questions = get_post_meta($session_id, '_current_game_question_indexes', true);
+        if (is_array($current_game_questions) && !empty($current_game_questions)) {
+            $new_list = array();
+            foreach ($current_game_questions as $idx) {
+                if ((int)$idx !== (int)$question_index) {
+                    $new_list[] = $idx;
+                }
+            }
+            update_post_meta($session_id, '_current_game_question_indexes', $new_list);
+        }
+        
+        error_log("[RESET ANSWER COUNT] Cleared transient {$key} and updated question index tracking");
     }
     
     /**
