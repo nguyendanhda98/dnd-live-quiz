@@ -1039,8 +1039,16 @@
         },
         
         handleAnswerSubmitted: function(data) {
-            console.log('[HOST] Answer submitted:', data);
-            console.log('[HOST] Score from WebSocket:', data.score);
+            console.log('[HOST] ==========================================');
+            console.log('[HOST] ANSWER SUBMITTED EVENT');
+            console.log('[HOST] ==========================================');
+            console.log('[HOST] User ID:', data.user_id);
+            console.log('[HOST] Score:', data.score);
+            console.log('[HOST] answered_count:', data.answered_count);
+            console.log('[HOST] total_players:', data.total_players);
+            console.log('[HOST] Ratio:', data.answered_count + '/' + data.total_players);
+            console.log('[HOST] Full data:', data);
+            console.log('[HOST] ==========================================');
             
             // Add player to answered list if not already there
             if (data.user_id && !this.answeredPlayers.includes(data.user_id)) {

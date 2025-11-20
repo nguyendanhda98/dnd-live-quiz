@@ -142,10 +142,53 @@ class Live_Quiz_Session_Manager {
      * @return bool Success
      */
     public static function start_session($session_id) {
+        error_log("\n\n========================================");
+        error_log("[START SESSION] FUNCTION CALLED");
+        error_log("[START SESSION] Session ID: {$session_id}");
+        error_log("[START SESSION] Time: " . date('Y-m-d H:i:s'));
+        error_log("========================================\n");
+        
         $session = self::get_session($session_id);
         if (!$session || $session['status'] !== self::STATE_LOBBY) {
+            error_log("[START SESSION] ERROR: Invalid session status");
             return false;
         }
+        
+        // CRITICAL: Clear ALL data from previous games when starting a new session
+        // This ensures clean slate for replay functionality
+        global $wpdb;
+        
+        // 1. Clear answer count transients (fixes "3/2 answered" bug)
+        $deleted_transients = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+                '_transient_live_quiz_answer_count_' . $session_id . '_%',
+                '_transient_timeout_live_quiz_answer_count_' . $session_id . '_%'
+            )
+        );
+        error_log("[START SESSION] Cleared {$deleted_transients} answer count transients");
+        
+        // 2. Delete all _answer_* post meta (clears individual answers)
+        $deleted_answers = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key LIKE '_answer_%%'",
+                $session_id
+            )
+        );
+        error_log("[START SESSION] Deleted {$deleted_answers} answer entries");
+        
+        // 3. Reset participant scores to 0
+        $participants = get_post_meta($session_id, '_participants', true);
+        if (is_array($participants)) {
+            foreach ($participants as $user_id => &$participant) {
+                $participant['answers'] = array();
+                $participant['score'] = 0;
+            }
+            update_post_meta($session_id, '_participants', $participants);
+            error_log("[START SESSION] Reset " . count($participants) . " participant scores");
+        }
+        
+        error_log("[START SESSION] ✓ Cleaned all previous game data for session {$session_id}");
         
         // Update session status
         update_post_meta($session_id, '_session_status', self::STATE_PLAYING);
@@ -211,6 +254,16 @@ class Live_Quiz_Session_Manager {
         // Get total questions count
         $total_questions = count($session['questions']);
         
+        // Shuffle choices and create mapping
+        $original_choices = $session['questions'][$question_index]['choices'];
+        $shuffled_data = self::shuffle_choices_with_mapping($original_choices);
+        $shuffled_choices = $shuffled_data['choices'];
+        $choice_mapping = $shuffled_data['mapping']; // mapping[shuffled_index] = original_index
+        
+        // Save mapping to session meta for later validation
+        update_post_meta($session_id, "_question_{$question_index}_choice_mapping", $choice_mapping);
+        error_log('[Session Manager] Saved choice mapping: ' . json_encode($choice_mapping));
+        
         // Notify WebSocket server if available (regardless of Redis)
         if (class_exists('Live_Quiz_WebSocket_Helper')) {
             error_log('[Session Manager] Notifying WebSocket server about question start');
@@ -220,7 +273,7 @@ class Live_Quiz_Session_Manager {
                 'text' => $session['questions'][$question_index]['text'],
                 'choices' => array_map(function($choice) {
                     return array('text' => $choice['text']);
-                }, $session['questions'][$question_index]['choices']),
+                }, $shuffled_choices), // Use shuffled choices
                 'time_limit' => $session['questions'][$question_index]['time_limit'],
                 'start_time' => $start_time,
                 'timer_delay' => $timer_delay,
@@ -256,14 +309,31 @@ class Live_Quiz_Session_Manager {
         
         update_post_meta($session_id, '_session_status', self::STATE_RESULTS);
         
-        // Find correct answer first
-        $correct_answer = null;
-        foreach ($session['questions'][$session['current_question_index']]['choices'] as $index => $choice) {
+        $question_index = $session['current_question_index'];
+        
+        // Find correct answer first (original index)
+        $correct_answer_original = null;
+        foreach ($session['questions'][$question_index]['choices'] as $index => $choice) {
             if (!empty($choice['is_correct'])) {
-                $correct_answer = $index;
+                $correct_answer_original = $index;
                 break;
             }
         }
+        
+        // Map correct answer to shuffled index for client display
+        $correct_answer_shuffled = $correct_answer_original;
+        $choice_mapping = get_post_meta($session_id, "_question_{$question_index}_choice_mapping", true);
+        if ($choice_mapping) {
+            // Reverse mapping: find shuffled index for original index
+            $reverse_mapping = array_flip($choice_mapping);
+            if (isset($reverse_mapping[$correct_answer_original])) {
+                $correct_answer_shuffled = $reverse_mapping[$correct_answer_original];
+                error_log("Mapped correct answer: original=$correct_answer_original, shuffled=$correct_answer_shuffled");
+            }
+        }
+        
+        // Use shuffled index for client display
+        $correct_answer = $correct_answer_shuffled;
         
         // Update Redis if enabled
         if (self::is_redis_enabled()) {
@@ -700,6 +770,18 @@ class Live_Quiz_Session_Manager {
             $question = $session['questions'][$question_index];
             
             error_log("Question index: $question_index");
+            error_log("Received choice_id (shuffled): $choice_id");
+            
+            // Map shuffled choice_id back to original choice_id
+            $choice_mapping = get_post_meta($session_id, "_question_{$question_index}_choice_mapping", true);
+            if ($choice_mapping && isset($choice_mapping[$choice_id])) {
+                $original_choice_id = $choice_mapping[$choice_id];
+                error_log("Mapped to original choice_id: $original_choice_id");
+            } else {
+                // Fallback: if no mapping found, use choice_id as-is (backward compatibility)
+                $original_choice_id = $choice_id;
+                error_log("No mapping found, using choice_id as-is: $original_choice_id");
+            }
             
             // Check if already answered
             $existing = Live_Quiz_Scoring::get_participant_answers($session_id, $user_id);
@@ -717,10 +799,10 @@ class Live_Quiz_Session_Manager {
             
             error_log("Time taken: $time_taken seconds");
             
-            // Validate answer
+            // Validate answer using ORIGINAL choice_id
             $validation = Live_Quiz_Scoring::validate_answer(
                 array(
-                    'choice_id' => $choice_id,
+                    'choice_id' => $original_choice_id,
                     'question_id' => $question_index,
                     'server_time_taken' => $time_taken,
                 ),
@@ -732,8 +814,8 @@ class Live_Quiz_Session_Manager {
                 return new WP_Error('invalid_answer', $validation['reason']);
             }
             
-            // Check if correct
-            $is_correct = Live_Quiz_Scoring::is_correct($choice_id, $question);
+            // Check if correct using ORIGINAL choice_id
+            $is_correct = Live_Quiz_Scoring::is_correct($original_choice_id, $question);
             error_log("Is correct: " . ($is_correct ? 'yes' : 'no'));
             
             // Calculate score
@@ -750,9 +832,10 @@ class Live_Quiz_Session_Manager {
             error_log("Score: $score");
             
             // Save answer (Redis if enabled, otherwise transient)
+            // Use ORIGINAL choice_id for consistency with database
             $answer_data = array(
                 'question_id' => $question_index,
-                'choice_id' => $choice_id,
+                'choice_id' => $original_choice_id,
                 'is_correct' => $is_correct,
                 'time_taken' => $time_taken,
                 'score' => $score,
@@ -790,11 +873,17 @@ class Live_Quiz_Session_Manager {
             Live_Quiz_Scoring::clear_leaderboard_cache($session_id);
             
             // Track answer count
+            error_log("\n========================================");
+            error_log("[ANSWER COUNT] TRACKING ANSWER COUNT");
+            error_log("[ANSWER COUNT] Session: {$session_id}, Question: {$question_index}, User: {$user_id}");
+            
             $answer_count = self::increment_answer_count($session_id, $question_index);
             $participants = self::get_participants($session_id);
             $total_players = is_array($participants) ? count($participants) : 0;
             
-            error_log("Answer count: $answer_count/$total_players");
+            error_log("[ANSWER COUNT] Result: {$answer_count}/{$total_players}");
+            error_log("[ANSWER COUNT] Participants list: " . implode(', ', array_keys($participants)));
+            error_log("========================================\n");
             
             // Notify via WebSocket about answer submission
             Live_Quiz_WebSocket_Helper::answer_submitted($session_id, array(
@@ -839,9 +928,111 @@ class Live_Quiz_Session_Manager {
      */
     public static function increment_answer_count($session_id, $question_index) {
         $key = "live_quiz_answer_count_{$session_id}_{$question_index}";
-        $count = (int)get_transient($key);
-        $count++;
+        
+        // CRITICAL FIX: Check if this is a new game session
+        // If session_started_at changed, it means a new game started - reset count to 0
+        $session_started_at = get_post_meta($session_id, '_session_started_at', true);
+        $last_reset_time = get_post_meta($session_id, '_answer_count_reset_time', true);
+        $old_count = (int)get_transient($key);
+        
+        // Get current game question indexes BEFORE checking reset
+        $current_game_questions = get_post_meta($session_id, '_current_game_question_indexes', true);
+        if (!is_array($current_game_questions)) {
+            $current_game_questions = array();
+        }
+        
+        // CRITICAL: If question_index is already in current game list, we're in the SAME game
+        // Don't reset - just use the existing transient value
+        if (in_array($question_index, $current_game_questions)) {
+            error_log("[INCREMENT ANSWER COUNT] Question {$question_index} is in current game list - using existing transient (old_count: {$old_count})");
+            // Don't reset, just use old_count as is
+        } else {
+            // Question not in current game - check if we need to reset
+            // Check if we need to reset ALL transients (new game detected):
+            // 1. If last_reset_time doesn't exist (first time)
+            // 2. If session_started_at is newer than last reset (new game started)
+            $needs_full_reset = false;
+            if (!$last_reset_time) {
+                $needs_full_reset = true;
+                error_log("[INCREMENT ANSWER COUNT] No reset time found - will reset ALL transients");
+            } elseif ($session_started_at && $session_started_at > $last_reset_time) {
+                $needs_full_reset = true;
+                error_log("[INCREMENT ANSWER COUNT] Session started at {$session_started_at} > last reset {$last_reset_time} - will reset ALL transients");
+            }
+            
+            if ($needs_full_reset) {
+                error_log("[INCREMENT ANSWER COUNT] NEW GAME DETECTED - Resetting all transients for session {$session_id}");
+                
+                // Delete ALL transients for this session
+                global $wpdb;
+                $deleted = $wpdb->query(
+                    $wpdb->prepare(
+                        "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+                        '_transient_live_quiz_answer_count_' . $session_id . '_%',
+                        '_transient_timeout_live_quiz_answer_count_' . $session_id . '_%'
+                    )
+                );
+                error_log("[INCREMENT ANSWER COUNT] Deleted {$deleted} old transients");
+                
+                // Mark that we've reset for this session start time (or current time if not set)
+                $reset_time = $session_started_at ? $session_started_at : time();
+                update_post_meta($session_id, '_answer_count_reset_time', $reset_time);
+                
+                // Track which question_indexes have been incremented in current game
+                update_post_meta($session_id, '_current_game_question_indexes', array());
+                $current_game_questions = array();
+                
+                // Reset old_count to 0 after deletion
+                $old_count = 0;
+            } elseif ($old_count > 0) {
+                // Question not in current game but has old_count - it's from previous game
+                error_log("[INCREMENT ANSWER COUNT] Question {$question_index} has old count {$old_count} but not in current game - this is from previous game, resetting");
+                delete_transient($key);
+                $old_count = 0;
+            }
+        }
+        
+        if ($needs_full_reset) {
+            error_log("[INCREMENT ANSWER COUNT] NEW GAME DETECTED - Resetting all transients for session {$session_id}");
+            
+            // Delete ALL transients for this session
+            global $wpdb;
+            $deleted = $wpdb->query(
+                $wpdb->prepare(
+                    "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+                    '_transient_live_quiz_answer_count_' . $session_id . '_%',
+                    '_transient_timeout_live_quiz_answer_count_' . $session_id . '_%'
+                )
+            );
+            error_log("[INCREMENT ANSWER COUNT] Deleted {$deleted} old transients");
+            
+            // Mark that we've reset for this session start time (or current time if not set)
+            $reset_time = $session_started_at ? $session_started_at : time();
+            update_post_meta($session_id, '_answer_count_reset_time', $reset_time);
+            
+            // Track which question_indexes have been incremented in current game
+            update_post_meta($session_id, '_current_game_question_indexes', array());
+            $current_game_questions = array();
+            
+            // Reset old_count to 0 after deletion
+            $old_count = 0;
+        }
+        
+        // Track this question_index as incremented in current game
+        // Always add to list, even if it's already there (idempotent)
+        if (!in_array($question_index, $current_game_questions)) {
+            $current_game_questions[] = $question_index;
+            update_post_meta($session_id, '_current_game_question_indexes', $current_game_questions);
+            error_log("[INCREMENT ANSWER COUNT] Added question_index {$question_index} to current game list");
+        }
+        
+        $count = $old_count + 1;
         set_transient($key, $count, 3600); // 1 hour
+        
+        error_log("[INCREMENT ANSWER COUNT] Key: {$key}");
+        error_log("[INCREMENT ANSWER COUNT] Old count: {$old_count} -> New count: {$count}");
+        error_log("[INCREMENT ANSWER COUNT] Session started at: {$session_started_at}, Last reset: {$last_reset_time}");
+        
         return $count;
     }
     
@@ -866,6 +1057,34 @@ class Live_Quiz_Session_Manager {
     public static function reset_answer_count($session_id, $question_index) {
         $key = "live_quiz_answer_count_{$session_id}_{$question_index}";
         delete_transient($key);
+    }
+    
+    /**
+     * Shuffle choices and create mapping to original indices
+     * 
+     * @param array $choices Original choices array
+     * @return array Array with 'choices' (shuffled) and 'mapping' (shuffled_index => original_index)
+     */
+    private static function shuffle_choices_with_mapping($choices) {
+        // Create array of indices
+        $indices = array_keys($choices);
+        
+        // Shuffle the indices
+        shuffle($indices);
+        
+        // Create shuffled choices array and mapping
+        $shuffled_choices = array();
+        $mapping = array(); // mapping[new_index] = original_index
+        
+        foreach ($indices as $new_index => $original_index) {
+            $shuffled_choices[$new_index] = $choices[$original_index];
+            $mapping[$new_index] = $original_index;
+        }
+        
+        return array(
+            'choices' => $shuffled_choices,
+            'mapping' => $mapping,
+        );
     }
     
     /**

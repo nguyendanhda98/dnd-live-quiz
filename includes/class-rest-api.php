@@ -256,7 +256,15 @@ class Live_Quiz_REST_API {
      */
     public static function check_session_host_permission($request) {
         $session_id = $request->get_param('id');
-        return Live_Quiz_Session_Manager::can_control_session($session_id);
+        $can_control = Live_Quiz_Session_Manager::can_control_session($session_id);
+        
+        // Debug logging for replay permission
+        if (strpos($_SERVER['REQUEST_URI'], 'replay') !== false) {
+            error_log("[REPLAY PERMISSION] Session: {$session_id}, Can control: " . ($can_control ? 'YES' : 'NO'));
+            file_put_contents('/tmp/replay-debug.log', "Permission check: " . ($can_control ? 'YES' : 'NO') . "\n", FILE_APPEND);
+        }
+        
+        return $can_control;
     }
     
     /**
@@ -434,10 +442,17 @@ class Live_Quiz_REST_API {
      * Replay session - reset to lobby state
      */
     public static function replay_session($request) {
-        $session_id = $request->get_param('id');
+        // IMMEDIATE LOGGING - before anything else
+        $log_msg = "\n\n========================================\n";
+        $log_msg .= "REPLAY FUNCTION ENTRY\n";
+        $log_msg .= "Time: " . date('Y-m-d H:i:s') . "\n";
+        $log_msg .= "Request params: " . print_r($request->get_params(), true) . "\n";
+        $log_msg .= "========================================\n\n";
         
-        // CRITICAL: Write to a separate log file to ensure logging works
-        file_put_contents('/tmp/replay-debug.log', date('Y-m-d H:i:s') . " - REPLAY FUNCTION CALLED for session $session_id\n", FILE_APPEND);
+        file_put_contents('/tmp/replay-debug.log', $log_msg, FILE_APPEND);
+        error_log($log_msg);
+        
+        $session_id = $request->get_param('id');
         
         error_log("\n=== REPLAY SESSION REQUEST ===");
         error_log("Session ID: {$session_id}");
@@ -478,7 +493,20 @@ class Live_Quiz_REST_API {
         Live_Quiz_Session_Manager::clear_session_cache($session_id);
         error_log("✓ Session cache cleared");
         
-        // Step 3: Call WebSocket server to broadcast replay event
+        // Step 4: Clear ALL answer count transients for this session
+        // These store the "X/Y answered" counts and must be reset
+        global $wpdb;
+        $transient_pattern = '_transient_live_quiz_answer_count_' . $session_id . '_%';
+        $deleted_transients = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+                $transient_pattern,
+                '_transient_timeout_live_quiz_answer_count_' . $session_id . '_%'
+            )
+        );
+        error_log("✓ Deleted {$deleted_transients} answer count transients");
+        
+        // Step 5: Call WebSocket server to broadcast replay event
         error_log("Calling WebSocket server to broadcast replay event...");
         $websocket_url = get_option('live_quiz_websocket_url', '');
         

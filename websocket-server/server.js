@@ -1243,12 +1243,13 @@ app.post('/api/sessions/:id/replay', async (req, res) => {
         
         logger.info('=== REPLAY SESSION REQUEST ===' , { sessionId, timestamp: new Date().toISOString() });
         
-        // Clear ALL Redis data for this session (answers, scores, etc.)
+        // Clear ALL Redis data for this session (answers, scores, transients, etc.)
         logger.info('Clearing all Redis data for session...');
         const answerKeys = await redisClient.keys(`answer:${sessionId}:*`);
         const scoreKeys = await redisClient.keys(`score:${sessionId}:*`);
+        const answerCountKeys = await redisClient.keys(`*answer_count_${sessionId}_*`);
         
-        logger.info(`Found ${answerKeys.length} answer keys and ${scoreKeys.length} score keys to delete`);
+        logger.info(`Found ${answerKeys.length} answer keys, ${scoreKeys.length} score keys, ${answerCountKeys.length} answer_count keys to delete`);
         
         if (answerKeys.length > 0) {
             await Promise.all(answerKeys.map(key => redisClient.del(key)));
@@ -1258,6 +1259,11 @@ app.post('/api/sessions/:id/replay', async (req, res) => {
         if (scoreKeys.length > 0) {
             await Promise.all(scoreKeys.map(key => redisClient.del(key)));
             logger.info(`✓ Deleted ${scoreKeys.length} score keys`);
+        }
+        
+        if (answerCountKeys.length > 0) {
+            await Promise.all(answerCountKeys.map(key => redisClient.del(key)));
+            logger.info(`✓ Deleted ${answerCountKeys.length} answer_count keys`);
         }
         
         // Update session status in Redis to lobby
