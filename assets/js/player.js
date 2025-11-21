@@ -136,7 +136,7 @@
     /**
      * Restore session from data object
      */
-    function restoreSessionFromData(session, urlRoomCode) {
+    async function restoreSessionFromData(session, urlRoomCode) {
         try {
             console.log('[Live Quiz] Restoring session from data:', session);
             
@@ -157,6 +157,7 @@
             
             console.log('[Live Quiz] Session restored from server with NEW connectionId:', state.connectionId);
             console.log('[Live Quiz] Room code:', state.roomCode);
+            console.log('[Live Quiz] Session status:', session.sessionStatus);
             
             // Update URL if needed
             if (!urlRoomCode) {
@@ -165,7 +166,40 @@
                 console.log('[Live Quiz] Redirected to', playUrl);
             }
             
-            // Show waiting screen
+            // Check if session is ended - show final leaderboard instead of waiting screen
+            if (session.sessionStatus === 'ended') {
+                console.log('[Live Quiz] Session is ended, showing final leaderboard');
+                
+                // Show final screen
+                showScreen('quiz-final');
+                
+                // Fetch and display final leaderboard
+                try {
+                    const response = await fetch(config.restUrl + '/sessions/' + state.sessionId + '/leaderboard', {
+                        method: 'GET',
+                        headers: {
+                            'X-WP-Nonce': config.nonce
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success && data.leaderboard) {
+                        displayFinalResults({ leaderboard: data.leaderboard });
+                        console.log('[Live Quiz] Final leaderboard displayed');
+                    } else {
+                        console.warn('[Live Quiz] Failed to fetch leaderboard:', data);
+                    }
+                } catch (error) {
+                    console.error('[Live Quiz] Error fetching final leaderboard:', error);
+                }
+                
+                // Still connect to WebSocket (in case host replays or ends session)
+                connectWebSocket();
+                
+                return true;
+            }
+            
+            // Session is active - show waiting screen
             showScreen('quiz-waiting');
             document.getElementById('waiting-player-name').textContent = state.displayName;
             document.getElementById('waiting-room-code').textContent = state.roomCode;

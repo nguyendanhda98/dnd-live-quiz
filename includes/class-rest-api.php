@@ -1821,15 +1821,20 @@ class Live_Quiz_REST_API {
         
         error_log("Session data: " . json_encode($session ? ['id' => $session_id, 'status' => $session['status']] : null));
         
-        if (!$session || $session['status'] === 'ended') {
-            // Clean up invalid session
-            error_log("Session is ended or not found, cleaning up user meta");
+        if (!$session) {
+            // Session doesn't exist - clean up
+            error_log("Session not found, cleaning up user meta");
             delete_user_meta($user_id, '_live_quiz_active_session');
             return rest_ensure_response(array(
                 'success' => true,
                 'has_session' => false,
             ));
         }
+        
+        // IMPORTANT: Even if session status is 'ended', we still return it
+        // This allows users to see the final leaderboard after quiz naturally ends
+        // User meta is only cleared when host explicitly ends the session (via WebSocket kick)
+        // So if user meta still exists, user should still be able to see final results
         
         // Check if session is not too old (30 minutes)
         $MAX_AGE = 30 * 60 * 1000; // 30 minutes in milliseconds
@@ -1841,6 +1846,9 @@ class Live_Quiz_REST_API {
                 'has_session' => false,
             ));
         }
+        
+        // Add session status to response so client can determine which screen to show
+        $active_session['sessionStatus'] = $session['status'];
         
         // Return active session data
         return rest_ensure_response(array(

@@ -70,8 +70,51 @@
             this.connectionId = generateConnectionId();
             console.log('[HOST] Generated connectionId:', this.connectionId);
             
+            // Check if session is ended - show final leaderboard if so
+            const session = window.liveQuizHostData.session;
+            if (session && session.status === 'ended') {
+                console.log('[HOST] Session is ended, showing final leaderboard');
+                // Use setTimeout to ensure DOM is ready
+                setTimeout(() => {
+                    this.showFinalScreen();
+                }, 100);
+            }
+            
             this.bindEvents();
             this.connectWebSocket();
+        },
+        
+        showFinalScreen: function() {
+            const self = this;
+            const api = this.getApiConfig();
+            if (!api) {
+                console.error('[HOST] Cannot show final screen - API config not available');
+                return;
+            }
+            
+            console.log('[HOST] Fetching final leaderboard for ended session...');
+            
+            // Fetch leaderboard
+            $.ajax({
+                url: api.apiUrl + '/sessions/' + this.sessionId + '/leaderboard',
+                method: 'GET',
+                headers: {
+                    'X-WP-Nonce': api.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.leaderboard && response.leaderboard.length > 0) {
+                        console.log('[HOST] Final leaderboard fetched, showing top 10 with podium');
+                        self.showTop10WithPodium(response.leaderboard);
+                    } else {
+                        console.log('[HOST] No leaderboard data, showing empty final screen');
+                        self.showScreen('host-final');
+                    }
+                },
+                error: function(xhr) {
+                    console.error('[HOST] Failed to fetch final leaderboard:', xhr);
+                    self.showScreen('host-final');
+                }
+            });
         },
         
         bindEvents: function() {
