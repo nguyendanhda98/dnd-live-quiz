@@ -41,6 +41,8 @@
         answeredPlayers: [], // Track players who answered current question
     };
     
+    let floatingLeaveButton = null;
+    
     /**
      * Generate unique connection ID for this tab/device
      */
@@ -57,6 +59,9 @@
     async function init() {
         console.log('=== [PLAYER] INIT STARTED ===');
         console.log('[PLAYER] Current URL:', window.location.href);
+        
+        floatingLeaveButton = document.querySelector('.leave-room-floating');
+        setFloatingLeaveVisibility(false);
         
         setupEventListeners();
         checkSocketIOLibrary();
@@ -297,6 +302,18 @@
                 handleLeaveRoom();
             }
         });
+    }
+    
+    function setFloatingLeaveVisibility(visible) {
+        if (!floatingLeaveButton) {
+            return;
+        }
+        
+        if (visible) {
+            floatingLeaveButton.classList.add('is-visible');
+        } else {
+            floatingLeaveButton.classList.remove('is-visible');
+        }
     }
     
     async function handleLeaveRoom() {
@@ -1955,6 +1972,12 @@
         const screen = document.getElementById(screenId);
         if (screen) {
             screen.classList.add('active');
+        }
+        
+        if (screenId === 'quiz-lobby') {
+            setFloatingLeaveVisibility(false);
+        } else if (state.sessionId) {
+            setFloatingLeaveVisibility(true);
         }
     }
     /**

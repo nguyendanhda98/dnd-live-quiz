@@ -14,6 +14,9 @@ $show_title = get_query_var('show_title', 'yes');
 ?>
 
 <div class="live-quiz-player-wrapper">
+    <button class="leave-room-btn leave-room-floating" title="<?php esc_attr_e('Rời khỏi phòng', 'live-quiz'); ?>">
+        <?php _e('Rời khỏi phòng', 'live-quiz'); ?>
+    </button>
     <!-- Ping Indicator -->
     <div id="ping-indicator" class="ping-indicator" style="display: none;">
         Ping:&nbsp;<span class="ping-value">--</span>
