@@ -69,6 +69,9 @@
             // Generate connection ID for multi-device enforcement
             this.connectionId = generateConnectionId();
             console.log('[HOST] Generated connectionId:', this.connectionId);
+
+            // Ensure session_id is present in URL so refresh stays in this room
+            this.ensureSessionIdInUrl();
             
             // Check if session is ended - show final leaderboard if so
             const session = window.liveQuizHostData.session;
@@ -82,6 +85,36 @@
             
             this.bindEvents();
             this.connectWebSocket();
+        },
+
+        ensureSessionIdInUrl: function() {
+            if (!this.sessionId || typeof window.history?.replaceState !== 'function') {
+                return;
+            }
+
+            try {
+                const currentUrl = new URL(window.location.href);
+                const currentParam = currentUrl.searchParams.get('session_id');
+
+                if (currentParam === String(this.sessionId)) {
+                    return; // Already set correctly
+                }
+
+                currentUrl.searchParams.set('session_id', this.sessionId);
+                const newUrl = currentUrl.origin + currentUrl.pathname +
+                    (currentUrl.searchParams.toString() ? '?' + currentUrl.searchParams.toString() : '') +
+                    currentUrl.hash;
+
+                window.history.replaceState(
+                    { sessionId: this.sessionId },
+                    '',
+                    newUrl
+                );
+
+                console.log('[HOST] Added session_id to URL for refresh persistence');
+            } catch (error) {
+                console.error('[HOST] Failed to update URL with session_id:', error);
+            }
         },
         
         showFinalScreen: function() {

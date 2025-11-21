@@ -225,6 +225,11 @@ final class Live_Quiz {
         ), $atts, 'live_quiz_host');
         
         $session_id = intval($atts['session_id']);
+
+        // Allow session_id to come from query parameter (e.g., /host/?session_id=123)
+        if ($session_id <= 0 && isset($_GET['session_id'])) {
+            $session_id = absint($_GET['session_id']);
+        }
         
         // If session_id is provided, show the host interface directly
         if ($session_id > 0) {
