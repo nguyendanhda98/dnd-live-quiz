@@ -19,6 +19,7 @@ class Live_Quiz_Post_Types {
         add_action('add_meta_boxes', array(__CLASS__, 'add_meta_boxes'));
         add_action('save_post', array(__CLASS__, 'save_meta_boxes'), 10, 2);
         add_filter('set-screen-option', array(__CLASS__, 'set_screen_option'), 10, 3);
+        add_action('pre_get_posts', array(__CLASS__, 'filter_generated_quizzes_from_admin'));
     }
     
     /**
@@ -653,5 +654,86 @@ class Live_Quiz_Post_Types {
         return $code;
     }
     
-
+    /**
+     * Loại bỏ các quiz tự động merge khỏi danh sách admin
+     */
+    public static function filter_generated_quizzes_from_admin($query) {
+        if (!is_admin() || !$query->is_main_query()) {
+            return;
+        }
+        
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+        
+        $post_type = $query->get('post_type');
+        if (empty($post_type)) {
+            global $typenow;
+            $post_type = $typenow;
+        }
+        
+        if ($post_type !== 'live_quiz') {
+            return;
+        }
+        
+        if (isset($_GET['show_generated_quizzes']) && $_GET['show_generated_quizzes'] === '1') {
+            return;
+        }
+        
+        self::backfill_generated_quiz_flags();
+        
+        $meta_query = $query->get('meta_query');
+        if (!is_array($meta_query)) {
+            $meta_query = array();
+        }
+        
+        $meta_query[] = array(
+            'relation' => 'OR',
+            array(
+                'key' => '_live_quiz_auto_generated',
+                'compare' => 'NOT EXISTS',
+            ),
+            array(
+                'key' => '_live_quiz_auto_generated',
+                'value' => 'yes',
+                'compare' => '!=',
+            ),
+        );
+        
+        $query->set('meta_query', $meta_query);
+    }
+    
+    /**
+     * Đồng bộ metadata đánh dấu quiz được tạo từ phiên
+     */
+    private static function backfill_generated_quiz_flags() {
+        $sessions = get_posts(array(
+            'post_type' => 'live_quiz_session',
+            'post_status' => array('publish', 'draft', 'pending', 'private', 'future', 'trash', 'inherit'),
+            'meta_key' => '_session_is_merged',
+            'meta_value' => true,
+            'fields' => 'ids',
+            'posts_per_page' => -1,
+        ));
+        
+        if (empty($sessions)) {
+            return;
+        }
+        
+        foreach ($sessions as $session_id) {
+            $quiz_id = get_post_meta($session_id, '_session_quiz_id', true);
+            if (!$quiz_id) {
+                continue;
+            }
+            
+            $is_flagged = get_post_meta($quiz_id, '_live_quiz_auto_generated', true);
+            if ($is_flagged === 'yes') {
+                continue;
+            }
+            
+            update_post_meta($quiz_id, '_live_quiz_auto_generated', 'yes');
+            update_post_meta($quiz_id, '_live_quiz_parent_session', $session_id);
+        }
+    }
+    
 }

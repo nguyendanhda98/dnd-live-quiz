@@ -1665,6 +1665,8 @@ class Live_Quiz_REST_API {
             update_post_meta($merged_quiz_id, '_live_quiz_questions', $all_questions);
             update_post_meta($session_id, '_session_quiz_id', $merged_quiz_id);
             update_post_meta($session_id, '_session_is_merged', true);
+            update_post_meta($merged_quiz_id, '_live_quiz_auto_generated', 'yes');
+            update_post_meta($merged_quiz_id, '_live_quiz_parent_session', $session_id);
         }
         
         // Clear cache
@@ -1810,6 +1812,8 @@ class Live_Quiz_REST_API {
             update_post_meta($merged_quiz_id, '_live_quiz_questions', $all_questions);
             update_post_meta($session_id, '_session_quiz_id', $merged_quiz_id);
             update_post_meta($session_id, '_session_is_merged', true);
+            update_post_meta($merged_quiz_id, '_live_quiz_auto_generated', 'yes');
+            update_post_meta($merged_quiz_id, '_live_quiz_parent_session', $session_id);
         }
         
         // Save settings metadata
