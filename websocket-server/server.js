@@ -395,6 +395,59 @@ const RedisHelper = {
     },
 };
 
+async function getCurrentQuestionPayload(sessionId, sessionData = null) {
+    try {
+        const session = sessionData || await redisClient.hGetAll(`session:${sessionId}`);
+        if (!session || Object.keys(session).length === 0) {
+            return null;
+        }
+
+        if (session.current_question_payload) {
+            try {
+                return JSON.parse(session.current_question_payload);
+            } catch (error) {
+                logger.error('Failed to parse current_question_payload', {
+                    sessionId,
+                    error: error.message,
+                });
+            }
+        }
+
+        const questionIndex = parseInt(session.current_question_index || 0);
+        const startTime = parseFloat(session.question_start_time || 0);
+        let questions = [];
+
+        if (session.questions) {
+            try {
+                questions = JSON.parse(session.questions);
+            } catch (error) {
+                logger.error('Failed to parse session questions', {
+                    sessionId,
+                    error: error.message,
+                });
+            }
+        }
+
+        const currentQuestion = questions[questionIndex];
+
+        if (currentQuestion && startTime) {
+            return {
+                question_index: questionIndex,
+                question: currentQuestion,
+                start_time: startTime,
+                total_questions: questions.length,
+            };
+        }
+    } catch (error) {
+        logger.error('Error building current question payload', {
+            sessionId,
+            error: error.message,
+        });
+    }
+
+    return null;
+}
+
 // Socket.io connection handler
 io.on('connection', async (socket) => {
     stats.connections++;
@@ -552,34 +605,33 @@ io.on('connection', async (socket) => {
         // Send current session state to the newly joined user
         // This ensures they sync with ongoing question if quiz is in progress
         const session = await redisClient.hGetAll(`session:${session_id}`);
-        if (session && session.status === 'question') {
-            // Session is currently in a question - send question_start to sync
-            const questionIndex = parseInt(session.current_question_index || 0);
-            const startTime = parseFloat(session.question_start_time || 0);
-            
-            // Retrieve question data from session questions list
-            const questionsJson = session.questions || '[]';
-            const questions = JSON.parse(questionsJson);
-            const currentQuestion = questions[questionIndex];
-            
-            if (currentQuestion && startTime) {
-                logger.info('Sending current question state to newly joined user', {
-                    user_id,
-                    session_id,
-                    questionIndex,
-                    startTime
-                });
-                
-                // Calculate total questions
-                const totalQuestions = questions.length;
-                
-                // Send to this specific socket only
-                socket.emit('question_start', {
-                    question_index: questionIndex,
-                    question: currentQuestion,
-                    start_time: startTime,
-                    total_questions: totalQuestions,
-                });
+        if (session) {
+            if (session.status === 'question') {
+                const questionPayload = await getCurrentQuestionPayload(session_id, session);
+                if (questionPayload) {
+                    logger.info('Sending current question state to newly joined user', {
+                        user_id,
+                        session_id,
+                        questionIndex: questionPayload.question_index,
+                    });
+                    socket.emit('question_start', questionPayload);
+                }
+            } else if (session.status === 'results' && session.latest_results_payload) {
+                try {
+                    const resultsPayload = JSON.parse(session.latest_results_payload);
+                    if (resultsPayload) {
+                        logger.info('Sending current results state to newly joined user', {
+                            user_id,
+                            session_id,
+                        });
+                        socket.emit('question_end', resultsPayload);
+                    }
+                } catch (error) {
+                    logger.error('Failed to parse latest_results_payload', {
+                        session_id,
+                        error: error.message,
+                    });
+                }
             }
         }
     });
@@ -892,20 +944,24 @@ app.post('/api/sessions/:id/start-question', async (req, res) => {
 
         logger.info('Starting question', { sessionId, questionIndex: question_index });
 
+        const questionPayload = {
+            question_index,
+            question: question_data,
+            start_time,
+            total_questions: question_data?.total_questions || 0,
+        };
+
         // Update session in Redis
         await redisClient.hSet(`session:${sessionId}`, {
             current_question_index: question_index,
             question_start_time: start_time,
             status: 'question',
+            current_question_payload: JSON.stringify(questionPayload),
         });
+        await redisClient.hDel(`session:${sessionId}`, 'latest_results_payload');
 
         // Broadcast to all participants in session
-        io.to(`session:${sessionId}`).emit('question_start', {
-            question_index,
-            question: question_data,
-            start_time,
-            total_questions: question_data.total_questions || 0,
-        });
+        io.to(`session:${sessionId}`).emit('question_start', questionPayload);
 
         res.json({ success: true });
     } catch (error) {
@@ -980,16 +1036,71 @@ app.post('/api/sessions/:id/end-question', async (req, res) => {
             }))
         });
 
-        // Broadcast results with correct answer and enriched leaderboard
-        io.to(`session:${sessionId}`).emit('question_end', {
+        const resultsPayload = {
             correct_answer,
             leaderboard: enrichedLeaderboard,
+        };
+
+        await redisClient.hSet(`session:${sessionId}`, {
+            latest_results_payload: JSON.stringify(resultsPayload),
         });
+
+        // Broadcast results with correct answer and enriched leaderboard
+        io.to(`session:${sessionId}`).emit('question_end', resultsPayload);
 
         res.json({ success: true, leaderboard: enrichedLeaderboard, correct_answer });
     } catch (error) {
         logger.error('Error ending question', { error, sessionId: req.params.id });
         res.status(500).json({ error: 'Failed to end question' });
+    }
+});
+
+// Get current session state
+app.get('/api/sessions/:id/state', async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+        const session = await redisClient.hGetAll(`session:${sessionId}`);
+
+        if (!session || Object.keys(session).length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'session_not_found',
+            });
+        }
+
+        const response = {
+            success: true,
+            status: session.status || 'unknown',
+        };
+
+        if (response.status === 'question') {
+            const questionPayload = await getCurrentQuestionPayload(sessionId, session);
+            if (questionPayload) {
+                response.current_question = questionPayload;
+            }
+        }
+
+        if (session.latest_results_payload) {
+            try {
+                response.latest_results = JSON.parse(session.latest_results_payload);
+            } catch (error) {
+                logger.error('Failed to parse latest_results_payload', {
+                    sessionId,
+                    error: error.message,
+                });
+            }
+        }
+
+        return res.json(response);
+    } catch (error) {
+        logger.error('Error retrieving session state', {
+            sessionId: req.params.id,
+            error,
+        });
+        return res.status(500).json({
+            success: false,
+            error: 'failed_to_get_state',
+        });
     }
 });
 

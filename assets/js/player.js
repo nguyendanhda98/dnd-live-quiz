@@ -21,6 +21,7 @@
         questionStartTime: null,
         serverStartTime: null, // Server timestamp when question started
         displayStartTime: null, // Local timestamp when we start displaying (for offset calculation)
+        displayDelay: 3,
         timerInterval: null,
         connectionId: null, // Unique ID for this tab/device
         
@@ -206,6 +207,7 @@
             
             // Fetch players list
             fetchPlayersList();
+            syncSessionState('restore');
             
             // Connect to WebSocket
             connectWebSocket();
@@ -216,6 +218,43 @@
         } catch (error) {
             console.error('[Live Quiz] Failed to restore session from data:', error);
             return false;
+        }
+    }
+    
+    /**
+     * Sync current session state (question/results) via REST fallback
+     */
+    async function syncSessionState(trigger = 'manual') {
+        if (!state.sessionId || !config.restUrl) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${config.restUrl}/sessions/${state.sessionId}/state`, {
+                method: 'GET',
+                headers: {
+                    'X-WP-Nonce': config.nonce
+                }
+            });
+            
+            const data = await response.json();
+            if (!response.ok || !data.success || !data.state) {
+                console.warn('[Live Quiz] Session state sync failed:', data);
+                return;
+            }
+            
+            const sessionState = data.state;
+            console.log('[Live Quiz] Session state synced:', sessionState.status, trigger);
+            
+            if (sessionState.status === 'question' && sessionState.current_question) {
+                handleQuestionStart(sessionState.current_question);
+            } else if (sessionState.status === 'results' && sessionState.latest_results) {
+                handleQuestionEnd(sessionState.latest_results);
+            } else if (sessionState.status === 'ended' && sessionState.latest_results) {
+                handleQuestionEnd(sessionState.latest_results);
+            }
+        } catch (error) {
+            console.error('[Live Quiz] Failed to sync session state:', error);
         }
     }
     
@@ -365,6 +404,7 @@
                 
                 // Fetch and update players list
                 fetchPlayersList();
+                syncSessionState('join');
                 
                 // Connect to WebSocket
                 connectWebSocket();
@@ -649,7 +689,19 @@
         
         state.currentQuestion = data;
         state.questionStartTime = data.start_time;
-        state.serverStartTime = data.start_time; // Store server timestamp
+        
+        const actualTimerStart = data.question && data.question.actual_timer_start
+            ? parseFloat(data.question.actual_timer_start)
+            : null;
+        const timerDelay = data.question && typeof data.question.timer_delay !== 'undefined'
+            ? parseFloat(data.question.timer_delay) || 0
+            : 3;
+        
+        state.serverStartTime = actualTimerStart || data.start_time || (Date.now() / 1000);
+        state.displayDelay = timerDelay || 3;
+        
+        const nowSeconds = Date.now() / 1000;
+        const skipIntro = nowSeconds >= state.serverStartTime;
         
         // Clear answered players list for new question
         state.answeredPlayers = [];
@@ -672,11 +724,14 @@
         }
         
         showScreen('quiz-question');
-        displayQuestion(data);
+        displayQuestion(data, { skipIntro });
         // Timer will be started by displayQuestion after question is displayed
     }
     
-    function displayQuestion(data) {
+    function displayQuestion(data, options = {}) {
+        const skipIntro = !!options.skipIntro;
+        const introDelay = skipIntro ? 0 : (state.displayDelay || 3);
+        
         const questionNumber = data.question_index + 1;
         
         document.querySelector('.question-number').textContent = 
@@ -693,10 +748,10 @@
         
         // Record when we finish displaying question (for offset calculation)
         state.displayStartTime = Date.now() / 1000;
+        state.displayDelay = introDelay;
         
-        // After 3 seconds: show choices and start timer immediately
-        setTimeout(() => {
-            // Display all choices
+        const renderChoices = () => {
+            container.innerHTML = '';
             data.question.choices.forEach((choice, index) => {
                 const button = document.createElement('button');
                 button.className = 'choice-button';
@@ -706,12 +761,15 @@
                 container.appendChild(button);
             });
             
-            // Show choices container
             container.style.display = '';
-            
-            // Start timer immediately when choices appear
             startTimer(data.question.time_limit);
-        }, 3000);
+        };
+        
+        if (introDelay <= 0) {
+            renderChoices();
+        } else {
+            setTimeout(renderChoices, introDelay * 1000);
+        }
     }
     
     /**
@@ -747,25 +805,14 @@
         
         console.log('[PLAYER] Timer start - Max points:', maxPoints);
         
-        // Calculate display offset (time from server start to now)
-        // This includes: network delay + display time + 3s fixed delay
-        const displayOffset = state.displayStartTime ? (Date.now() / 1000) - state.displayStartTime + 3 : 3;
-        console.log('[PLAYER] Display offset:', displayOffset.toFixed(2), 'seconds');
-        
-        // Use server timestamp if available, otherwise fallback to local time
-        const serverStartTime = state.serverStartTime || (Date.now() / 1000);
-        // Adjust server start time by display offset so timer starts from "now"
-        const adjustedStartTime = serverStartTime + displayOffset;
-        const endTime = adjustedStartTime + seconds;
-        
         const timerFill = document.querySelector('.timer-fill');
         const timerText = document.querySelector('.timer-text');
+        const startTimestamp = state.serverStartTime || (Date.now() / 1000);
         
         const updateTimer = () => {
-            // Calculate elapsed time based on adjusted timestamp
             const nowSeconds = Date.now() / 1000;
-            const elapsed = Math.max(0, nowSeconds - adjustedStartTime); // Never negative
-            const remaining = Math.max(0, endTime - nowSeconds);
+            const elapsed = Math.max(0, nowSeconds - startTimestamp);
+            const remaining = Math.max(0, seconds - elapsed);
             
             if (remaining <= 0) {
                 clearInterval(state.timerInterval);

@@ -99,6 +99,12 @@ class Live_Quiz_REST_API {
             'permission_callback' => '__return_true',
         ));
         
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/state', array(
+            'methods' => 'GET',
+            'callback' => array(__CLASS__, 'get_session_state_snapshot'),
+            'permission_callback' => 'is_user_logged_in',
+        ));
+        
         // Get players list (for host)
         register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/players', array(
             'methods' => 'GET',
@@ -875,6 +881,44 @@ class Live_Quiz_REST_API {
         return rest_ensure_response(array(
             'success' => true,
             'leaderboard' => $leaderboard,
+        ));
+    }
+    
+    /**
+     * Get current session state snapshot for reconnecting players
+     */
+    public static function get_session_state_snapshot($request) {
+        $session_id = absint($request->get_param('id'));
+        
+        if (!$session_id) {
+            return new WP_Error('invalid_session', __('Phiên không hợp lệ', 'live-quiz'), array('status' => 400));
+        }
+        
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return new WP_Error('not_logged_in', __('Bạn cần đăng nhập', 'live-quiz'), array('status' => 401));
+        }
+        
+        // Validate that user belongs to this session (player) or is host
+        $access_check = Live_Quiz_Security::validate_session_access($session_id, $user_id);
+        if (is_wp_error($access_check)) {
+            if (!Live_Quiz_Session_Manager::can_control_session($session_id, $user_id)) {
+                return $access_check;
+            }
+        }
+        
+        if (!class_exists('Live_Quiz_WebSocket_Helper')) {
+            return new WP_Error('ws_helper_missing', __('WebSocket helper không khả dụng', 'live-quiz'), array('status' => 500));
+        }
+        
+        $state = Live_Quiz_WebSocket_Helper::get_session_state($session_id);
+        if (!$state || empty($state['success'])) {
+            return new WP_Error('state_unavailable', __('Không lấy được trạng thái phiên', 'live-quiz'), array('status' => 500));
+        }
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'state' => $state,
         ));
     }
     

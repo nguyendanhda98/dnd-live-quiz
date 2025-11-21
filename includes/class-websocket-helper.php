@@ -242,6 +242,20 @@ class Live_Quiz_WebSocket_Helper {
     }
     
     /**
+     * Get current session state snapshot
+     * 
+     * @param int $session_id Session ID
+     * @return array|false
+     */
+    public static function get_session_state($session_id) {
+        return self::send_request(
+            '/sessions/' . $session_id . '/state',
+            array(),
+            'GET'
+        );
+    }
+    
+    /**
      * Ban user from session (stores in Redis with 24h TTL)
      * 
      * @param int $session_id Session ID
