@@ -34,6 +34,10 @@
         pingInterval: null,
         lastPing: null,
         currentPing: null,
+        
+        // Players tracking
+        players: {}, // Map of user_id to player info
+        answeredPlayers: [], // Track players who answered current question
     };
     
     /**
@@ -485,6 +489,9 @@
                 updatePingDisplay(ping);
             }
         });
+        
+        // Listen for answer submitted events
+        state.socket.on('answer_submitted', handleAnswerSubmitted);
     }
     
     function handleSessionState(data) {
@@ -609,6 +616,17 @@
         state.currentQuestion = data;
         state.questionStartTime = data.start_time;
         state.serverStartTime = data.start_time; // Store server timestamp
+        
+        // Clear answered players list for new question
+        state.answeredPlayers = [];
+        const answeredList = document.getElementById('answered-players-list');
+        if (answeredList) {
+            answeredList.innerHTML = '';
+        }
+        const answerCountDisplay = document.querySelector('.answer-count-display');
+        if (answerCountDisplay) {
+            answerCountDisplay.style.display = 'none';
+        }
         
         // Hide leaderboard overlay if visible
         const overlay = document.getElementById('player-leaderboard-overlay');
@@ -1357,6 +1375,14 @@
         const container = document.getElementById('players-waiting-list');
         if (!container) return;
         
+        // Store players in state for lookup by user_id
+        state.players = {};
+        players.forEach(function(player) {
+            if (player.user_id) {
+                state.players[player.user_id] = player;
+            }
+        });
+        
         if (players.length === 0) {
             container.innerHTML = '<p class="no-players">Chưa có người chơi nào tham gia</p>';
             return;
@@ -1400,6 +1426,99 @@
             "'": '&#039;'
         };
         return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+    
+    /**
+     * Handle answer submitted event from WebSocket
+     */
+    function handleAnswerSubmitted(data) {
+        console.log('[PLAYER] ==========================================');
+        console.log('[PLAYER] ANSWER SUBMITTED EVENT');
+        console.log('[PLAYER] ==========================================');
+        console.log('[PLAYER] User ID:', data.user_id);
+        console.log('[PLAYER] Score:', data.score);
+        console.log('[PLAYER] answered_count:', data.answered_count);
+        console.log('[PLAYER] total_players:', data.total_players);
+        console.log('[PLAYER] Ratio:', data.answered_count + '/' + data.total_players);
+        console.log('[PLAYER] Full data:', data);
+        console.log('[PLAYER] ==========================================');
+        
+        // Add player to answered list if not already there
+        if (data.user_id && !state.answeredPlayers.includes(data.user_id)) {
+            state.answeredPlayers.push(data.user_id);
+            
+            // Find player info from stored players
+            const player = state.players[data.user_id];
+            if (player) {
+                const score = data.score !== undefined ? data.score : 0;
+                console.log('[PLAYER] Displaying player with score:', score);
+                displayAnsweredPlayer(player, score);
+            } else {
+                // If player info not found, create a basic player object
+                console.warn('[PLAYER] Player info not found for user_id:', data.user_id);
+                const basicPlayer = {
+                    user_id: data.user_id,
+                    display_name: 'Player ' + data.user_id
+                };
+                displayAnsweredPlayer(basicPlayer, data.score || 0);
+            }
+        }
+        
+        // Update answer count display
+        if (data.answered_count !== undefined && data.total_players !== undefined) {
+            const answerCountDisplay = document.querySelector('.answer-count-display');
+            const answerCountText = document.querySelector('.answer-count-text');
+            
+            if (answerCountDisplay && answerCountText) {
+                answerCountText.textContent = data.answered_count + '/' + data.total_players + ' đã trả lời';
+                answerCountDisplay.style.display = 'block';
+            }
+        }
+    }
+    
+    /**
+     * Display an answered player in the list
+     */
+    function displayAnsweredPlayer(player, score) {
+        const displayName = player.display_name || 'Player';
+        const initial = displayName.charAt(0).toUpperCase();
+        const list = document.getElementById('answered-players-list');
+        
+        if (!list) {
+            console.warn('[PLAYER] Answered players list element not found');
+            return;
+        }
+        
+        // Tách tên và username
+        let nameText = displayName;
+        let usernameText = '';
+        const parenIndex = displayName.indexOf(' (@');
+        if (parenIndex > 0) {
+            nameText = displayName.substring(0, parenIndex);
+            usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
+        }
+        
+        const playerItem = document.createElement('div');
+        playerItem.className = 'answered-player-item';
+        playerItem.setAttribute('data-player-id', player.user_id);
+        playerItem.setAttribute('data-score', score);
+        
+        playerItem.innerHTML = `
+            <div class="answered-player-avatar">${escapeHtml(initial)}</div>
+            <div class="answered-player-name">
+                <span class="name-text">${escapeHtml(nameText)}</span>
+                ${usernameText ? `<span class="username-text">${escapeHtml(usernameText)}</span>` : ''}
+            </div>
+        `;
+        
+        list.appendChild(playerItem);
+        
+        // Animate in
+        playerItem.style.opacity = '0';
+        setTimeout(() => {
+            playerItem.style.transition = 'opacity 0.3s';
+            playerItem.style.opacity = '1';
+        }, 10);
     }
     
     /**

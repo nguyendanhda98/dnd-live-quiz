@@ -452,6 +452,103 @@
     color: #2ecc71;
 }
 
+.answer-count-display {
+    position: absolute;
+    top: -30px;
+    left: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(0, 0, 0, 0.2);
+    padding: 4px 12px;
+    border-radius: 12px;
+}
+
+.answer-count-text {
+    display: inline-block;
+}
+
+/* Answered Players Section */
+.answered-players-section {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #e1e8ed;
+}
+
+.answered-players-section h4 {
+    font-size: 18px;
+    margin-bottom: 15px;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.answered-players-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 15px;
+    min-height: 50px;
+}
+
+.answered-player-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    animation: answerPulse 0.5s ease-out;
+}
+
+@keyframes answerPulse {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.answered-player-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 20px;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.answered-player-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+    word-break: break-word;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.answered-player-name .name-text {
+    font-weight: 600;
+}
+
+.answered-player-name .username-text {
+    font-size: 10px;
+    color: #666;
+    font-weight: 400;
+}
+
 /* Question */
 .question-text {
     font-size: 24px;
