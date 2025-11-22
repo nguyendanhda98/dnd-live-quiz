@@ -26,6 +26,8 @@
         searchTimeout: null,
         isConfigured: false,
         autoNextTimeout: null,
+        summaryData: null,
+        totalParticipants: 0,
         
         // API config
         apiConfig: null,
@@ -481,16 +483,10 @@
                         QuizCore.state.userId
                     );
                     
-                    // Show next question button after animation
+                    // Automatically advance to next question after animation
                     setTimeout(function() {
-                        const nextQuestionBtn = document.getElementById('next-question-btn');
-                        if (nextQuestionBtn) {
-                            nextQuestionBtn.style.display = 'block';
-                            nextQuestionBtn.style.opacity = '0';
-                            setTimeout(function() {
-                                nextQuestionBtn.style.opacity = '1';
-                            }, 10);
-                        }
+                        console.log('[HOST] Automatically advancing to next question');
+                        self.nextQuestion();
                     }, 5000);
                 }, 2000);
             }, 1000);
@@ -773,15 +769,150 @@
          * Show summary
          */
         showSummary: function() {
-            // TODO: Implement summary modal
-            console.log('[HOST] Show summary - not yet implemented');
+            const self = this;
+            
+            if (!this.apiConfig || !QuizCore.state.sessionId) {
+                console.error('[HOST] Cannot show summary - missing API config or session ID');
+                return;
+            }
+            
+            console.log('[HOST] Fetching session summary...');
+            
+            // Show modal
+            const modal = document.getElementById('summary-modal');
+            if (modal) {
+                modal.style.display = 'flex';
+            } else {
+                console.error('[HOST] Modal element not found!');
+                return;
+            }
+            
+            // Show loading state
+            const $list = $('#summary-questions-list');
+            $list.html('<div class="summary-loading"><p>Đang tải dữ liệu...</p></div>');
+            
+            // Fetch summary data
+            $.ajax({
+                url: this.apiConfig.apiUrl + '/sessions/' + QuizCore.state.sessionId + '/summary',
+                method: 'GET',
+                headers: {
+                    'X-WP-Nonce': this.apiConfig.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.questions) {
+                        console.log('[HOST] Summary data fetched:', response);
+                        self.summaryData = response.questions;
+                        self.totalParticipants = response.total_participants || 0;
+                        self.displaySummary(response.questions, self.totalParticipants);
+                    } else {
+                        console.error('[HOST] Failed to fetch summary:', response);
+                        self.displaySummaryError();
+                    }
+                },
+                error: function(xhr) {
+                    console.error('[HOST] Error fetching summary:', xhr);
+                    self.displaySummaryError();
+                }
+            });
         },
         
         /**
          * Close summary
          */
         closeSummary: function() {
-            $('#summary-modal').fadeOut();
+            const modal = document.getElementById('summary-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        },
+        
+        /**
+         * Display summary data
+         */
+        displaySummary: function(questions, totalParticipants) {
+            console.log('[HOST] displaySummary called with', questions.length, 'questions');
+            const $list = $('#summary-questions-list');
+            $list.empty();
+            
+            if (questions.length === 0) {
+                $list.html('<div class="summary-empty"><p>Chưa có dữ liệu câu hỏi</p></div>');
+                return;
+            }
+            
+            const self = this;
+            questions.forEach(function(q, idx) {
+                const percentage = q.correct_percentage || 0;
+                const correctCount = q.correct_count || 0;
+                const total = totalParticipants || 0;
+                
+                // Determine color based on percentage
+                let colorClass = 'low';
+                if (percentage >= 70) {
+                    colorClass = 'high';
+                } else if (percentage >= 40) {
+                    colorClass = 'medium';
+                }
+                
+                // Build choices HTML
+                let choicesHtml = '';
+                if (q.choices && q.choices.length > 0) {
+                    choicesHtml = '<div class="summary-choices">';
+                    q.choices.forEach(function(choice, choiceIdx) {
+                        const isCorrect = choice.is_correct;
+                        const choiceClass = isCorrect ? 'summary-choice-correct' : 'summary-choice';
+                        const icon = isCorrect ? '✓' : '';
+                        const choicePercentage = choice.percentage || 0;
+                        
+                        choicesHtml += `
+                            <div class="${choiceClass}">
+                                <div class="summary-choice-header">
+                                    <span class="summary-choice-icon">${icon}</span>
+                                    <span class="summary-choice-text">${self.escapeHtml(choice.text)}</span>
+                                </div>
+                                <div class="summary-choice-stats">
+                                    <div class="summary-choice-bar">
+                                        <div class="summary-choice-fill ${isCorrect ? 'correct' : 'incorrect'}" 
+                                             style="width: ${choicePercentage}%"></div>
+                                    </div>
+                                    <span class="summary-choice-count">${choice.count}/${total} (${choicePercentage}%)</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    choicesHtml += '</div>';
+                }
+                
+                const html = `
+                    <div class="summary-question-item" data-index="${idx}">
+                        <div class="summary-question-header">
+                            <div class="summary-question-number">Câu ${q.index + 1}</div>
+                            <div class="summary-question-text">${self.escapeHtml(q.question)}</div>
+                        </div>
+                        
+                        ${choicesHtml}
+                        
+                        <div class="summary-question-stats">
+                            <div class="summary-stats-bar">
+                                <div class="summary-stats-fill ${colorClass}" style="width: ${percentage}%"></div>
+                            </div>
+                            <div class="summary-stats-text">
+                                <span class="summary-correct-count">${correctCount}/${total} trả lời đúng</span>
+                                <span class="summary-percentage ${colorClass}">${percentage}%</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                $list.append(html);
+            });
+        },
+        
+        /**
+         * Display summary error
+         */
+        displaySummaryError: function() {
+            const $list = $('#summary-questions-list');
+            $list.html('<div class="summary-error"><p>⚠️ Không thể tải dữ liệu. Vui lòng thử lại.</p></div>');
         },
         
         // ========================================
@@ -1321,9 +1452,30 @@
         /**
          * Sort summary
          */
-        sortSummary: function(sortBy) {
-            // TODO: Implement sort summary
-            console.log('[HOST] Sort summary:', sortBy);
+        sortSummary: function(sortType) {
+            if (!this.summaryData) {
+                return;
+            }
+            
+            let sorted = [...this.summaryData];
+            
+            switch(sortType) {
+                case 'correct_asc':
+                    // Sort by correct percentage (lowest first)
+                    sorted.sort((a, b) => (a.correct_percentage || 0) - (b.correct_percentage || 0));
+                    break;
+                case 'correct_desc':
+                    // Sort by correct percentage (highest first)
+                    sorted.sort((a, b) => (b.correct_percentage || 0) - (a.correct_percentage || 0));
+                    break;
+                case 'order':
+                default:
+                    // Sort by question index (original order)
+                    sorted.sort((a, b) => (a.index || 0) - (b.index || 0));
+                    break;
+            }
+            
+            this.displaySummary(sorted, this.totalParticipants);
         },
         
         /**
