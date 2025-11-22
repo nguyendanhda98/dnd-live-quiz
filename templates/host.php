@@ -196,6 +196,9 @@ if ($has_session) {
                 
                 <!-- Action Buttons -->
                 <div class="final-actions" style="margin-top: 30px;">
+                    <button id="summary-btn" class="btn btn-primary">
+                        <?php _e('📊 Tổng kết', 'live-quiz'); ?>
+                    </button>
                     <button id="replay-session-btn-top3" class="btn btn-success">
                         <?php _e('🔄 Chơi lại', 'live-quiz'); ?>
                     </button>
@@ -411,3 +414,35 @@ if ($has_session) {
     
 <?php endif; ?>
 </div>
+
+<!-- Summary Modal (outside container to avoid z-index issues) -->
+<?php if ($has_session): ?>
+<div id="summary-modal" class="summary-modal" style="display: none;">
+    <div class="summary-modal-content">
+        <div class="summary-modal-header">
+            <h2><?php _e('📊 Tổng kết câu hỏi', 'live-quiz'); ?></h2>
+            <button class="summary-modal-close">&times;</button>
+        </div>
+        
+        <div class="summary-modal-body">
+            <div class="summary-filter">
+                <label for="summary-sort">
+                    <?php _e('Sắp xếp theo:', 'live-quiz'); ?>
+                </label>
+                <select id="summary-sort" class="summary-sort-select">
+                    <option value="order"><?php _e('Thứ tự câu hỏi', 'live-quiz'); ?></option>
+                    <option value="correct_asc"><?php _e('Ít người đúng nhất', 'live-quiz'); ?></option>
+                    <option value="correct_desc"><?php _e('Nhiều người đúng nhất', 'live-quiz'); ?></option>
+                </select>
+            </div>
+            
+            <div id="summary-questions-list" class="summary-questions-list">
+                <!-- Questions will be loaded here -->
+                <div class="summary-loading">
+                    <p><?php _e('Đang tải...', 'live-quiz'); ?></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>

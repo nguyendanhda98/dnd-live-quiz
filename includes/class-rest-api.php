@@ -248,6 +248,13 @@ class Live_Quiz_REST_API {
             'callback' => array(__CLASS__, 'update_session_settings'),
             'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
         ));
+        
+        // Get session summary (for host - all questions with answer stats)
+        register_rest_route(self::NAMESPACE, '/sessions/(?P<id>\d+)/summary', array(
+            'methods' => 'GET',
+            'callback' => array(__CLASS__, 'get_session_summary'),
+            'permission_callback' => array(__CLASS__, 'check_session_host_permission'),
+        ));
     }
     
     /**
@@ -1930,6 +1937,120 @@ class Live_Quiz_REST_API {
         return rest_ensure_response(array(
             'success' => true,
             'message' => __('Đã xóa session thành công', 'live-quiz'),
+        ));
+    }
+    
+    /**
+     * Get session summary - all questions with answer statistics
+     */
+    public static function get_session_summary($request) {
+        $session_id = $request->get_param('id');
+        
+        // Get session data
+        $session = Live_Quiz_Session_Manager::get_session($session_id);
+        if (!$session) {
+            return new WP_Error('not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
+        }
+        
+        $questions = $session['questions'];
+        if (empty($questions)) {
+            return rest_ensure_response(array(
+                'success' => true,
+                'questions' => array(),
+                'total_participants' => 0,
+            ));
+        }
+        
+        // Get all participants to count total
+        $participants = Live_Quiz_Session_Manager::get_participants($session_id);
+        $total_participants = count($participants);
+        
+        // Build summary for each question
+        $summary = array();
+        foreach ($questions as $index => $question) {
+            // Find correct answer index from choices (choices have is_correct field)
+            $correct_answer = 0;
+            $correct_answer_text = '';
+            if (isset($question['choices']) && is_array($question['choices'])) {
+                foreach ($question['choices'] as $choice_index => $choice) {
+                    if (isset($choice['is_correct']) && $choice['is_correct']) {
+                        $correct_answer = $choice_index;
+                        $correct_answer_text = $choice['text'];
+                        break; // Found the correct answer
+                    }
+                }
+            }
+            
+            // Initialize choice statistics
+            $choice_stats = array();
+            if (isset($question['choices']) && is_array($question['choices'])) {
+                foreach ($question['choices'] as $choice_index => $choice) {
+                    $choice_stats[$choice_index] = array(
+                        'text' => $choice['text'],
+                        'is_correct' => isset($choice['is_correct']) && $choice['is_correct'],
+                        'count' => 0,
+                        'percentage' => 0,
+                    );
+                }
+            }
+            
+            // Count answers for this question
+            $correct_count = 0;
+            $total_answered = 0;
+            
+            foreach ($participants as $participant) {
+                $user_id = $participant['user_id'];
+                
+                // Get all answers for this user (stored as array)
+                $all_answers = get_post_meta($session_id, '_answer_' . $user_id, true);
+                
+                if ($all_answers && is_array($all_answers) && isset($all_answers[$index])) {
+                    $answer_data = $all_answers[$index];
+                    
+                    if (is_array($answer_data)) {
+                        $total_answered++;
+                        $user_choice = isset($answer_data['choice_id']) ? (int)$answer_data['choice_id'] : -1;
+                        
+                        // Count this choice
+                        if (isset($choice_stats[$user_choice])) {
+                            $choice_stats[$user_choice]['count']++;
+                        }
+                        
+                        // Check if correct
+                        if ($user_choice === $correct_answer) {
+                            $correct_count++;
+                        }
+                    }
+                }
+            }
+            
+            // Calculate percentages for each choice
+            foreach ($choice_stats as $choice_index => $stats) {
+                $choice_stats[$choice_index]['percentage'] = $total_participants > 0 
+                    ? round(($stats['count'] / $total_participants) * 100, 1) 
+                    : 0;
+            }
+            
+            // Convert to indexed array for JSON
+            $choice_stats = array_values($choice_stats);
+            
+            $summary[] = array(
+                'index' => $index,
+                'question' => $question['text'],
+                'choices' => $choice_stats,
+                'correct_answer' => $correct_answer,
+                'correct_answer_text' => $correct_answer_text,
+                'correct_count' => $correct_count,
+                'total_answered' => $total_answered,
+                'total_participants' => $total_participants,
+                'correct_percentage' => $total_participants > 0 ? round(($correct_count / $total_participants) * 100, 1) : 0,
+            );
+        }
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'questions' => $summary,
+            'total_participants' => $total_participants,
         ));
     }
     
