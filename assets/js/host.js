@@ -756,6 +756,9 @@
                 success: function(response) {
                     console.log('[HOST] Session replay initiated:', response);
                     
+                    // Reset button to initial state
+                    $('#start-quiz-btn').text('▶️ Bắt đầu Quiz');
+                    
                     // Pre-select previous quizzes if available
                     if (response.previous_quizzes && response.previous_quizzes.length > 0) {
                         console.log('[HOST] Pre-selecting previous quizzes:', response.previous_quizzes);
@@ -767,9 +770,15 @@
                             };
                         });
                         self.updateSelectedQuizzes();
-                        self.updateStartButton();
                         console.log('[HOST] ✓ Previous quizzes pre-selected');
+                    } else {
+                        // Clear selected quizzes if no previous quizzes
+                        self.selectedQuizzes = [];
+                        self.updateSelectedQuizzes();
                     }
+                    
+                    // Update button state (enable/disable based on quizzes and players)
+                    self.updateStartButton();
                     
                     // Return to lobby
                     self.showScreen('host-lobby');
