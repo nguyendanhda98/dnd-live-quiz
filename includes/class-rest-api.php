@@ -936,52 +936,154 @@ class Live_Quiz_REST_API {
     /**
      * Get players list (for host)
      */
+    /**
+     * Get players (for host)
+     * Returns only ACTIVE/CONNECTED players from WebSocket server
+     */
     public static function get_players($request) {
         $session_id = $request->get_param('id');
         
-        $players = Live_Quiz_Session_Manager::get_participants($session_id);
+        // Try to get active players from WebSocket server
+        $websocket_url = get_option('live_quiz_websocket_url', '');
         
-        // Re-index array to ensure sequential keys
+        if ($websocket_url) {
+            $api_url = rtrim($websocket_url, '/') . '/api/sessions/' . $session_id . '/active-players';
+            
+            $response = wp_remote_get($api_url, array(
+                'timeout' => 5,
+                'sslverify' => false,
+            ));
+            
+            if (!is_wp_error($response)) {
+                $body = wp_remote_retrieve_body($response);
+                $data = json_decode($body, true);
+                
+                if (isset($data['success']) && $data['success'] && isset($data['players'])) {
+                    return rest_ensure_response(array(
+                        'success' => true,
+                        'players' => $data['players'],
+                        'source' => 'websocket'
+                    ));
+                }
+            }
+        }
+        
+        // Fallback: Get from database
+        $players = Live_Quiz_Session_Manager::get_participants($session_id);
         $players = array_values($players);
         
         return rest_ensure_response(array(
             'success' => true,
             'players' => $players,
+            'source' => 'database'
         ));
     }
     
     /**
      * Get player count (for players - public endpoint)
+     * Returns count of ACTIVE/CONNECTED players from WebSocket server
      */
     public static function get_player_count($request) {
         $session_id = $request->get_param('id');
         
-        // Get session to find host_id
+        // Get session to verify it exists
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         if (!$session) {
             return new WP_Error('not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
         }
         
+        // Try to get active players count from WebSocket server
+        $websocket_url = get_option('live_quiz_websocket_url', '');
+        
+        if ($websocket_url) {
+            $api_url = rtrim($websocket_url, '/') . '/api/sessions/' . $session_id . '/active-players';
+            
+            $response = wp_remote_get($api_url, array(
+                'timeout' => 5,
+                'sslverify' => false,
+            ));
+            
+            if (!is_wp_error($response)) {
+                $body = wp_remote_retrieve_body($response);
+                $data = json_decode($body, true);
+                
+                if (isset($data['success']) && $data['success'] && isset($data['count'])) {
+                    return rest_ensure_response(array(
+                        'success' => true,
+                        'count' => $data['count'],
+                        'source' => 'websocket'
+                    ));
+                }
+            }
+        }
+        
+        // Fallback: Get from database
         $players = Live_Quiz_Session_Manager::get_participants($session_id);
         
         return rest_ensure_response(array(
             'success' => true,
             'count' => count($players),
+            'source' => 'database'
         ));
     }
     
     /**
      * Get players list (for players - public endpoint)
+     * Returns only ACTIVE/CONNECTED players from WebSocket server
      */
     public static function get_players_list($request) {
         $session_id = $request->get_param('id');
         
-        // Get session to find host_id
+        // Get session to verify it exists
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         if (!$session) {
             return new WP_Error('not_found', __('Không tìm thấy phiên', 'live-quiz'), array('status' => 404));
         }
         
+        // Try to get active players from WebSocket server
+        $websocket_url = get_option('live_quiz_websocket_url', '');
+        
+        if ($websocket_url) {
+            // Call WebSocket server API to get active players
+            $api_url = rtrim($websocket_url, '/') . '/api/sessions/' . $session_id . '/active-players';
+            
+            error_log('[LiveQuiz] Attempting to fetch active players from WebSocket: ' . $api_url);
+            
+            $response = wp_remote_get($api_url, array(
+                'timeout' => 5,
+                'sslverify' => false,
+            ));
+            
+            if (is_wp_error($response)) {
+                error_log('[LiveQuiz] WebSocket API error: ' . $response->get_error_message());
+            } else {
+                $response_code = wp_remote_retrieve_response_code($response);
+                $body = wp_remote_retrieve_body($response);
+                $data = json_decode($body, true);
+                
+                error_log('[LiveQuiz] WebSocket API response code: ' . $response_code);
+                error_log('[LiveQuiz] WebSocket API response body: ' . substr($body, 0, 500));
+                
+                if (isset($data['success']) && $data['success'] && isset($data['players'])) {
+                    error_log('[LiveQuiz] ✓ Got ' . count($data['players']) . ' active players from WebSocket server for session ' . $session_id);
+                    
+                    return rest_ensure_response(array(
+                        'success' => true,
+                        'players' => $data['players'],
+                        'source' => 'websocket'
+                    ));
+                } else {
+                    error_log('[LiveQuiz] ✗ WebSocket response invalid or missing players data');
+                }
+            }
+            
+            // If WebSocket call fails, log error
+            error_log('[LiveQuiz] ⚠️ Falling back to database for session ' . $session_id);
+        } else {
+            error_log('[LiveQuiz] ⚠️ WebSocket URL not configured, using database');
+        }
+        
+        // Fallback: Get from database (may include disconnected players)
         $players = Live_Quiz_Session_Manager::get_participants($session_id);
         
         // Re-index array to ensure sequential keys
@@ -998,6 +1100,7 @@ class Live_Quiz_REST_API {
         return rest_ensure_response(array(
             'success' => true,
             'players' => $players_list,
+            'source' => 'database'
         ));
     }
     

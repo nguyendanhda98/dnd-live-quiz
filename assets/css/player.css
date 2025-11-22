@@ -132,6 +132,40 @@
     padding: 20px;
 }
 
+/* Clickable players (for host) */
+.player-waiting-item.clickable {
+    cursor: pointer;
+    position: relative;
+}
+
+.player-waiting-item.clickable:hover {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.player-waiting-item.clickable.current-user:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    opacity: 0.95;
+}
+
+.player-waiting-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 18px;
+    color: #999;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.player-waiting-item.clickable:hover .player-waiting-indicator {
+    opacity: 1;
+}
+
+.player-waiting-item.current-user .player-waiting-indicator {
+    color: white;
+}
+
 /* Reset & Base */
 .live-quiz-container {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;

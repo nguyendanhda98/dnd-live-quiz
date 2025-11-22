@@ -646,16 +646,16 @@ io.on('connection', async (socket) => {
             });
             
             // Leave the room
-            socket.leave(`session:${socket.sessionId}`);
-            
             // Only remove from participants and notify if NOT host
             if (!socket.isHost) {
-                // Notify other participants
-                socket.to(`session:${socket.sessionId}`).emit('participant_left', {
+                // Notify other participants BEFORE leaving the room
+                io.to(`session:${socket.sessionId}`).emit('participant_left', {
                     user_id: socket.userId,
                     display_name: socket.displayName
                 });
             }
+            
+            socket.leave(`session:${socket.sessionId}`);
             
             // Remove active connection from Redis (use role from socket)
             const role = socket.isHost ? 'host' : 'player';
@@ -1437,6 +1437,48 @@ app.get('/health', async (req, res) => {
             status: 'error',
             redis: 'disconnected',
             error: error.message,
+        });
+    }
+});
+
+// Get active players for a session
+app.get('/api/sessions/:sessionId/active-players', async (req, res) => {
+    try {
+        const sessionId = req.params.sessionId;
+        
+        // Get all sockets in the session room
+        const socketsInRoom = await io.in(`session:${sessionId}`).fetchSockets();
+        
+        // Filter to only players (not host) and extract player info
+        const activePlayers = socketsInRoom
+            .filter(socket => !socket.isHost)
+            .map(socket => ({
+                user_id: socket.userId,
+                display_name: socket.displayName,
+                socket_id: socket.id,
+                connected_at: socket.handshake.time
+            }));
+        
+        logger.info('Active players fetched', {
+            sessionId,
+            count: activePlayers.length,
+            players: activePlayers.map(p => p.display_name)
+        });
+        
+        res.json({
+            success: true,
+            session_id: sessionId,
+            players: activePlayers,
+            count: activePlayers.length
+        });
+    } catch (error) {
+        logger.error('Error fetching active players', { 
+            error: error.message, 
+            sessionId: req.params.sessionId 
+        });
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to fetch active players' 
         });
     }
 });

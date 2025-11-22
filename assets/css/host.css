@@ -522,6 +522,123 @@
     font-weight: 400;
 }
 
+/* New shared player-waiting-item styles (same as player.css) */
+.players-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 20px;
+    padding: 10px;
+}
+
+.player-waiting-item {
+    background: white;
+    border-radius: 8px;
+    padding: 12px 8px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+}
+
+.player-waiting-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.player-waiting-item.current-user {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    border: 2px solid #667eea;
+}
+
+.player-waiting-item.current-user .player-waiting-avatar {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+}
+
+.player-waiting-item.current-user .player-waiting-name {
+    color: white;
+}
+
+.player-waiting-item.current-user .player-waiting-name .name-text {
+    color: white;
+    font-weight: 600;
+}
+
+.player-waiting-item.current-user .player-waiting-name .username-text {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.player-waiting-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 auto 8px;
+}
+
+.player-waiting-name {
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: center;
+}
+
+.player-waiting-name .name-text {
+    font-weight: 500;
+}
+
+.player-waiting-name .username-text {
+    font-size: 11px;
+    color: #666;
+    font-weight: 400;
+}
+
+/* Clickable players (for host) */
+.player-waiting-item.clickable {
+    cursor: pointer;
+}
+
+.player-waiting-item.clickable:hover {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.player-waiting-item.clickable.current-user:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    opacity: 0.95;
+}
+
+.player-waiting-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 18px;
+    color: #999;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.player-waiting-item.clickable:hover .player-waiting-indicator {
+    opacity: 1;
+}
+
+.player-waiting-item.current-user .player-waiting-indicator {
+    color: white;
+}
+
 /* Player Action Modal */
 .player-action-modal {
     position: fixed;

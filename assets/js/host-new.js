@@ -714,81 +714,61 @@
         // ========================================
         
         /**
-         * Fetch players (using shared QuizPlayers module)
+         * Fetch players
          */
         fetchPlayers: function() {
             const self = this;
             
-            QuizPlayers.fetchPlayersList(
-                this.apiConfig.apiUrl,
-                QuizCore.state.sessionId,
-                '/players',
-                this.apiConfig.nonce,
-                $('#players-list')[0],
-                QuizCore.state.displayName,
-                true, // isHost
-                function(count) {
-                    // Update count
-                    $('#player-count').text(count);
-                    // Update start button
-                    self.updateStartButton();
-                    // Bind click events for player actions (host-specific)
-                    self.bindPlayerClickEvents();
+            $.ajax({
+                url: this.apiConfig.apiUrl + '/sessions/' + QuizCore.state.sessionId + '/players',
+                method: 'GET',
+                headers: {
+                    'X-WP-Nonce': this.apiConfig.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.players) {
+                        // Replace players
+                        QuizCore.state.players = {};
+                        response.players.forEach(function(player) {
+                            QuizCore.state.players[player.user_id] = player;
+                        });
+                        self.updatePlayersList(Object.values(QuizCore.state.players));
+                    }
+                },
+                error: function(xhr) {
+                    console.error('[HOST] Error fetching players:', xhr);
                 }
-            );
-        },
-        
-        /**
-         * Bind click events for player actions (host-specific)
-         */
-        bindPlayerClickEvents: function() {
-            const self = this;
-            $('.player-waiting-item.clickable').off('click').on('click', function() {
-                const playerId = $(this).data('player-id');
-                const playerName = $(this).data('player-name');
-                self.showPlayerActionMenu(playerId, playerName, this);
             });
         },
         
         /**
-         * Handle player joined (using shared QuizPlayers module)
+         * Handle player joined
          */
         handlePlayerJoined: function(data) {
-            QuizPlayers.handlePlayerJoined(
-                data,
-                $('#players-list')[0],
-                QuizCore.state.displayName,
-                true // isHost
-            );
+            console.log('[HOST] Player joined:', data);
+            const playerId = data.user_id;
             
-            // Update count and start button
-            const count = Object.keys(QuizCore.state.players).length;
-            $('#player-count').text(count);
-            this.updateStartButton();
-            
-            // Bind click events
-            this.bindPlayerClickEvents();
+            if (playerId) {
+                QuizCore.state.players[playerId] = data;
+                this.updatePlayersList(Object.values(QuizCore.state.players));
+            }
         },
         
         /**
-         * Handle player left (using shared QuizPlayers module)
+         * Handle player left
          */
         handlePlayerLeft: function(data) {
-            QuizPlayers.handlePlayerLeft(
-                data,
-                $('#players-list')[0],
-                QuizCore.state.displayName,
-                true // isHost
-            );
+            console.log('[HOST] Player left:', data);
+            const playerId = data.user_id;
             
-            // Update count and start button
-            const count = Object.keys(QuizCore.state.players).length;
-            $('#player-count').text(count);
-            this.updateStartButton();
+            if (playerId) {
+                delete QuizCore.state.players[playerId];
+                this.updatePlayersList(Object.values(QuizCore.state.players));
+            }
         },
         
         /**
-         * Update players list (using shared QuizPlayers module)
+         * Update players list (using QuizUI)
          */
         updatePlayersList: function(players) {
             const $list = $('#players-list');
@@ -800,276 +780,27 @@
             // Update start button
             this.updateStartButton();
             
-            // Update list using shared module
-            QuizPlayers.updatePlayersList(players, $list[0], QuizCore.state.displayName, true);
+            // Update list using QuizUI
+            QuizUI.updatePlayersList(players, $list[0], QuizCore.state.displayName);
             
             // Bind click events for player actions (host-specific)
-            this.bindPlayerClickEvents();
+            const self = this;
+            $('.player-waiting-item').on('click', function() {
+                // Get player from element
+                const displayName = $(this).find('.name-text').text();
+                const player = players.find(p => p.display_name.includes(displayName));
+                if (player) {
+                    self.showPlayerActionMenu(player.user_id, player.display_name, this);
+                }
+            });
         },
         
         /**
          * Show player action menu (host-specific)
          */
         showPlayerActionMenu: function(playerId, playerName, playerElement) {
+            // TODO: Implement player action menu
             console.log('[HOST] Show player action menu:', playerId, playerName);
-            
-            const self = this;
-            
-            // Remove any existing modal
-            $('.player-action-modal').remove();
-            
-            // Get player avatar initial
-            const initial = playerName ? playerName.charAt(0).toUpperCase() : '?';
-            
-            // Create modal popup
-            const modal = $(`
-                <div class="player-action-modal">
-                    <div class="modal-overlay"></div>
-                    <div class="modal-content">
-                        <button class="modal-close">&times;</button>
-                        <div class="modal-player-info">
-                            <div class="modal-player-avatar">${initial}</div>
-                            <h3 class="modal-player-name">${this.escapeHtml(playerName)}</h3>
-                        </div>
-                        <div class="modal-actions">
-                            <button class="modal-action-btn btn-kick" data-action="kick">
-                                <span class="action-icon">✕</span>
-                                <span class="action-text">Đá khỏi phòng</span>
-                                <span class="action-desc">Loại người chơi ra khỏi phòng hiện tại</span>
-                            </button>
-                            <button class="modal-action-btn btn-ban-session" data-action="ban-session">
-                                <span class="action-icon">🚫</span>
-                                <span class="action-text">Cấm vào phòng</span>
-                                <span class="action-desc">Không cho vào lại phòng này</span>
-                            </button>
-                            <button class="modal-action-btn btn-ban-permanent" data-action="ban-permanent">
-                                <span class="action-icon">⛔</span>
-                                <span class="action-text">Cấm vĩnh viễn</span>
-                                <span class="action-desc">Không cho tham gia bất kỳ phòng nào</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `);
-            
-            // Add to body
-            $('body').append(modal);
-            
-            // Animate in
-            setTimeout(function() {
-                modal.addClass('active');
-            }, 10);
-            
-            // Bind action button clicks
-            modal.find('.modal-action-btn').on('click', function(e) {
-                e.preventDefault();
-                const action = $(this).data('action');
-                
-                // Close modal
-                modal.removeClass('active');
-                setTimeout(function() {
-                    modal.remove();
-                }, 300);
-                
-                // Execute action
-                switch(action) {
-                    case 'kick':
-                        self.kickPlayer(playerId, playerName);
-                        break;
-                    case 'ban-session':
-                        self.banFromSession(playerId, playerName);
-                        break;
-                    case 'ban-permanent':
-                        self.banPermanently(playerId, playerName);
-                        break;
-                }
-            });
-            
-            // Close modal when clicking overlay or close button
-            modal.find('.modal-overlay, .modal-close').on('click', function(e) {
-                e.preventDefault();
-                modal.removeClass('active');
-                setTimeout(function() {
-                    modal.remove();
-                }, 300);
-            });
-            
-            // Close on ESC key
-            $(document).on('keydown.player-modal', function(e) {
-                if (e.key === 'Escape') {
-                    modal.removeClass('active');
-                    setTimeout(function() {
-                        modal.remove();
-                        $(document).off('keydown.player-modal');
-                    }, 300);
-                }
-            });
-        },
-        
-        /**
-         * Kick player from session
-         */
-        kickPlayer: function(playerId, playerName) {
-            const self = this;
-            
-            // Confirm before kicking
-            if (!confirm('Bạn có chắc muốn kick "' + playerName + '" khỏi phòng?')) {
-                return;
-            }
-            
-            if (!this.apiConfig) {
-                alert('Không thể kick người chơi: API không khả dụng');
-                return;
-            }
-            
-            const kickUrl = this.apiConfig.apiUrl + '/sessions/' + QuizCore.state.sessionId + '/kick-player';
-            console.log('[HOST] === KICKING PLAYER ===');
-            console.log('[HOST] URL:', kickUrl);
-            console.log('[HOST] Player ID:', playerId);
-            
-            // Send kick request
-            $.ajax({
-                url: kickUrl,
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    user_id: playerId
-                }),
-                headers: {
-                    'X-WP-Nonce': this.apiConfig.nonce
-                },
-                success: function(response) {
-                    console.log('[HOST] ✓ Player kicked successfully:', response);
-                    
-                    // Remove player from local list
-                    delete QuizCore.state.players[playerId];
-                    self.updatePlayersList(Object.values(QuizCore.state.players));
-                    
-                    // Show notification
-                    self.showNotification('Đã kick "' + playerName + '" khỏi phòng', 'success');
-                },
-                error: function(xhr, status, error) {
-                    console.error('[HOST] ✗ Error kicking player:', xhr);
-                    alert('Không thể kick người chơi: ' + (xhr.responseJSON?.message || error));
-                }
-            });
-        },
-        
-        /**
-         * Ban player from current session
-         */
-        banFromSession: function(playerId, playerName) {
-            const self = this;
-            
-            // Confirm before banning
-            if (!confirm('Bạn có chắc muốn ban "' + playerName + '" khỏi phòng này?\n\nNgười chơi sẽ không thể tham gia lại phòng này.')) {
-                return;
-            }
-            
-            if (!this.apiConfig) {
-                alert('Không thể ban người chơi: API không khả dụng');
-                return;
-            }
-            
-            const banUrl = this.apiConfig.apiUrl + '/sessions/' + QuizCore.state.sessionId + '/ban-from-session';
-            console.log('[HOST] === BANNING FROM SESSION ===');
-            console.log('[HOST] Player ID:', playerId);
-            
-            // Send ban request
-            $.ajax({
-                url: banUrl,
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    user_id: playerId
-                }),
-                headers: {
-                    'X-WP-Nonce': this.apiConfig.nonce
-                },
-                success: function(response) {
-                    console.log('[HOST] ✓ Player banned from session:', response);
-                    
-                    // Remove player from local list
-                    delete QuizCore.state.players[playerId];
-                    self.updatePlayersList(Object.values(QuizCore.state.players));
-                    
-                    // Show notification
-                    self.showNotification('Đã ban "' + playerName + '" khỏi phòng này', 'success');
-                },
-                error: function(xhr, status, error) {
-                    console.error('[HOST] ✗ Error banning player:', xhr);
-                    alert('Không thể ban người chơi: ' + (xhr.responseJSON?.message || error));
-                }
-            });
-        },
-        
-        /**
-         * Ban player permanently
-         */
-        banPermanently: function(playerId, playerName) {
-            const self = this;
-            
-            // Confirm before permanent ban
-            if (!confirm('⚠️ BAN VĨNH VIỄN\n\nBạn có chắc muốn ban vĩnh viễn "' + playerName + '"?\n\nNgười chơi này sẽ KHÔNG THỂ tham gia BẤT KỲ phòng nào do bạn tạo ra.')) {
-                return;
-            }
-            
-            if (!this.apiConfig) {
-                alert('Không thể ban người chơi: API không khả dụng');
-                return;
-            }
-            
-            const banUrl = this.apiConfig.apiUrl + '/sessions/' + QuizCore.state.sessionId + '/ban-permanently';
-            console.log('[HOST] === BANNING PERMANENTLY ===');
-            console.log('[HOST] Player ID:', playerId);
-            
-            // Send ban request
-            $.ajax({
-                url: banUrl,
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    user_id: playerId
-                }),
-                headers: {
-                    'X-WP-Nonce': this.apiConfig.nonce
-                },
-                success: function(response) {
-                    console.log('[HOST] ✓ Player banned permanently:', response);
-                    
-                    // Remove player from local list
-                    delete QuizCore.state.players[playerId];
-                    self.updatePlayersList(Object.values(QuizCore.state.players));
-                    
-                    // Show notification
-                    self.showNotification('⛔ Đã ban vĩnh viễn "' + playerName + '"', 'warning');
-                },
-                error: function(xhr, status, error) {
-                    console.error('[HOST] ✗ Error banning player permanently:', xhr);
-                    alert('Không thể ban người chơi: ' + (xhr.responseJSON?.message || error));
-                }
-            });
-        },
-        
-        /**
-         * Show notification
-         */
-        showNotification: function(message, type) {
-            // Create notification element
-            const $notification = $('<div class="host-notification ' + type + '">' + message + '</div>');
-            $('body').append($notification);
-            
-            // Show and auto-hide
-            setTimeout(function() {
-                $notification.addClass('show');
-            }, 10);
-            
-            setTimeout(function() {
-                $notification.removeClass('show');
-                setTimeout(function() {
-                    $notification.remove();
-                }, 300);
-            }, 3000);
         },
         
         // ========================================

@@ -420,11 +420,39 @@ final class Live_Quiz {
             true
         );
         
-        // Player JS
+        // Shared modules (loaded in order)
+        // 1. Core functionality
+        wp_enqueue_script(
+            'live-quiz-core',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/quiz-core.js',
+            array('socketio'),
+            LIVE_QUIZ_VERSION,
+            true
+        );
+        
+        // 2. UI rendering
+        wp_enqueue_script(
+            'live-quiz-ui',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/quiz-ui.js',
+            array('live-quiz-core'),
+            LIVE_QUIZ_VERSION,
+            true
+        );
+        
+        // 3. WebSocket handling
+        wp_enqueue_script(
+            'live-quiz-websocket',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/quiz-websocket.js',
+            array('live-quiz-core', 'live-quiz-ui'),
+            LIVE_QUIZ_VERSION,
+            true
+        );
+        
+        // 4. Player-specific code
         wp_enqueue_script(
             'live-quiz-player',
             LIVE_QUIZ_PLUGIN_URL . 'assets/js/player.js',
-            array('socketio'),
+            array('live-quiz-core', 'live-quiz-ui', 'live-quiz-websocket'),
             LIVE_QUIZ_VERSION,
             true
         );
@@ -499,11 +527,39 @@ final class Live_Quiz {
             true
         );
         
-        // Enqueue host JS
+        // Shared modules (loaded in order)
+        // 1. Core functionality
+        wp_enqueue_script(
+            'live-quiz-core',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/quiz-core.js',
+            array('socketio'),
+            LIVE_QUIZ_VERSION,
+            true
+        );
+        
+        // 2. UI rendering
+        wp_enqueue_script(
+            'live-quiz-ui',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/quiz-ui.js',
+            array('live-quiz-core'),
+            LIVE_QUIZ_VERSION,
+            true
+        );
+        
+        // 3. WebSocket handling
+        wp_enqueue_script(
+            'live-quiz-websocket',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/quiz-websocket.js',
+            array('live-quiz-core', 'live-quiz-ui'),
+            LIVE_QUIZ_VERSION,
+            true
+        );
+        
+        // 4. Host-specific code
         wp_enqueue_script(
             'live-quiz-host',
             LIVE_QUIZ_PLUGIN_URL . 'assets/js/host.js',
-            array('jquery', 'socketio'),
+            array('jquery', 'live-quiz-core', 'live-quiz-ui', 'live-quiz-websocket'),
             LIVE_QUIZ_VERSION . '-' . time(),
             true
         );

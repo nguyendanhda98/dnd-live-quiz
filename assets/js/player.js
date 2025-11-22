@@ -1,7 +1,10 @@
 /**
- * Live Quiz Player JavaScript - Phase 2 (WebSocket Only)
+ * Live Quiz Player JavaScript - Refactored Version using Shared Modules
  * 
- * Uses WebSocket (Socket.io) for real-time communication
+ * Uses shared modules:
+ * - QuizCore: Core functionality (state, timers, clock sync)
+ * - QuizUI: UI rendering (questions, leaderboards, animations)
+ * - QuizWebSocket: WebSocket connection and events
  * 
  * @package LiveQuiz
  * @version 2.0.0
@@ -10,54 +13,50 @@
 (function() {
     'use strict';
     
-    // State
-    let state = {
-        sessionId: null,
-        userId: null,
-        displayName: null,
-        roomCode: null,
-        websocketToken: null,
-        currentQuestion: null,
-        questionStartTime: null,
-        serverStartTime: null, // Server timestamp when question started
-        displayStartTime: null, // Local timestamp when we start displaying (for offset calculation)
-        displayDelay: 3,
-        timerInterval: null,
-        timerAccelerated: false, // Track if timer has been accelerated to zero
-        connectionId: null, // Unique ID for this tab/device
-        
-        // WebSocket connection
-        socket: null,
-        reconnectAttempts: 0,
-        maxReconnectAttempts: 5,
-        isConnected: false,
-        
-        // Ping measurement
-        pingInterval: null,
-        lastPing: null,
-        currentPing: null,
-        
-        // Clock synchronization
-        clockOffset: 0, // Difference between server time and client time (server_time - client_time)
-        syncAttempts: 0,
-        maxSyncAttempts: 5,
-        
-        // Players tracking
-        players: {}, // Map of user_id to player info
-        answeredPlayers: [], // Track players who answered current question
-    };
-    
-    let floatingLeaveButton = null;
-    
-    /**
-     * Generate unique connection ID for this tab/device
-     */
-    function generateConnectionId() {
-        return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-    }
-    
     // Config from WordPress
     const config = window.liveQuizConfig || {};
+    
+    // DOM Elements
+    const elements = {
+        // Screens
+        lobbyScreen: null,
+        waitingScreen: null,
+        countdownScreen: null,
+        questionScreen: null,
+        resultsScreen: null,
+        top3Screen: null,
+        finalScreen: null,
+        
+        // Question elements
+        questionNumber: null,
+        questionText: null,
+        choicesContainer: null,
+        answeredPlayersList: null,
+        answerCountDisplay: null,
+        answerCountText: null,
+        
+        // Timer elements
+        timerFill: null,
+        timerText: null,
+        
+        // Leaderboard elements
+        leaderboardOverlay: null,
+        animatedLeaderboard: null,
+        top3Podium: null,
+        top3List: null,
+        playerTop3Podium: null,
+        playerTop10List: null,
+        
+        // Waiting room elements
+        waitingPlayerName: null,
+        waitingRoomCode: null,
+        playersWaitingList: null,
+        participantCount: null,
+        
+        // Other elements
+        pingIndicator: null,
+        leaveButton: null
+    };
     
     // Initialize
     document.addEventListener('DOMContentLoaded', init);
@@ -66,23 +65,35 @@
         console.log('=== [PLAYER] INIT STARTED ===');
         console.log('[PLAYER] Current URL:', window.location.href);
         
-        floatingLeaveButton = document.querySelector('.leave-room-floating');
-        setFloatingLeaveVisibility(false);
+        // Initialize QuizCore
+        QuizCore.init('player', {
+            sessionId: null,
+            userId: null,
+            displayName: null,
+            roomCode: null
+        });
         
+        // Get DOM elements
+        initElements();
+        
+        // Setup event listeners
         setupEventListeners();
+        
+        // Check Socket.IO library
         checkSocketIOLibrary();
         
+        // Extract room code from URL
         const urlRoomCode = extractRoomCodeFromUrl();
         console.log('[PLAYER] URL room code:', urlRoomCode);
         
-        // ONLY restore from server (user must be logged in)
+        // Restore session from server (if user is logged in)
         console.log('[PLAYER] Fetching user active session from server...');
         const serverSession = await fetchUserActiveSession();
         console.log('[PLAYER] Server session response:', serverSession);
         
         if (serverSession) {
             console.log('[PLAYER] Found server session, attempting to restore...');
-            const restored = restoreSessionFromData(serverSession, urlRoomCode);
+            const restored = await restoreSessionFromData(serverSession, urlRoomCode);
             if (restored) {
                 console.log('[PLAYER] Session restored from server successfully');
                 return;
@@ -105,6 +116,88 @@
     }
     
     /**
+     * Initialize DOM elements
+     */
+    function initElements() {
+        // Screens
+        elements.lobbyScreen = document.getElementById('quiz-lobby');
+        elements.waitingScreen = document.getElementById('quiz-waiting');
+        elements.countdownScreen = document.getElementById('quiz-countdown');
+        elements.questionScreen = document.getElementById('quiz-question');
+        elements.resultsScreen = document.getElementById('quiz-results');
+        elements.top3Screen = document.getElementById('quiz-top3');
+        elements.finalScreen = document.getElementById('quiz-final');
+        
+        // Question elements
+        elements.questionNumber = document.querySelector('.question-number');
+        elements.questionText = document.querySelector('.question-text');
+        elements.choicesContainer = document.getElementById('choices-container');
+        elements.answeredPlayersList = document.getElementById('answered-players-list');
+        elements.answerCountDisplay = document.querySelector('.answer-count-display');
+        elements.answerCountText = document.querySelector('.answer-count-text');
+        
+        // Timer elements
+        elements.timerFill = document.querySelector('.timer-fill');
+        elements.timerText = document.querySelector('.timer-text');
+        
+        // Leaderboard elements
+        elements.leaderboardOverlay = document.getElementById('player-leaderboard-overlay');
+        elements.animatedLeaderboard = document.getElementById('player-animated-leaderboard');
+        elements.top3Podium = document.getElementById('top3-podium');
+        elements.top3List = document.getElementById('top3-list');
+        elements.playerTop3Podium = document.getElementById('player-top3-podium');
+        elements.playerTop10List = document.getElementById('player-top10-list');
+        
+        // Waiting room elements
+        elements.waitingPlayerName = document.getElementById('waiting-player-name');
+        elements.waitingRoomCode = document.getElementById('waiting-room-code');
+        elements.playersWaitingList = document.getElementById('players-waiting-list');
+        elements.participantCount = document.getElementById('participant-count');
+        
+        // Other elements
+        elements.pingIndicator = document.getElementById('ping-indicator');
+        elements.leaveButton = document.querySelector('.leave-room-floating');
+    }
+    
+    /**
+     * Setup event listeners
+     */
+    function setupEventListeners() {
+        // Join form
+        const joinForm = document.getElementById('join-form');
+        if (joinForm) {
+            joinForm.addEventListener('submit', handleJoin);
+        }
+        
+        // Room code input - auto uppercase
+        const roomCodeInput = document.getElementById('room-code');
+        if (roomCodeInput) {
+            roomCodeInput.addEventListener('input', function(e) {
+                e.target.value = e.target.value.toUpperCase();
+            });
+        }
+        
+        // Leave room buttons
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('leave-room-btn') || e.target.classList.contains('leave-room-icon')) {
+                handleLeaveRoom();
+            }
+        });
+    }
+    
+    /**
+     * Check if Socket.io library is loaded
+     */
+    function checkSocketIOLibrary() {
+        if (typeof io === 'undefined') {
+            console.error('[PLAYER] Socket.io library not loaded!');
+            showError('join-error', 'Socket.io library không được tải. Vui lòng tải lại trang.');
+        } else {
+            console.log('[PLAYER] Socket.io library ready');
+        }
+    }
+    
+    /**
      * Extract room code from URL (/play/{code})
      */
     function extractRoomCodeFromUrl() {
@@ -112,7 +205,6 @@
         const playIndex = pathParts.findIndex(part => part === 'play');
         if (playIndex !== -1 && pathParts[playIndex + 1]) {
             const code = pathParts[playIndex + 1];
-            // Validate 6-digit code
             if (/^\d{6}$/.test(code)) {
                 return code;
             }
@@ -140,7 +232,7 @@
             
             return null;
         } catch (error) {
-            console.error('[Live Quiz] Failed to fetch user session:', error);
+            console.error('[PLAYER] Failed to fetch user session:', error);
             return null;
         }
     }
@@ -150,44 +242,41 @@
      */
     async function restoreSessionFromData(session, urlRoomCode) {
         try {
-            console.log('[Live Quiz] Restoring session from data:', session);
+            console.log('[PLAYER] Restoring session from data:', session);
             
             // If URL has code that doesn't match, don't restore
             if (urlRoomCode && session.roomCode !== urlRoomCode) {
-                console.log('[Live Quiz] URL code mismatch, not restoring');
+                console.log('[PLAYER] URL code mismatch, not restoring');
                 return false;
             }
             
-            // Restore state
-            state.sessionId = session.sessionId;
-            state.userId = session.userId;
-            state.displayName = session.displayName;
-            state.roomCode = session.roomCode;
-            state.websocketToken = session.websocketToken;
-            // ALWAYS generate NEW connectionId to trigger multi-device kick
-            state.connectionId = generateConnectionId();
+            // Restore state to QuizCore
+            QuizCore.state.sessionId = session.sessionId;
+            QuizCore.state.userId = session.userId;
+            QuizCore.state.displayName = session.displayName;
+            QuizCore.state.roomCode = session.roomCode;
+            QuizCore.state.websocketToken = session.websocketToken;
             
-            console.log('[Live Quiz] Session restored from server with NEW connectionId:', state.connectionId);
-            console.log('[Live Quiz] Room code:', state.roomCode);
-            console.log('[Live Quiz] Session status:', session.sessionStatus);
+            console.log('[PLAYER] Session restored:', {
+                sessionId: QuizCore.state.sessionId,
+                roomCode: QuizCore.state.roomCode,
+                status: session.sessionStatus
+            });
             
             // Update URL if needed
             if (!urlRoomCode) {
-                const playUrl = '/play/' + state.roomCode;
-                window.history.replaceState({ roomCode: state.roomCode }, '', playUrl);
-                console.log('[Live Quiz] Redirected to', playUrl);
+                const playUrl = '/play/' + QuizCore.state.roomCode;
+                window.history.replaceState({ roomCode: QuizCore.state.roomCode }, '', playUrl);
             }
             
-            // Check if session is ended - show final leaderboard instead of waiting screen
+            // Check if session is ended - show final leaderboard
             if (session.sessionStatus === 'ended') {
-                console.log('[Live Quiz] Session is ended, showing final leaderboard');
-                
-                // Show final screen
+                console.log('[PLAYER] Session is ended, showing final leaderboard');
                 showScreen('quiz-final');
                 
                 // Fetch and display final leaderboard
                 try {
-                    const response = await fetch(config.restUrl + '/sessions/' + state.sessionId + '/leaderboard', {
+                    const response = await fetch(config.restUrl + '/sessions/' + QuizCore.state.sessionId + '/leaderboard', {
                         method: 'GET',
                         headers: {
                             'X-WP-Nonce': config.nonce
@@ -197,24 +286,24 @@
                     const data = await response.json();
                     if (data.success && data.leaderboard) {
                         displayFinalResults({ leaderboard: data.leaderboard });
-                        console.log('[Live Quiz] Final leaderboard displayed');
-                    } else {
-                        console.warn('[Live Quiz] Failed to fetch leaderboard:', data);
                     }
                 } catch (error) {
-                    console.error('[Live Quiz] Error fetching final leaderboard:', error);
+                    console.error('[PLAYER] Error fetching final leaderboard:', error);
                 }
                 
-                // Still connect to WebSocket (in case host replays or ends session)
+                // Still connect to WebSocket
                 connectWebSocket();
-                
                 return true;
             }
             
             // Session is active - show waiting screen
             showScreen('quiz-waiting');
-            document.getElementById('waiting-player-name').textContent = state.displayName;
-            document.getElementById('waiting-room-code').textContent = state.roomCode;
+            if (elements.waitingPlayerName) {
+                elements.waitingPlayerName.textContent = QuizCore.state.displayName;
+            }
+            if (elements.waitingRoomCode) {
+                elements.waitingRoomCode.textContent = QuizCore.state.roomCode;
+            }
             
             // Fetch players list
             fetchPlayersList();
@@ -223,25 +312,23 @@
             // Connect to WebSocket
             connectWebSocket();
             
-            // Note: NO localStorage - server is source of truth
-            
             return true;
         } catch (error) {
-            console.error('[Live Quiz] Failed to restore session from data:', error);
+            console.error('[PLAYER] Failed to restore session from data:', error);
             return false;
         }
     }
     
     /**
-     * Sync current session state (question/results) via REST fallback
+     * Sync current session state via REST
      */
-    async function syncSessionState(trigger = 'manual') {
-        if (!state.sessionId || !config.restUrl) {
+    async function syncSessionState(trigger) {
+        if (!QuizCore.state.sessionId || !config.restUrl) {
             return;
         }
         
         try {
-            const response = await fetch(`${config.restUrl}/sessions/${state.sessionId}/state`, {
+            const response = await fetch(config.restUrl + '/sessions/' + QuizCore.state.sessionId + '/state', {
                 method: 'GET',
                 headers: {
                     'X-WP-Nonce': config.nonce
@@ -250,12 +337,12 @@
             
             const data = await response.json();
             if (!response.ok || !data.success || !data.state) {
-                console.warn('[Live Quiz] Session state sync failed:', data);
+                console.warn('[PLAYER] Session state sync failed:', data);
                 return;
             }
             
             const sessionState = data.state;
-            console.log('[Live Quiz] Session state synced:', sessionState.status, trigger);
+            console.log('[PLAYER] Session state synced:', sessionState.status, trigger);
             
             if (sessionState.status === 'question' && sessionState.current_question) {
                 handleQuestionStart(sessionState.current_question);
@@ -265,68 +352,83 @@
                 handleQuestionEnd(sessionState.latest_results);
             }
         } catch (error) {
-            console.error('[Live Quiz] Failed to sync session state:', error);
+            console.error('[PLAYER] Failed to sync session state:', error);
         }
     }
     
     /**
-     * Restore session - REMOVED
-     * No longer using localStorage - server is the source of truth
-     * Users must be logged in to play
+     * Handle join form submission
      */
-    
-    /**
-     * Check if Socket.io library is loaded
-     */
-    function checkSocketIOLibrary() {
-        if (typeof io === 'undefined') {
-            console.error('[Live Quiz] Socket.io library not loaded!');
-            showError('join-error', 'Socket.io library không được tải. Vui lòng tải lại trang.');
-        } else {
-            console.log('[Live Quiz] Socket.io library ready');
-        }
-    }
-    
-    function setupEventListeners() {
-        // Join form
-        const joinForm = document.getElementById('join-form');
-        if (joinForm) {
-            joinForm.addEventListener('submit', handleJoin);
-        }
+    async function handleJoin(e) {
+        e.preventDefault();
         
-        // Room code input - auto uppercase
-        const roomCodeInput = document.getElementById('room-code');
-        if (roomCodeInput) {
-            roomCodeInput.addEventListener('input', (e) => {
-                e.target.value = e.target.value.toUpperCase();
-            });
-        }
+        const displayName = document.getElementById('display-name').value.trim();
+        const roomCode = document.getElementById('room-code').value.trim().toUpperCase();
         
-        // Leave room buttons
-        document.addEventListener('click', function(e) {
-            if (e.target.classList.contains('leave-room-btn') || e.target.classList.contains('leave-room-icon')) {
-                handleLeaveRoom();
-            }
-        });
-    }
-    
-    function setFloatingLeaveVisibility(visible) {
-        if (!floatingLeaveButton) {
+        if (!displayName || !roomCode) {
+            showError('join-error', config.i18n.enterName);
             return;
         }
         
-        if (visible) {
-            floatingLeaveButton.classList.add('is-visible');
-        } else {
-            floatingLeaveButton.classList.remove('is-visible');
+        try {
+            const response = await fetch(config.restUrl + '/join', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': config.nonce,
+                },
+                body: JSON.stringify({
+                    display_name: displayName,
+                    room_code: roomCode,
+                    connection_id: QuizCore.state.connectionId,
+                }),
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to join');
+            }
+            
+            if (data.success) {
+                QuizCore.state.sessionId = data.session_id;
+                QuizCore.state.userId = data.user_id;
+                QuizCore.state.displayName = data.display_name;
+                QuizCore.state.roomCode = roomCode;
+                QuizCore.state.websocketToken = data.websocket_token || '';
+                
+                // Update URL
+                const playUrl = '/play/' + roomCode;
+                window.history.pushState({ roomCode: roomCode }, '', playUrl);
+                
+                // Show waiting screen
+                showScreen('quiz-waiting');
+                if (elements.waitingPlayerName) {
+                    elements.waitingPlayerName.textContent = displayName;
+                }
+                if (elements.waitingRoomCode) {
+                    elements.waitingRoomCode.textContent = roomCode;
+                }
+                
+                // Fetch players list
+                fetchPlayersList();
+                syncSessionState('join');
+                
+                // Connect to WebSocket
+                connectWebSocket();
+            }
+        } catch (error) {
+            console.error('[PLAYER] Join error:', error);
+            showError('join-error', error.message || config.i18n.error);
         }
     }
     
+    /**
+     * Handle leave room
+     */
     async function handleLeaveRoom() {
         if (confirm('Bạn có chắc chắn muốn rời khỏi phòng?')) {
-            // Call API to leave session (will clear user meta on server)
-            const sessionId = state.sessionId;
-            const userId = state.userId;
+            const sessionId = QuizCore.state.sessionId;
             
             if (sessionId) {
                 try {
@@ -341,28 +443,24 @@
                         })
                     });
                 } catch (error) {
-                    console.error('[Live Quiz] Error leaving session:', error);
+                    console.error('[PLAYER] Error leaving session:', error);
                 }
             }
             
             // Disconnect WebSocket
-            if (state.socket) {
-                state.socket.disconnect();
-            }
+            QuizWebSocket.disconnect();
             
             // Reset state
-            state.sessionId = null;
-            state.userId = null;
-            state.displayName = null;
-            state.roomCode = null;
-            state.websocketToken = null;
-            state.currentQuestion = null;
-            state.questionStartTime = null;
+            QuizCore.state.sessionId = null;
+            QuizCore.state.userId = null;
+            QuizCore.state.displayName = null;
+            QuizCore.state.roomCode = null;
+            QuizCore.state.websocketToken = null;
+            QuizCore.state.currentQuestion = null;
+            QuizCore.state.questionStartTime = null;
             
             // Clear timer
-            if (state.timerInterval) {
-                clearInterval(state.timerInterval);
-            }
+            QuizCore.cleanup();
             
             // Return to lobby
             showScreen('quiz-lobby');
@@ -372,233 +470,64 @@
         }
     }
     
-    async function handleJoin(e) {
-        e.preventDefault();
-        
-        const displayName = document.getElementById('display-name').value.trim();
-        const roomCode = document.getElementById('room-code').value.trim().toUpperCase();
-        
-        if (!displayName || !roomCode) {
-            showError('join-error', config.i18n.enterName);
-            return;
-        }
-        
-        try {
-            // Generate connection ID for this session
-            const connectionId = generateConnectionId();
-            state.connectionId = connectionId;
-            
-            const response = await fetch(config.restUrl + '/join', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-WP-Nonce': config.nonce,
-                },
-                body: JSON.stringify({
-                    display_name: displayName,
-                    room_code: roomCode,
-                    connection_id: connectionId,
-                }),
-            });
-            
-            const data = await response.json();
-            
-            if (!response.ok) {
-                throw new Error(data.message || 'Failed to join');
-            }
-            
-            if (data.success) {
-                state.sessionId = data.session_id;
-                state.userId = data.user_id;
-                state.displayName = data.display_name;
-                state.roomCode = roomCode;
-                state.websocketToken = data.websocket_token || '';
-                
-                // Note: NO localStorage - server handles session persistence
-                
-                // Update URL without reload using History API
-                const playUrl = '/play/' + roomCode;
-                window.history.pushState({ roomCode: roomCode }, '', playUrl);
-                
-                // Show waiting screen (không redirect, chỉ thay đổi UI trong block)
-                showScreen('quiz-waiting');
-                document.getElementById('waiting-player-name').textContent = displayName;
-                document.getElementById('waiting-room-code').textContent = roomCode;
-                
-                // Fetch and update players list
-                fetchPlayersList();
-                syncSessionState('join');
-                
-                // Connect to WebSocket
-                connectWebSocket();
-            }
-        } catch (error) {
-            console.error('Join error:', error);
-            showError('join-error', error.message || config.i18n.error);
-        }
-    }
-    
     /**
      * Connect to WebSocket server
      */
     function connectWebSocket() {
-        if (!config.websocket || !config.websocket.url) {
-            console.error('[Live Quiz] WebSocket URL not configured');
-            showError('join-error', 'WebSocket chưa được cấu hình. Vui lòng liên hệ quản trị viên.');
-            return;
-        }
-        
-        if (typeof io === 'undefined') {
-            console.error('[Live Quiz] Socket.io library not available');
-            showError('join-error', 'Socket.io không khả dụng. Vui lòng tải lại trang.');
-            return;
-        }
-        
-        console.log('[Live Quiz] Connecting to WebSocket:', config.websocket.url);
-        console.log('[Live Quiz] WebSocket token:', {
-            hasToken: !!state.websocketToken,
-            tokenLength: state.websocketToken ? state.websocketToken.length : 0,
-            userId: state.userId,
-            sessionId: state.sessionId
-        });
-        
-        if (!state.websocketToken) {
-            console.error('[Live Quiz] No WebSocket token available!');
-            showError('join-error', 'Không thể kết nối WebSocket. Vui lòng thử lại.');
-            return;
-        }
-        
-        // Initialize Socket.io connection with JWT token
-        state.socket = io(config.websocket.url, {
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            reconnectionAttempts: state.maxReconnectAttempts,
-            auth: {
-                token: state.websocketToken
-            }
-        });
-        
-        // Connection events
-        state.socket.on('connect', () => {
-            console.log('[Live Quiz] WebSocket connected');
-            state.isConnected = true;
-            state.reconnectAttempts = 0;
-            hideConnectionStatus();
+        const socket = QuizWebSocket.connect({
+            url: config.websocket.url,
+            token: QuizCore.state.websocketToken,
+            sessionId: QuizCore.state.sessionId,
+            userId: QuizCore.state.userId,
+            displayName: QuizCore.state.displayName,
+            isHost: false
+        }, {
+            pingElement: elements.pingIndicator,
             
-            // Start ping measurement
-            startPingMeasurement();
+            onConnect: function() {
+                console.log('[PLAYER] WebSocket connected');
+                hideConnectionStatus();
+            },
             
-            // Start clock synchronization
-            startClockSync();
+            onDisconnect: function(reason) {
+                console.log('[PLAYER] WebSocket disconnected:', reason);
+                showConnectionStatus(config.i18n.connection_lost, 'warning');
+            },
             
-            // Join the session room with connection ID
-            state.socket.emit('join_session', {
-                session_id: state.sessionId,
-                user_id: state.userId,
-                display_name: state.displayName,
-                connection_id: state.connectionId
-            });
-        });
-        
-        state.socket.on('disconnect', (reason) => {
-            console.log('[Live Quiz] WebSocket disconnected:', reason);
-            state.isConnected = false;
-            stopPingMeasurement();
-            showConnectionStatus(config.i18n.connection_lost, 'warning');
-        });
-        
-        state.socket.on('connect_error', (error) => {
-            console.error('[Live Quiz] Connection error:', error);
-            state.reconnectAttempts++;
+            onError: function(error) {
+                console.error('[PLAYER] Connection error:', error);
+            },
             
-            if (state.reconnectAttempts >= state.maxReconnectAttempts) {
-                showConnectionStatus('Không thể kết nối. Vui lòng tải lại trang.', 'error');
-            }
+            onReconnect: function(attemptNumber) {
+                console.log('[PLAYER] Reconnected after', attemptNumber, 'attempts');
+                showConnectionStatus(config.i18n.connection_restored, 'success');
+                setTimeout(hideConnectionStatus, 2000);
+            },
+            
+            onSessionState: handleSessionState,
+            onQuizCountdown: handleQuizCountdown,
+            onQuestionStart: handleQuestionStart,
+            onQuestionEnd: handleQuestionEnd,
+            onShowTop3: handleShowTop3,
+            onSessionEnd: handleSessionEnd,
+            onSessionReplay: handleSessionReplay,
+            onParticipantJoined: handleParticipantJoined,
+            onParticipantLeft: handleParticipantLeft,
+            onAnswerSubmitted: handleAnswerSubmitted,
+            onSessionKicked: handleSessionKicked,
+            onKicked: handleKicked,
+            onKickedFromSession: handleKickedFromSession,
+            onSessionEndedKicked: handleSessionEndedKicked,
+            onForceDisconnect: handleForceDisconnect
         });
-        
-        state.socket.on('reconnect', (attemptNumber) => {
-            console.log('[Live Quiz] Reconnected after', attemptNumber, 'attempts');
-            showConnectionStatus(config.i18n.connection_restored, 'success');
-            setTimeout(() => hideConnectionStatus(), 2000);
-        });
-        
-        // Quiz events
-        state.socket.on('session_state', handleSessionState);
-        state.socket.on('quiz_countdown', handleQuizCountdown);
-        state.socket.on('question_start', handleQuestionStart);
-        state.socket.on('question_end', handleQuestionEnd);
-        state.socket.on('show_top3', handleShowTop3);
-        state.socket.on('session_end', handleSessionEnd);
-        state.socket.on('session:replay', handleSessionReplay);
-        state.socket.on('participant_joined', (data) => {
-            // Don't use data.total_participants as it may include host
-            // Fetch actual list from API
-            console.log('[Live Quiz] Participant joined event:', data);
-            fetchPlayersList();
-        });
-        
-        state.socket.on('participant_left', (data) => {
-            console.log('[Live Quiz] Participant left event:', data);
-            fetchPlayersList();
-        });
-        
-        // Listen for session kicked (when same user joins from another device)
-        state.socket.on('session_kicked', (data) => {
-            console.log('[Live Quiz] Session kicked - another device joined:', data);
-            handleSessionKicked(data);
-        });
-        
-        // Listen for kicked event (when host ends room)
-        state.socket.on('kicked', (data) => {
-            console.log('[PLAYER] ✗ KICKED BY HOST (END ROOM) ✗');
-            console.log('[PLAYER] Message:', data.message);
-            console.log('[PLAYER] Data:', data);
-            handleSessionEndedKicked(data);
-        });
-        
-        // Listen for kicked from session by host
-        state.socket.on('kicked_from_session', (data) => {
-            console.log('[PLAYER] ✗ KICKED BY HOST ✗');
-            console.log('[PLAYER] Message:', data.message);
-            console.log('[PLAYER] Data:', data);
-            handleKickedByHost(data);
-        });
-        
-        // Listen for session ended by host - kick all players
-        state.socket.on('session_ended_kicked', (data) => {
-            console.log('[PLAYER] ✗ KICKED OUT OF ROOM ✗');
-            console.log('[PLAYER] Reason:', data.message);
-            console.log('[PLAYER] Data:', data);
-            handleSessionEndedKicked(data);
-        });
-        
-        // Listen for force_disconnect (when user opens new tab/device)
-        state.socket.on('force_disconnect', (data) => {
-            console.log('[PLAYER] ✗ FORCE DISCONNECTED ✗');
-            console.log('[PLAYER] Reason:', data.reason);
-            console.log('[PLAYER] Message:', data.message);
-            handleForceDisconnect(data);
-        });
-        
-        // Listen for pong response to measure ping
-        state.socket.on('pong_measure', (data) => {
-            if (state.lastPing && data.timestamp === state.lastPing) {
-                const ping = Date.now() - state.lastPing;
-                updatePingDisplay(ping);
-            }
-        });
-        
-        // Listen for clock sync response
-        state.socket.on('clock_sync_response', handleClockSyncResponse);
-        
-        // Listen for answer submitted events
-        state.socket.on('answer_submitted', handleAnswerSubmitted);
     }
     
+    // ========================================
+    // WebSocket Event Handlers
+    // ========================================
+    
     function handleSessionState(data) {
-        console.log('[Live Quiz] Session state:', data);
+        console.log('[PLAYER] Session state:', data);
         
         if (data.status === 'lobby') {
             showScreen('quiz-waiting');
@@ -621,381 +550,318 @@
         }
     }
     
-
+    function handleQuestionStart(data) {
+        console.log('[PLAYER] Question start:', data);
+        
+        QuizCore.state.currentQuestion = data;
+        QuizCore.state.questionStartTime = data.start_time;
+        QuizCore.state.timerAccelerated = false;
+        
+        // Fixed timing: Question displays immediately, choices show after 3 seconds
+        const DISPLAY_DELAY = 3;
+        QuizCore.state.serverStartTime = data.start_time + DISPLAY_DELAY;
+        QuizCore.state.displayDelay = DISPLAY_DELAY;
+        
+        console.log('[PLAYER] Server start time for timer:', QuizCore.state.serverStartTime);
+        
+        // Clear answered players list
+        QuizCore.resetForNewQuestion();
+        if (elements.answeredPlayersList) {
+            elements.answeredPlayersList.innerHTML = '';
+        }
+        if (elements.answerCountDisplay) {
+            elements.answerCountDisplay.style.display = 'none';
+        }
+        
+        // Hide leaderboard overlay if visible
+        if (elements.leaderboardOverlay && !elements.leaderboardOverlay.classList.contains('leaderboard-overlay-hidden')) {
+            elements.leaderboardOverlay.style.opacity = '0';
+            setTimeout(function() {
+                elements.leaderboardOverlay.classList.add('leaderboard-overlay-hidden');
+            }, 300);
+        }
+        
+        showScreen('quiz-question');
+        
+        // Display question using QuizUI
+        QuizUI.displayQuestion(data, {
+            questionNumber: elements.questionNumber,
+            questionText: elements.questionText,
+            choicesContainer: elements.choicesContainer
+        }, false, handleAnswerSelect);
+        
+        // Start timer after 3 seconds (when choices appear)
+        setTimeout(function() {
+            QuizCore.startTimer(
+                data.question.time_limit,
+                {
+                    fill: elements.timerFill,
+                    text: elements.timerText
+                },
+                null,
+                function() {
+                    // Timer completed - disable choices
+                disableChoices();
+                }
+            );
+        }, 3000);
+    }
+    
+    function handleQuestionEnd(data) {
+        console.log('[PLAYER] Question end:', data);
+        
+        // Clear timer
+        if (QuizCore.state.timerInterval) {
+            clearInterval(QuizCore.state.timerInterval);
+        }
+        
+        // Wait 1 second before showing correct answer
+        setTimeout(function() {
+            // Show correct answer using QuizUI
+            QuizUI.showCorrectAnswer(data.correct_answer, elements.choicesContainer);
+            
+            console.log('[PLAYER] Correct answer shown');
+            
+            // After 2 seconds, show leaderboard animation
+            setTimeout(function() {
+                QuizUI.showLeaderboardAnimation(
+                    data,
+                    elements.leaderboardOverlay,
+                    elements.animatedLeaderboard,
+                    QuizCore.state.userId
+                );
+            }, 2000);
+        }, 1000);
+    }
     
     function handleShowTop3(data) {
         console.log('[PLAYER] Show top 3:', data);
         showScreen('quiz-top3');
         
         const leaderboard = data.top3 || [];
-        const top10 = leaderboard.slice(0, 10);
-        const top3 = leaderboard.slice(0, 3);
         
-        // Display podium for top 3
-        const podiumEl = document.getElementById('top3-podium');
-        if (podiumEl && top3.length > 0) {
-            podiumEl.innerHTML = '';
-            
-            const medals = ['🥇', '🥈', '🥉'];
-            const places = ['first', 'second', 'third'];
-            
-            top3.forEach((player, index) => {
-                const placeDiv = document.createElement('div');
-                placeDiv.className = `podium-place ${places[index]}`;
-                
-                // Highlight current user
-                if (player.user_id === state.userId) {
-                    placeDiv.classList.add('current-user');
-                }
-                
-                const displayName = player.display_name || player.name || 'Player';
-                // Tách tên và username
-                let nameText = displayName;
-                let usernameText = '';
-                const parenIndex = displayName.indexOf(' (@');
-                if (parenIndex > 0) {
-                    nameText = displayName.substring(0, parenIndex);
-                    usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
-                }
-                
-                placeDiv.innerHTML = `
-                    <div class="podium-medal">${medals[index]}</div>
-                    <div class="podium-name">
-                        <div>${escapeHtml(nameText)}</div>
-                        ${usernameText ? `<div style="font-size: 0.8em; color: #888;">${escapeHtml(usernameText)}</div>` : ''}
-                    </div>
-                    <div class="podium-score">${Math.round(player.total_score || player.score || 0)} pts</div>
-                    <div class="podium-stand">#${index + 1}</div>
-                    `;
-                    
-                
-                podiumEl.appendChild(placeDiv);
-            });
-        }
-        
-        // Display ranks 4-10 below podium
-        const listEl = document.getElementById('top3-list');
-        if (listEl && top10.length > 3) {
-            listEl.innerHTML = '';
-            
-            const remaining = top10.slice(3);
-            remaining.forEach((player, index) => {
-                const actualRank = index + 4;
-                const itemDiv = document.createElement('div');
-                itemDiv.className = `top10-item`;
-                
-                // Highlight current user
-                if (player.user_id === state.userId) {
-                    itemDiv.classList.add('current-user');
-                }
-                
-                const displayName = player.display_name || player.name || 'Player';
-                // Tách tên và username
-                let nameText = displayName;
-                let usernameText = '';
-                const parenIndex = displayName.indexOf(' (@');
-                if (parenIndex > 0) {
-                    nameText = displayName.substring(0, parenIndex);
-                    usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
-                }
-                
-                itemDiv.innerHTML = `
-                    <div class="top10-rank">#${actualRank}</div>
-                    <div class="top10-name">
-                        <div>${escapeHtml(nameText)}</div>
-                        ${usernameText ? `<div style="font-size: 0.85em; color: #888;">${escapeHtml(usernameText)}</div>` : ''}
-                    </div>
-                    <div class="top10-score">${Math.round(player.total_score || player.score || 0)}</div>
-                `;
-                
-                listEl.appendChild(itemDiv);
-            });
-        }
+        // Display using QuizUI
+        QuizUI.displayTop10WithPodium(leaderboard, {
+            podium: elements.top3Podium,
+            list: elements.top3List
+        }, QuizCore.state.userId);
     }
     
-    function handleQuestionStart(data) {
-        console.log('Question start:', data);
+    function handleSessionEnd(data) {
+        console.log('[PLAYER] Session end:', data);
         
-        state.currentQuestion = data;
-        state.questionStartTime = data.start_time;
-        state.timerAccelerated = false; // Reset acceleration flag for new question
-        
-        // Fixed timing: Question displays immediately, choices show after 3 seconds
-        // Timer starts when choices appear (3 seconds after question broadcast)
-        const DISPLAY_DELAY = 3; // Fixed 3 second delay
-        state.serverStartTime = data.start_time + DISPLAY_DELAY;
-        state.displayDelay = DISPLAY_DELAY;
-        
-        console.log('[PLAYER] Question start time:', data.start_time);
-        console.log('[PLAYER] Timer will start at:', state.serverStartTime);
-        console.log('[PLAYER] Display delay:', DISPLAY_DELAY);
-        
-        // Clear answered players list for new question
-        state.answeredPlayers = [];
-        const answeredList = document.getElementById('answered-players-list');
-        if (answeredList) {
-            answeredList.innerHTML = '';
-        }
-        const answerCountDisplay = document.querySelector('.answer-count-display');
-        if (answerCountDisplay) {
-            answerCountDisplay.style.display = 'none';
-        }
-        
-        // Hide leaderboard overlay if visible
-        const overlay = document.getElementById('player-leaderboard-overlay');
-        if (overlay && !overlay.classList.contains('leaderboard-overlay-hidden')) {
-            overlay.style.opacity = '0';
-            setTimeout(() => {
-                overlay.classList.add('leaderboard-overlay-hidden');
-            }, 300);
-        }
-        
-        showScreen('quiz-question');
-        displayQuestion(data);
-        // Timer will be started by displayQuestion after 3 second delay
+        showScreen('quiz-final');
+        displayFinalResults(data);
     }
     
-    function displayQuestion(data) {
-        const questionNumber = data.question_index + 1;
+    function handleSessionReplay(data) {
+        console.log('[PLAYER] Session replay:', data);
         
-        document.querySelector('.question-number').textContent = 
-            config.i18n.question + ' ' + questionNumber;
+        alert('🔄 ' + (data.message || 'Host đã chọn chơi lại. Vui lòng đợi host bắt đầu.'));
         
-        // Display question text immediately
-        const questionElement = document.querySelector('.question-text');
-        questionElement.textContent = data.question.text;
+        // Reset current question state
+        QuizCore.state.currentQuestion = null;
         
-        // Clear choices container (don't show yet)
-        const container = document.getElementById('choices-container');
-        container.innerHTML = '';
-        container.style.display = 'none'; // Hide initially
+        // Return to waiting room
+        showScreen('quiz-waiting');
         
-        console.log('[PLAYER] Question displayed, waiting 3 seconds before showing choices...');
+        if (elements.waitingPlayerName) {
+            elements.waitingPlayerName.textContent = QuizCore.state.displayName || 'Player';
+        }
+        if (elements.waitingRoomCode) {
+            elements.waitingRoomCode.textContent = QuizCore.state.roomCode || '';
+        }
         
-        // Always wait exactly 3 seconds before showing choices and starting timer
-        const DISPLAY_DELAY = 3000; // 3 seconds in milliseconds
-        
-        setTimeout(() => {
-            console.log('[PLAYER] Displaying choices and starting timer...');
-            
-            // Render choices
-            container.innerHTML = '';
-            data.question.choices.forEach((choice, index) => {
-                const button = document.createElement('button');
-                button.className = 'choice-button';
-                button.dataset.choiceId = index;
-                button.textContent = choice.text;
-                button.addEventListener('click', () => handleAnswerSelect(index));
-                container.appendChild(button);
-            });
-            
-            container.style.display = '';
-            
-            // Start timer synchronized with server
-            startTimer(data.question.time_limit);
-        }, DISPLAY_DELAY);
+        // Refresh players list
+        fetchPlayersList();
     }
     
     /**
-     * Typewriter effect - display text character by character
-     * @param {HTMLElement} element - Element to display text in
-     * @param {string} text - Text to display
-     * @param {number} speed - Speed in milliseconds per character
-     * @param {function} callback - Optional callback when complete
+     * Handle participant joined (using shared QuizPlayers module)
      */
-    function typewriterEffect(element, text, speed = 50, callback) {
-        let index = 0;
-        element.textContent = '';
+    function handleParticipantJoined(data) {
+        QuizPlayers.handlePlayerJoined(
+            data,
+            elements.playersWaitingList,
+            QuizCore.state.displayName,
+            false // isHost
+        );
         
-        function typeNextCharacter() {
-            if (index < text.length) {
-                element.textContent += text.charAt(index);
-                index++;
-                setTimeout(typeNextCharacter, speed);
-            } else if (callback) {
-                // Call callback after typewriter is complete
-                callback();
-            }
-        }
-        
-        typeNextCharacter();
-    }
-    
-    function startTimer(seconds) {
-        clearInterval(state.timerInterval);
-        
-        const maxPoints = 1000;
-        const minPoints = 0;
-        const freezePeriod = 1; // 1 second freeze at max points
-        
-        // Timer should start from serverStartTime
-        // serverStartTime = question broadcast time + 3 seconds (display delay)
-        const startTimestamp = state.serverStartTime;
-        
-        console.log('[PLAYER] ========================================');
-        console.log('[PLAYER] Starting Timer');
-        console.log('[PLAYER] Max points:', maxPoints);
-        console.log('[PLAYER] Time limit:', seconds, 'seconds');
-        console.log('[PLAYER] Server start time:', startTimestamp);
-        console.log('[PLAYER] Current server time (sync):', getServerTime() / 1000);
-        console.log('[PLAYER] Clock offset:', state.clockOffset, 'ms');
-        console.log('[PLAYER] ========================================');
-        
-        const timerFill = document.querySelector('.timer-fill');
-        const timerText = document.querySelector('.timer-text');
-        
-        const updateTimer = () => {
-            // Use synchronized server time instead of local client time
-            const nowSeconds = getServerTime() / 1000;
-            const elapsed = Math.max(0, nowSeconds - startTimestamp);
-            const remaining = Math.max(0, seconds - elapsed);
-            
-            if (remaining <= 0) {
-                clearInterval(state.timerInterval);
-                timerFill.style.width = '0%';
-                timerText.textContent = minPoints + ' pts';
-                disableChoices();
-                // Timer ended - wait for server to show correct answer
-                return;
-            }
-            
-            const percentage = (remaining / seconds) * 100;
-            timerFill.style.width = percentage + '%';
-            
-            // Calculate points based on elapsed time
-            let currentPoints;
-            
-            if (elapsed < freezePeriod) {
-                // During freeze period (0-1s), stay at max points
-                currentPoints = maxPoints;
-            } else {
-                // After freeze period, decrease linearly from maxPoints to 0
-                const decreaseTime = seconds - freezePeriod; // e.g., 19 seconds for 20s total
-                const elapsedAfterFreeze = elapsed - freezePeriod;
-                const pointsPerSecond = maxPoints / decreaseTime;
-                currentPoints = Math.max(minPoints, Math.min(maxPoints, Math.floor(maxPoints - (elapsedAfterFreeze * pointsPerSecond))));
-            }
-            
-            timerText.textContent = currentPoints + ' pts';
-            
-            // Change color based on percentage of max points
-            const pointsPercentage = (currentPoints / maxPoints) * 100;
-            if (pointsPercentage < 40) {
-                timerFill.style.backgroundColor = '#e74c3c';
-                timerText.style.color = '#e74c3c';
-            } else if (pointsPercentage < 70) {
-                timerFill.style.backgroundColor = '#f39c12';
-                timerText.style.color = '#f39c12';
-            } else {
-                timerFill.style.backgroundColor = '#2ecc71';
-                timerText.style.color = '#2ecc71';
-            }
-        };
-        
-        updateTimer();
-        state.timerInterval = setInterval(updateTimer, 100);
+        // Update participant count
+        updateParticipantCount(Object.keys(QuizCore.state.players).length);
     }
     
     /**
-     * Accelerate timer to zero when all players have answered
-     * Timer decreases linearly to 0 over 1 second
+     * Handle participant left (using shared QuizPlayers module)
      */
-    function accelerateTimerToZero() {
-        // Check if already accelerated
-        if (state.timerAccelerated) {
-            console.log('[PLAYER] Timer already accelerated, skipping');
-            return;
-        }
+    function handleParticipantLeft(data) {
+        QuizPlayers.handlePlayerLeft(
+            data,
+            elements.playersWaitingList,
+            QuizCore.state.displayName,
+            false // isHost
+        );
         
-        // Mark as accelerated
-        state.timerAccelerated = true;
-        
-        // Stop current timer
-        if (state.timerInterval) {
-            clearInterval(state.timerInterval);
-            state.timerInterval = null;
-        }
-        
-        const timerFill = document.querySelector('.timer-fill');
-        const timerText = document.querySelector('.timer-text');
-        
-        if (!timerFill || !timerText) {
-            console.warn('[PLAYER] Timer elements not found');
-            return;
-        }
-        
-        // Get current values
-        const currentWidth = parseFloat(timerFill.style.width) || 0;
-        const currentPointsText = timerText.textContent;
-        const currentPoints = parseInt(currentPointsText.replace(' pts', '')) || 0;
-        
-        console.log('[PLAYER] Starting acceleration from:', currentPoints, 'pts,', currentWidth, '%');
-        
-        // Animation duration: 1 second
-        const animationDuration = 1000; // 1 second in milliseconds
-        const startTime = Date.now();
-        
-        const animate = () => {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(elapsed / animationDuration, 1); // 0 to 1
-            
-            // Linear interpolation from current values to 0
-            const newWidth = currentWidth * (1 - progress);
-            const newPoints = Math.floor(currentPoints * (1 - progress));
-            
-            timerFill.style.width = newWidth + '%';
-            timerText.textContent = newPoints + ' pts';
-            
-            // Update color as points decrease
-            const pointsPercentage = (newPoints / 1000) * 100;
-            if (pointsPercentage < 40) {
-                timerFill.style.backgroundColor = '#e74c3c';
-                timerText.style.color = '#e74c3c';
-            } else if (pointsPercentage < 70) {
-                timerFill.style.backgroundColor = '#f39c12';
-                timerText.style.color = '#f39c12';
-            } else {
-                timerFill.style.backgroundColor = '#2ecc71';
-                timerText.style.color = '#2ecc71';
-            }
-            
-            if (progress < 1) {
-                // Continue animation
-                requestAnimationFrame(animate);
-            } else {
-                // Animation complete
-                timerFill.style.width = '0%';
-                timerText.textContent = '0 pts';
-                console.log('[PLAYER] Timer acceleration complete');
-            }
-        };
-        
-        // Start animation
-        requestAnimationFrame(animate);
+        // Update participant count
+        updateParticipantCount(Object.keys(QuizCore.state.players).length);
     }
     
+    function handleAnswerSubmitted(data) {
+        console.log('[PLAYER] Answer submitted:', data);
+        
+        // Add player to answered list if not already there
+        if (data.user_id && !QuizCore.state.answeredPlayers.includes(data.user_id)) {
+            QuizCore.state.answeredPlayers.push(data.user_id);
+            
+            // Find player info
+            const player = QuizCore.state.players[data.user_id];
+            if (player) {
+                QuizUI.displayAnsweredPlayer(player, data.score || 0, elements.answeredPlayersList);
+            }
+        }
+        
+        // Update answer count
+        if (data.answered_count !== undefined && data.total_players !== undefined) {
+            QuizUI.updateAnswerCount(
+                data.answered_count,
+                data.total_players,
+                elements.answerCountDisplay,
+                elements.answerCountText
+            );
+            
+            // Check if all players answered
+            if (data.answered_count >= data.total_players && data.total_players > 0) {
+                console.log('[PLAYER] All players answered - accelerating timer');
+                QuizCore.accelerateTimerToZero({
+                    fill: elements.timerFill,
+                    text: elements.timerText
+                });
+            }
+        }
+    }
+    
+    function handleSessionKicked(data) {
+        console.log('[PLAYER] Session kicked:', data);
+        
+        QuizWebSocket.disconnect();
+        
+        alert(data.message || 'Bạn đã tham gia phòng này từ tab/thiết bị khác.');
+        window.location.href = config.homeUrl || '/';
+    }
+    
+    function handleKicked(data) {
+        console.log('[PLAYER] Kicked by host (end room):', data);
+        handleSessionEndedKicked(data);
+    }
+    
+    function handleKickedFromSession(data) {
+        console.log('[PLAYER] Kicked by host:', data);
+        
+        QuizWebSocket.disconnect();
+        
+        // Reset state
+        QuizCore.state.sessionId = null;
+        QuizCore.state.userId = null;
+        QuizCore.state.displayName = null;
+        QuizCore.state.roomCode = null;
+        QuizCore.state.websocketToken = null;
+        
+        // Call server to ensure session is cleared
+        fetch(config.restUrl + '/user/clear-session', {
+            method: 'POST',
+            headers: {
+                'X-WP-Nonce': config.nonce,
+                'Content-Type': 'application/json'
+            }
+        }).catch(function(err) {
+            console.error('[PLAYER] Failed to clear session:', err);
+        });
+        
+        alert('❌ ' + (data.message || 'Bạn đã bị kick khỏi phòng.'));
+        
+        showScreen('quiz-lobby');
+        
+        // Show error message
+        const errorElement = document.getElementById('join-error');
+        if (errorElement) {
+            errorElement.innerHTML = `
+                <div class="error-box kicked" style="background: #fee; border: 2px solid #c00; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                    <h3 style="color: #c00; margin: 0 0 10px 0;">❌ Đã bị kick khỏi phòng</h3>
+                    <p style="margin: 0;">${data.message || 'Bạn đã bị kick khỏi phòng.'}</p>
+                </div>
+            `;
+            errorElement.style.display = 'block';
+        }
+    }
+
+    function handleSessionEndedKicked(data) {
+        console.log('[PLAYER] Session ended kicked:', data);
+        
+        QuizWebSocket.disconnect();
+        
+        // Reset state
+        QuizCore.state.sessionId = null;
+        QuizCore.state.userId = null;
+        QuizCore.state.displayName = null;
+        QuizCore.state.roomCode = null;
+        QuizCore.state.websocketToken = null;
+        
+        // Call server to ensure session is cleared
+        fetch(config.restUrl + '/user/clear-session', {
+            method: 'POST',
+            headers: {
+                'X-WP-Nonce': config.nonce,
+                'Content-Type': 'application/json'
+            }
+        }).catch(function(err) {
+            console.error('[PLAYER] Failed to clear session:', err);
+        });
+        
+        alert((data.message || 'Host đã kết thúc phòng.') + '\n\nBạn sẽ được chuyển về trang player.');
+        
+        window.location.href = config.playerPageUrl || config.homeUrl || '/';
+    }
+    
+    function handleForceDisconnect(data) {
+        console.log('[PLAYER] Force disconnected:', data);
+        
+        QuizWebSocket.disconnect();
+        
+        // Reset state
+        QuizCore.state.sessionId = null;
+        QuizCore.state.userId = null;
+        QuizCore.state.displayName = null;
+        QuizCore.state.roomCode = null;
+        QuizCore.state.websocketToken = null;
+        QuizCore.state.connectionId = null;
+        
+        window.location.href = config.homeUrl || '/';
+    }
+    
+    // ========================================
+    // Helper Functions
+    // ========================================
+    
+    /**
+     * Handle answer selection
+     */
     async function handleAnswerSelect(choiceId) {
-        // Timer continues running - server records the submission time
-        console.log('[PLAYER] Answer selected, timer continues running');
+        console.log('[PLAYER] Answer selected:', choiceId);
         
-        // Get synchronized server time when answer is submitted
-        const submitServerTime = getServerTime() / 1000; // in seconds
-        const elapsed = submitServerTime - state.serverStartTime;
+        // Get synchronized server time
+        const submitServerTime = QuizCore.getServerTime() / 1000;
+        const elapsed = submitServerTime - QuizCore.state.serverStartTime;
         
-        console.log('[PLAYER] ========================================');
-        console.log('[PLAYER] Answer Submit Timing');
-        console.log('[PLAYER] Server start time:', state.serverStartTime);
-        console.log('[PLAYER] Submit server time (sync):', submitServerTime);
-        console.log('[PLAYER] Elapsed time:', elapsed, 'seconds');
-        console.log('[PLAYER] Clock offset used:', state.clockOffset, 'ms');
-        console.log('[PLAYER] ========================================');
+        console.log('[PLAYER] Submit time:', submitServerTime, 'elapsed:', elapsed);
         
         // Disable all choices
         disableChoices();
         
         // Highlight selected
-        const buttons = document.querySelectorAll('.choice-button');
-        buttons[choiceId].classList.add('selected');
+        const buttons = elements.choicesContainer.querySelectorAll('button');
+        if (buttons[choiceId]) {
+            buttons[choiceId].classList.add('selected');
+        }
         
         try {
             const response = await fetch(config.restUrl + '/answer', {
@@ -1005,1070 +871,84 @@
                     'X-WP-Nonce': config.nonce,
                 },
                 body: JSON.stringify({
-                    session_id: state.sessionId,
+                    session_id: QuizCore.state.sessionId,
                     choice_id: choiceId,
-                    submit_time: submitServerTime, // Send synchronized server time
+                    submit_time: submitServerTime,
                 }),
             });
             
-            // Log response details
-            console.log('Response status:', response.status);
-            console.log('Response headers:', response.headers);
-            
-            // Get text first to see what we receive
             const text = await response.text();
-            console.log('Response text:', text);
-            
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch (e) {
-                console.error('JSON parse error:', e);
-                console.error('Response was not JSON:', text);
-                throw new Error('Server returned invalid response');
-            }
+            const data = JSON.parse(text);
             
             if (!response.ok) {
                 throw new Error(data.message || 'Failed to submit answer');
             }
             
-            console.log('Answer submitted:', data);
-            
-            // Server has recorded the time and calculated score
-            // Timer continues to run until question ends
-            // Final score will be shown when question_end event is received
-            
-            // Don't show correct/incorrect yet - wait for question_end
-            // Just keep the 'selected' highlight
-            
+            console.log('[PLAYER] Answer submitted:', data);
         } catch (error) {
-            console.error('Answer error:', error);
+            console.error('[PLAYER] Answer error:', error);
             showConnectionStatus(error.message, 'error');
         }
     }
     
+    /**
+     * Disable all choice buttons
+     */
     function disableChoices() {
-        const buttons = document.querySelectorAll('.choice-button');
-        buttons.forEach(button => {
+        if (!elements.choicesContainer) return;
+        
+        const buttons = elements.choicesContainer.querySelectorAll('button');
+        buttons.forEach(function(button) {
             button.disabled = true;
         });
     }
     
-    function handleQuestionEnd(data) {
-        console.log('Question end:', data);
-        console.log('Correct answer index:', data.correct_answer);
-        
-        clearInterval(state.timerInterval);
-        
-        // Wait 1 second before showing correct answer
-        setTimeout(() => {
-            // Show correct answer and mark selected answer
-            const buttons = document.querySelectorAll('.choice-button');
-            buttons.forEach((button, index) => {
-                const isCorrect = data.correct_answer !== undefined && index === data.correct_answer;
-                const isSelected = button.classList.contains('selected');
-                
-                if (isCorrect) {
-                    // Mark correct answer
-                    button.classList.add('correct-answer');
-                    button.style.borderColor = '#2ecc71';
-                    button.style.borderWidth = '5px';
-                    button.style.backgroundColor = '#2ecc71';
-                    button.style.color = 'white';
-                    button.style.fontWeight = 'bold';
-                    
-                    // Add checkmark
-                    const originalText = button.textContent;
-                    button.innerHTML = '✓ ' + originalText;
-                } else if (isSelected) {
-                    // Mark selected wrong answer
-                    button.classList.add('incorrect');
-                    button.style.borderColor = '#e74c3c';
-                    button.style.borderWidth = '5px';
-                    button.style.backgroundColor = '#e74c3c';
-                    button.style.color = 'white';
-                    button.style.fontWeight = 'bold';
-                    
-                    // Add X mark
-                    const originalText = button.textContent;
-                    button.innerHTML = '✗ ' + originalText;
-                }
-            });
-            
-            console.log('[PLAYER] Correct answer shown');
-            
-            // After showing correct answer for 2 seconds, show leaderboard animation
-            setTimeout(() => {
-                showLeaderboardAnimation(data);
-            }, 2000);
-        }, 1000);
-    }
-    
-    function displayResults(data) {
-        // Show correct answer in previous screen
-        const buttons = document.querySelectorAll('.choice-button');
-        buttons.forEach((button, index) => {
-            if (index === data.correct_answer) {
-                button.classList.add('correct-answer');
-            }
-        });
-        
-        // Display leaderboard
-        displayLeaderboard(data.leaderboard, 'leaderboard');
-        
-        // Show user rank
-        const userRank = data.leaderboard.find(entry => entry.user_id === state.userId);
-        if (userRank) {
-            document.getElementById('your-rank').textContent = userRank.rank;
-            document.getElementById('your-score').textContent = userRank.total_score;
-        }
-        
-        // Show feedback
-        const feedbackIcon = document.querySelector('.feedback-icon');
-        const feedbackText = document.querySelector('.feedback-text');
-        
-        // Check if user answered correctly (look in buttons)
-        const selectedButton = document.querySelector('.choice-button.selected');
-        if (selectedButton) {
-            const isCorrect = parseInt(selectedButton.dataset.choiceId) === data.correct_answer;
-            if (isCorrect) {
-                feedbackIcon.textContent = '✓';
-                feedbackIcon.className = 'feedback-icon correct';
-                feedbackText.textContent = config.i18n.correct;
-            } else {
-                feedbackIcon.textContent = '✗';
-                feedbackIcon.className = 'feedback-icon incorrect';
-                feedbackText.textContent = config.i18n.incorrect;
-            }
-        }
-    }
-    
-    async function handleSessionKicked(data) {
-        console.log('[Live Quiz] Session kicked:', data);
-        
-        // Disconnect socket
-        if (state.socket) {
-            state.socket.disconnect();
-        }
-        
-        // Note: Server has already cleared session
-        
-        // Leave session via API to clean up server-side
-        if (state.sessionId && state.userId) {
-            try {
-                await fetch(`${config.restUrl}sessions/${state.sessionId}/leave`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': config.nonce
-                    },
-                    body: JSON.stringify({
-                        user_id: state.userId
-                    })
-                });
-            } catch (error) {
-                console.error('[Live Quiz] Error leaving session:', error);
-            }
-        }
-        
-        // Show message and redirect
-        alert(data.message || 'Bạn đã tham gia phòng này từ tab/thiết bị khác. Tab này sẽ được chuyển về trang chủ.');
-        window.location.href = config.homeUrl || '/';
-    }
-    
-    function handleSessionEnd(data) {
-        console.log('Session end:', data);
-        
-        showScreen('quiz-final');
-        displayFinalResults(data);
-    }
-    
     /**
-     * Handle session replay - return to waiting room
+     * Display final results
      */
-    function handleSessionReplay(data) {
-        console.log('[PLAYER] ==========================================');
-        console.log('[PLAYER] 🔄 SESSION REPLAY EVENT RECEIVED 🔄');
-        console.log('[PLAYER] ==========================================');
-        console.log('[PLAYER] Message:', data.message);
-        console.log('[PLAYER] Data:', data);
-        console.log('[PLAYER] Socket status:', {
-            connected: state.socket?.connected,
-            id: state.socket?.id
-        });
-        
-        // Show alert to user
-        alert('🔄 ' + (data.message || 'Host đã chọn chơi lại. Vui lòng đợi host bắt đầu.'));
-        
-        // Reset current question state
-        state.currentQuestion = null;
-        
-        // Return to waiting room (DO NOT reload page to maintain WebSocket connection)
-        console.log('[PLAYER] Returning to waiting screen...');
-        showScreen('quiz-waiting');
-        
-        // Update waiting screen UI
-        const waitingNameEl = document.getElementById('waiting-player-name');
-        const waitingCodeEl = document.getElementById('waiting-room-code');
-        
-        if (waitingNameEl) {
-            waitingNameEl.textContent = state.displayName || 'Player';
-        }
-        
-        if (waitingCodeEl) {
-            waitingCodeEl.textContent = state.roomCode || '';
-        }
-        
-        // Refresh players list
-        fetchPlayersList();
-        
-        console.log('[PLAYER] ✓ Ready for new game - waiting for host to start');
-        console.log('[PLAYER] ==========================================');
-    }
-    
-    /**
-     * Handle when user opens new tab/device - force disconnect old tabs
-     * This ensures only ONE device/tab can participate at a time
-     */
-    function handleForceDisconnect(data) {
-        console.log('[PLAYER] ========================================')
-        console.log('[PLAYER] ✗ FORCE DISCONNECTED - Multi-device detected');
-        console.log('[PLAYER] ========================================')
-        console.log('[PLAYER] Reason:', data.reason);
-        console.log('[PLAYER] Message:', data.message);
-        console.log('[PLAYER] Timestamp:', new Date(data.timestamp).toLocaleString());
-        console.log('[PLAYER] Session before disconnect:', {
-            sessionId: state.sessionId,
-            userId: state.userId,
-            displayName: state.displayName,
-            roomCode: state.roomCode,
-            connectionId: state.connectionId
-        });
-        
-        // CRITICAL: Disable reconnection to prevent auto-rejoin
-        if (state.socket) {
-            console.log('[PLAYER] Disabling reconnection and disconnecting socket...');
-            state.socket.io.opts.reconnection = false; // Disable auto-reconnect
-            state.socket.off(); // Remove all event listeners
-            state.socket.disconnect();
-        }
-        
-        // Reset client state (server handles session)
-        console.log('[PLAYER] Resetting client state...');
-        
-        // Reset state completely
-        state.sessionId = null;
-        state.userId = null;
-        state.displayName = null;
-        state.roomCode = null;
-        state.websocketToken = null;
-        state.isConnected = false;
-        state.currentQuestion = null;
-        state.connectionId = null;
-        
-        console.log('[PLAYER] ✓ All session data cleared');
-        console.log('[PLAYER] Redirecting to home page...');
-        console.log('[PLAYER] ========================================');
-        
-        // Show a brief notification before redirect (optional)
-        // You can uncomment this if you want to show an alert
-        // alert(data.message || 'Bạn đã mở phiên này từ thiết bị/tab khác.');
-        
-        // Redirect to home page immediately
-        window.location.href = config.homeUrl || '/';
-    }
-    
-    /**
-     * Handle when player is kicked by host
-     */
-    function handleKickedByHost(data) {
-        console.log('[PLAYER] === KICKED BY HOST ===');
-        console.log('[PLAYER] Message:', data.message);
-        console.log('[PLAYER] Session before kick:', {
-            sessionId: state.sessionId,
-            userId: state.userId,
-            roomCode: state.roomCode
-        });
-        
-        // CRITICAL: Disable reconnection to prevent auto-rejoin
-        if (state.socket) {
-            console.log('[PLAYER] Disabling reconnection and disconnecting socket...');
-            state.socket.io.opts.reconnection = false; // Disable auto-reconnect
-            state.socket.off(); // Remove all event listeners
-            state.socket.disconnect();
-        }
-        
-        // Reset state completely (server-side session already cleared by kick)
-        console.log('[PLAYER] Resetting client state...');
-        state.sessionId = null;
-        state.userId = null;
-        state.displayName = null;
-        state.roomCode = null;
-        state.websocketToken = null;
-        state.isConnected = false;
-        state.currentQuestion = null;
-        
-        console.log('[PLAYER] State reset complete, showing kicked message...');
-        
-        // Call server to ensure session is cleared
-        fetch(config.restUrl + '/user/clear-session', {
-            method: 'POST',
-            headers: {
-                'X-WP-Nonce': config.nonce,
-                'Content-Type': 'application/json'
-            }
-        }).catch(err => console.error('[PLAYER] Failed to clear session:', err));
-        
-        // Show kicked message
-        const kickMessage = data.message || 'Bạn đã bị kick khỏi phòng bởi host.';
-        
-        // Show alert first (blocking)
-        alert('❌ ' + kickMessage + '\n\nNếu muốn vào lại, bạn cần nhập lại mã phòng.');
-        
-        // Then show lobby with error message
-        showScreen('quiz-lobby');
-        
-        // Show error message in the form
-        const errorElement = document.getElementById('join-error');
-        if (errorElement) {
-            errorElement.innerHTML = `
-                <div class="error-box kicked" style="background: #fee; border: 2px solid #c00; padding: 15px; border-radius: 8px; margin-top: 15px;">
-                    <h3 style="color: #c00; margin: 0 0 10px 0;">❌ Đã bị kick khỏi phòng</h3>
-                    <p style="margin: 0;">${kickMessage}</p>
-                    <p style="margin: 10px 0 0 0; font-size: 0.9em;">Nếu muốn vào lại, vui lòng nhập lại mã phòng.</p>
-                </div>
-            `;
-            errorElement.style.display = 'block';
-        }
-        
-        console.log('[PLAYER] Kicked message displayed - reconnection disabled');
-    }
-
-    /**
-     * Handle when host ends the room and kicks all players
-     */
-    function handleSessionEndedKicked(data) {
-        console.log('[PLAYER] === KICKED OUT BY HOST ===');
-        console.log('[PLAYER] Reason:', data.reason);
-        console.log('[PLAYER] Session before kick:', {
-            sessionId: state.sessionId,
-            userId: state.userId,
-            roomCode: state.roomCode
-        });
-        
-        // CRITICAL: Disable reconnection to prevent auto-rejoin
-        if (state.socket) {
-            console.log('[PLAYER] Disabling reconnection and disconnecting socket...');
-            state.socket.io.opts.reconnection = false; // Disable auto-reconnect
-            state.socket.off(); // Remove all event listeners  
-            state.socket.disconnect();
-        }
-        
-        // Reset client state (server handles session)
-        console.log('[PLAYER] Resetting client state...');
-        
-        // Reset state completely
-        state.sessionId = null;
-        state.userId = null;
-        state.displayName = null;
-        state.roomCode = null;
-        state.websocketToken = null;
-        state.isConnected = false;
-        state.currentQuestion = null;
-        
-        console.log('[PLAYER] All session data cleared');
-        
-        // Call server to ensure session is cleared
-        fetch(config.restUrl + '/user/clear-session', {
-            method: 'POST',
-            headers: {
-                'X-WP-Nonce': config.nonce,
-                'Content-Type': 'application/json'
-            }
-        }).catch(err => console.error('[PLAYER] Failed to clear session:', err));
-        
-        console.log('[PLAYER] Showing alert before redirect...');
-        
-        // Show alert with clear message before redirecting
-        const endMessage = data.message || 'Host đã kết thúc phòng.';
-        alert(endMessage + '\n\nBạn sẽ được chuyển về trang player.');
-        
-        // Redirect to player page after alert is dismissed
-        window.location.href = config.playerPageUrl || config.homeUrl || '/';
-    }
-    
     function displayFinalResults(data) {
         const leaderboard = data.leaderboard || [];
-        const top10 = leaderboard.slice(0, 10);
-        const top3 = leaderboard.slice(0, 3);
         
-        // Display podium for top 3
-        const podiumEl = document.getElementById('player-top3-podium');
-        if (podiumEl && top3.length > 0) {
-            podiumEl.innerHTML = '';
-            
-            const medals = ['🥇', '🥈', '🥉'];
-            const places = ['first', 'second', 'third'];
-            
-            top3.forEach((player, index) => {
-                const placeDiv = document.createElement('div');
-                placeDiv.className = `podium-place ${places[index]}`;
-                
-                // Highlight current user
-                if (player.user_id === state.userId) {
-                    placeDiv.classList.add('current-user');
-                }
-                
-                placeDiv.innerHTML = `
-                    <div class="podium-medal">${medals[index]}</div>
-                    <div class="podium-name">${escapeHtml(player.display_name || player.name || 'Player')}</div>
-                    <div class="podium-score">${Math.round(player.total_score || player.score || 0)} pts</div>
-                    <div class="podium-stand">#${index + 1}</div>
-                `;
-                
-                podiumEl.appendChild(placeDiv);
-            });
-        }
-        
-        // Display ranks 4-10 below podium
-        const listEl = document.getElementById('player-top10-list');
-        if (listEl) {
-            listEl.innerHTML = '';
-            
-            const remaining = top10.slice(3);
-            remaining.forEach((player, index) => {
-                const actualRank = index + 4;
-                const itemDiv = document.createElement('div');
-                itemDiv.className = `top10-item`;
-                
-                // Highlight current user
-                if (player.user_id === state.userId) {
-                    itemDiv.classList.add('current-user');
-                }
-                
-                itemDiv.innerHTML = `
-                    <div class="top10-rank">#${actualRank}</div>
-                    <div class="top10-name">${escapeHtml(player.display_name || player.name || 'Player')}</div>
-                    <div class="top10-score">${Math.round(player.total_score || player.score || 0)}</div>
-                `;
-                
-                listEl.appendChild(itemDiv);
-            });
-        }
+        // Display using QuizUI
+        QuizUI.displayTop10WithPodium(leaderboard, {
+            podium: elements.playerTop3Podium,
+            list: elements.playerTop10List
+        }, QuizCore.state.userId);
     }
     
-    function escapeHtml(text) {
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        };
-        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
-    }
-    
-    function displayLeaderboard(entries, containerId) {
-        const container = document.getElementById(containerId);
-        container.innerHTML = '';
-        
-        entries.forEach((entry, index) => {
-            const item = document.createElement('div');
-            item.className = 'leaderboard-item';
-            if (entry.user_id === state.userId) {
-                item.classList.add('current-user');
-            }
-            
-            const rankBadge = document.createElement('span');
-            rankBadge.className = 'rank-badge';
-            if (entry.rank === 1) rankBadge.classList.add('gold');
-            else if (entry.rank === 2) rankBadge.classList.add('silver');
-            else if (entry.rank === 3) rankBadge.classList.add('bronze');
-            rankBadge.textContent = entry.rank;
-            
-            const name = document.createElement('div');
-            name.className = 'player-name';
-            
-            const displayName = entry.display_name || 'Player';
-            // Tách tên và username
-            let nameText = displayName;
-            let usernameText = '';
-            const parenIndex = displayName.indexOf(' (@');
-            if (parenIndex > 0) {
-                nameText = displayName.substring(0, parenIndex);
-                usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
-            }
-            
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'name-text';
-            nameSpan.textContent = nameText;
-            name.appendChild(nameSpan);
-            
-            if (usernameText) {
-                const usernameSpan = document.createElement('span');
-                usernameSpan.className = 'username-text';
-                usernameSpan.textContent = usernameText;
-                name.appendChild(usernameSpan);
-            }
-            
-            const score = document.createElement('span');
-            score.className = 'player-score';
-            score.textContent = entry.total_score;
-            
-            item.appendChild(rankBadge);
-            item.appendChild(name);
-            item.appendChild(score);
-            container.appendChild(item);
-        });
-    }
-    
-    async function fetchParticipantCount() {
-        if (!state.sessionId) return;
-        
-        try {
-            // Public endpoint - no nonce needed
-            const response = await fetch(config.restUrl + '/sessions/' + state.sessionId + '/player-count', {
-                method: 'GET'
-            });
-            
-            const data = await response.json();
-            if (data.success && typeof data.count !== 'undefined') {
-                updateParticipantCount(data.count);
-            }
-        } catch (error) {
-            console.error('[Live Quiz] Failed to fetch participant count:', error);
-        }
-    }
-    
+    /**
+     * Fetch players list (same logic as host)
+     */
+    /**
+     * Fetch players list (using shared QuizPlayers module)
+     */
     async function fetchPlayersList() {
-        if (!state.sessionId) return;
-        
-        try {
-            // Public endpoint - no nonce needed
-            const response = await fetch(config.restUrl + '/sessions/' + state.sessionId + '/players-list', {
-                method: 'GET'
-            });
-            
-            const data = await response.json();
-            if (data.success && data.players) {
-                updateParticipantCount(data.players.length);
-                updatePlayersList(data.players);
-            }
-        } catch (error) {
-            console.error('[Live Quiz] Failed to fetch players list:', error);
-        }
+        QuizPlayers.fetchPlayersList(
+            config.restUrl,
+            QuizCore.state.sessionId,
+            '/players-list',
+            null, // no nonce for public endpoint
+            elements.playersWaitingList,
+            QuizCore.state.displayName,
+            false, // isHost
+            updateParticipantCount // callback to update count
+        );
     }
     
+    /**
+     * Update participant count
+     */
     function updateParticipantCount(count) {
-        const elem = document.getElementById('participant-count');
-        if (elem) {
-            elem.textContent = count + ' người chơi đang chờ';
-        }
-    }
-    
-    function updatePlayersList(players) {
-        const container = document.getElementById('players-waiting-list');
-        if (!container) return;
-        
-        // Store players in state for lookup by user_id
-        state.players = {};
-        players.forEach(function(player) {
-            if (player.user_id) {
-                state.players[player.user_id] = player;
-            }
-        });
-        
-        if (players.length === 0) {
-            container.innerHTML = '<p class="no-players">Chưa có người chơi nào tham gia</p>';
-            return;
-        }
-        
-        let html = '';
-        players.forEach(function(player) {
-            const displayName = player.display_name || 'Unknown';
-            const initial = displayName.charAt(0).toUpperCase();
-            const isCurrentUser = player.display_name === state.displayName;
-            
-            // Tách tên và username
-            let nameText = displayName;
-            let usernameText = '';
-            const parenIndex = displayName.indexOf(' (@');
-            if (parenIndex > 0) {
-                nameText = displayName.substring(0, parenIndex);
-                usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
-            }
-            
-            html += `
-                <div class="player-waiting-item${isCurrentUser ? ' current-user' : ''}">
-                    <div class="player-waiting-avatar">${escapeHtml(initial)}</div>
-                    <div class="player-waiting-name">
-                        <span class="name-text">${escapeHtml(nameText)}</span>
-                        ${usernameText ? `<span class="username-text">${escapeHtml(usernameText)}</span>` : ''}
-                    </div>
-                </div>
-            `;
-        });
-        
-        container.innerHTML = html;
-    }
-    
-    function escapeHtml(text) {
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        };
-        return text.replace(/[&<>"']/g, function(m) { return map[m]; });
-    }
-    
-    /**
-     * Handle answer submitted event from WebSocket
-     */
-    function handleAnswerSubmitted(data) {
-        console.log('[PLAYER] ==========================================');
-        console.log('[PLAYER] ANSWER SUBMITTED EVENT');
-        console.log('[PLAYER] ==========================================');
-        console.log('[PLAYER] User ID:', data.user_id);
-        console.log('[PLAYER] Score:', data.score);
-        console.log('[PLAYER] answered_count:', data.answered_count);
-        console.log('[PLAYER] total_players:', data.total_players);
-        console.log('[PLAYER] Ratio:', data.answered_count + '/' + data.total_players);
-        console.log('[PLAYER] Full data:', data);
-        console.log('[PLAYER] ==========================================');
-        
-        // Add player to answered list if not already there
-        if (data.user_id && !state.answeredPlayers.includes(data.user_id)) {
-            state.answeredPlayers.push(data.user_id);
-            
-            // Find player info from stored players
-            const player = state.players[data.user_id];
-            if (player) {
-                const score = data.score !== undefined ? data.score : 0;
-                console.log('[PLAYER] Displaying player with score:', score);
-                displayAnsweredPlayer(player, score);
-            } else {
-                // If player info not found, create a basic player object
-                console.warn('[PLAYER] Player info not found for user_id:', data.user_id);
-                const basicPlayer = {
-                    user_id: data.user_id,
-                    display_name: 'Player ' + data.user_id
-                };
-                displayAnsweredPlayer(basicPlayer, data.score || 0);
-            }
-        }
-        
-        // Update answer count display
-        if (data.answered_count !== undefined && data.total_players !== undefined) {
-            const answerCountDisplay = document.querySelector('.answer-count-display');
-            const answerCountText = document.querySelector('.answer-count-text');
-            
-            if (answerCountDisplay && answerCountText) {
-                answerCountText.textContent = data.answered_count + '/' + data.total_players + ' đã trả lời';
-                answerCountDisplay.style.display = 'block';
-            }
-            
-            // Check if all players have answered
-            if (data.answered_count >= data.total_players && data.total_players > 0) {
-                console.log('[PLAYER] ✓ ALL PLAYERS ANSWERED - Accelerating timer to zero');
-                accelerateTimerToZero();
-            }
+        if (elements.participantCount) {
+            elements.participantCount.textContent = count + ' người chơi đang chờ';
         }
     }
     
     /**
-     * Display an answered player in the list
+     * Show screen
      */
-    function displayAnsweredPlayer(player, score) {
-        const displayName = player.display_name || 'Player';
-        const initial = displayName.charAt(0).toUpperCase();
-        const list = document.getElementById('answered-players-list');
-        
-        if (!list) {
-            console.warn('[PLAYER] Answered players list element not found');
-            return;
-        }
-        
-        // Tách tên và username
-        let nameText = displayName;
-        let usernameText = '';
-        const parenIndex = displayName.indexOf(' (@');
-        if (parenIndex > 0) {
-            nameText = displayName.substring(0, parenIndex);
-            usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
-        }
-        
-        const playerItem = document.createElement('div');
-        playerItem.className = 'answered-player-item';
-        playerItem.setAttribute('data-player-id', player.user_id);
-        playerItem.setAttribute('data-score', score);
-        
-        playerItem.innerHTML = `
-            <div class="answered-player-avatar">${escapeHtml(initial)}</div>
-            <div class="answered-player-name">
-                <span class="name-text">${escapeHtml(nameText)}</span>
-                ${usernameText ? `<span class="username-text">${escapeHtml(usernameText)}</span>` : ''}
-            </div>
-        `;
-        
-        list.appendChild(playerItem);
-        
-        // Animate in
-        playerItem.style.opacity = '0';
-        setTimeout(() => {
-            playerItem.style.transition = 'opacity 0.3s';
-            playerItem.style.opacity = '1';
-        }, 10);
-    }
-    
-    /**
-     * Show leaderboard animation after question ends
-     */
-    function showLeaderboardAnimation(data) {
-        console.log('[PLAYER] Starting leaderboard animation');
-        console.log('[PLAYER] Data received:', data);
-        
-        // Get current leaderboard
-        const leaderboard = data.leaderboard || [];
-        console.log('[PLAYER] Leaderboard data:', leaderboard);
-        console.log('[PLAYER] Leaderboard length:', leaderboard.length);
-        
-        if (leaderboard.length === 0) {
-            console.error('[PLAYER] Leaderboard is empty!');
-            // Hide overlay and continue
-            const overlay = document.getElementById('player-leaderboard-overlay');
-            if (overlay) {
-                overlay.style.display = 'none';
-            }
-            return;
-        }
-        
-        // Server now sends old_score and score_gain for each entry
-        // If not present, calculate for backward compatibility
-        const oldLeaderboard = leaderboard.map(entry => {
-            // Use server-provided data if available
-            if (entry.old_score !== undefined && entry.score_gain !== undefined) {
-                return {
-                    ...entry,
-                    old_score: entry.old_score,
-                    new_score: entry.new_score || entry.total_score,
-                    score_gain: entry.score_gain
-                };
-            }
-            
-            // Fallback: try to calculate for current user only
-            let scoreGain = 0;
-            if (entry.user_id === state.userId) {
-                const selectedButton = document.querySelector('.choice-button.selected');
-                if (selectedButton && data.correct_answer !== undefined) {
-                    const isCorrect = parseInt(selectedButton.dataset.choiceId) === data.correct_answer;
-                    if (isCorrect) {
-                        const timerText = document.querySelector('.timer-text');
-                        if (timerText) {
-                            const scoreMatch = timerText.textContent.match(/(\d+)/);
-                            if (scoreMatch) {
-                                scoreGain = parseInt(scoreMatch[1]);
-                            }
-                        }
-                    }
-                }
-            }
-            
-            return {
-                ...entry,
-                old_score: entry.total_score - scoreGain,
-                new_score: entry.total_score,
-                score_gain: scoreGain
-            };
-        });
-        
-        console.log('[PLAYER] ========================================');
-        console.log('[PLAYER] STARTING LEADERBOARD ANIMATION');
-        console.log('[PLAYER] ========================================');
-        console.log('[PLAYER] Old leaderboard prepared:', oldLeaderboard);
-        console.log('[PLAYER] Detailed leaderboard entries:');
-        oldLeaderboard.forEach(entry => {
-            console.log(`  - ${entry.display_name}: old=${entry.old_score}, new=${entry.new_score}, gain=${entry.score_gain}`);
-        });
-        
-        // Show overlay
-        const overlay = document.getElementById('player-leaderboard-overlay');
-        console.log('[PLAYER] Showing overlay');
-        
-        if (overlay) {
-            // Remove hidden class and show with animation
-            overlay.classList.remove('leaderboard-overlay-hidden');
-            overlay.style.opacity = '0';
-            setTimeout(() => {
-                overlay.style.opacity = '1';
-            }, 10);
-        } else {
-            console.error('[PLAYER] Overlay element not found!');
-        }
-        
-        // Step 1: Show OLD scores sorted by old_score (1 second)
-        console.log('[PLAYER] STEP 1: Rendering OLD scores...');
-        renderLeaderboard(oldLeaderboard, false);
-        
-        setTimeout(() => {
-            // Step 2: Show +score for correct answers (1 second)
-            console.log('[PLAYER] STEP 2: Showing score gains...');
-            showScoreGains(oldLeaderboard);
-            
-            setTimeout(() => {
-                // Step 3: Animate score addition (1 second)
-                console.log('[PLAYER] STEP 3: Animating score addition...');
-                animateScoreAddition(oldLeaderboard);
-            }, 1000);
-        }, 1000);
-    }
-    
-    /**
-     * Render leaderboard
-     */
-    function renderLeaderboard(leaderboard, showNewScores) {
-        console.log('[PLAYER] renderLeaderboard called');
-        console.log('[PLAYER] Leaderboard:', leaderboard);
-        console.log('[PLAYER] showNewScores:', showNewScores);
-        
-        const container = document.getElementById('player-animated-leaderboard');
-        console.log('[PLAYER] Container found:', container ? 'yes' : 'no');
-        
-        if (!container) {
-            console.error('[PLAYER] Container not found!');
-            return;
-        }
-        
-        container.innerHTML = '';
-        
-        if (!leaderboard || leaderboard.length === 0) {
-            console.error('[PLAYER] No leaderboard data to render');
-            container.innerHTML = '<p style="text-align: center; color: #999;">Chưa có dữ liệu xếp hạng</p>';
-            return;
-        }
-        
-        const displayData = showNewScores ? 
-            [...leaderboard].sort((a, b) => b.new_score - a.new_score) :
-            [...leaderboard].sort((a, b) => b.old_score - a.old_score);
-        
-        console.log('[PLAYER] Display data:', displayData);
-        
-        displayData.slice(0, 10).forEach((entry, index) => {
-            const score = showNewScores ? entry.new_score : entry.old_score;
-            const rankClass = index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : index === 2 ? 'rank-3' : '';
-            
-            const displayName = entry.display_name || 'Player';
-            // Tách tên và username
-            let nameText = displayName;
-            let usernameText = '';
-            const parenIndex = displayName.indexOf(' (@');
-            if (parenIndex > 0) {
-                nameText = displayName.substring(0, parenIndex);
-                usernameText = displayName.substring(parenIndex + 3, displayName.length - 1);
-            }
-            
-            // Highlight current user
-            const isCurrentUser = entry.user_id === state.userId;
-            const userClass = isCurrentUser ? 'current-user' : '';
-            
-            const html = `
-                <div class="leaderboard-item ${rankClass} ${userClass}" data-user-id="${entry.user_id}">
-                    <div class="rank">#${index + 1}</div>
-                    <div class="player-name">
-                        <span class="name-text">${escapeHtml(nameText)}</span>
-                        ${usernameText ? `<span class="username-text">${escapeHtml(usernameText)}</span>` : ''}
-                    </div>
-                    <div class="score-container">
-                        <span class="current-score">${score}</span>
-                        <span class="score-gain" style="display: none;">+${entry.score_gain}</span>
-                    </div>
-                </div>
-            `;
-            container.insertAdjacentHTML('beforeend', html);
-            console.log('[PLAYER] Added item:', displayName, score);
-        });
-        
-        console.log('[PLAYER] Render complete, items:', container.children.length);
-    }
-    
-    /**
-     * Show score gains
-     */
-    function showScoreGains(leaderboard) {
-        console.log('[PLAYER] showScoreGains - showing +score for users with gains');
-        let gainsShown = 0;
-        leaderboard.forEach(entry => {
-            if (entry.score_gain > 0) {
-                console.log(`[PLAYER] - ${entry.display_name}: +${entry.score_gain}`);
-                const item = document.querySelector(`#player-animated-leaderboard .leaderboard-item[data-user-id="${entry.user_id}"]`);
-                if (item) {
-                    const scoreGain = item.querySelector('.score-gain');
-                    if (scoreGain) {
-                        scoreGain.style.display = 'inline';
-                        scoreGain.style.opacity = '0';
-                        setTimeout(() => {
-                            scoreGain.style.transition = 'opacity 0.3s';
-                            scoreGain.style.opacity = '1';
-                        }, 10);
-                        gainsShown++;
-                    }
-                }
-            }
-        });
-        console.log(`[PLAYER] Score gains shown: ${gainsShown} out of ${leaderboard.length}`);
-    }
-    
-    /**
-     * Animate score addition
-     */
-    function animateScoreAddition(leaderboard) {
-        console.log('[PLAYER] animateScoreAddition - animating score increases');
-        // Fade out score gains and animate score increase
-        leaderboard.forEach(entry => {
-            if (entry.score_gain > 0) {
-                console.log(`[PLAYER] - Animating ${entry.display_name}: ${entry.old_score} → ${entry.new_score}`);
-                const item = document.querySelector(`#player-animated-leaderboard .leaderboard-item[data-user-id="${entry.user_id}"]`);
-                if (!item) return;
-                
-                const scoreGain = item.querySelector('.score-gain');
-                const currentScore = item.querySelector('.current-score');
-                
-                // Fade out +score
-                if (scoreGain) {
-                    scoreGain.style.transition = 'opacity 0.5s';
-                    scoreGain.style.opacity = '0';
-                }
-                
-                // Animate score increase
-                if (currentScore) {
-                    let start = entry.old_score;
-                    const end = entry.new_score;
-                    const duration = 1000;
-                    const startTime = Date.now();
-                    
-                    const animate = () => {
-                        const elapsed = Date.now() - startTime;
-                        const progress = Math.min(elapsed / duration, 1);
-                        const current = Math.round(start + (end - start) * progress);
-                        currentScore.textContent = current;
-                        
-                        if (progress < 1) {
-                            requestAnimationFrame(animate);
-                        }
-                    };
-                    
-                    animate();
-                }
-            }
-        });
-        
-        // After animation (1s), re-sort (1s)
-        setTimeout(() => {
-            console.log('[PLAYER] STEP 4: Reordering leaderboard by new scores...');
-            reorderLeaderboard(leaderboard);
-            
-            // Hide overlay after 3 seconds
-            setTimeout(() => {
-                console.log('[PLAYER] STEP 5: Hiding overlay...');
-                const overlay = document.getElementById('player-leaderboard-overlay');
-                if (overlay) {
-                    overlay.style.opacity = '0';
-                    setTimeout(() => {
-                        overlay.classList.add('leaderboard-overlay-hidden');
-                        console.log('[PLAYER] ========================================');
-                        console.log('[PLAYER] LEADERBOARD ANIMATION COMPLETE');
-                        console.log('[PLAYER] ========================================');
-                    }, 300);
-                }
-            }, 3000);
-        }, 1500);
-    }
-    
-    /**
-     * Reorder leaderboard after score update
-     */
-    function reorderLeaderboard(leaderboard) {
-        console.log('[PLAYER] reorderLeaderboard - sorting by new scores and animating positions');
-        const container = document.getElementById('player-animated-leaderboard');
-        if (!container) return;
-        
-        // Sort by new scores
-        const sorted = [...leaderboard].sort((a, b) => b.new_score - a.new_score);
-        console.log('[PLAYER] New order:', sorted.map((e, i) => `#${i + 1} ${e.display_name} (${e.new_score})`));
-        
-        // Store current positions
-        const positions = [];
-        sorted.slice(0, 10).forEach((entry, newIndex) => {
-            const item = document.querySelector(`#player-animated-leaderboard .leaderboard-item[data-user-id="${entry.user_id}"]`);
-            if (!item) return;
-            
-            const currentIndex = Array.from(container.children).indexOf(item);
-            positions.push({ item, currentIndex, newIndex, entry });
-        });
-        
-        // Calculate movements and reorder
-        positions.forEach(({ item, currentIndex, newIndex, entry }) => {
-            if (currentIndex !== newIndex) {
-                // Get current position
-                const currentTop = item.offsetTop;
-                
-                // Move in DOM
-                if (newIndex === 0) {
-                    container.insertBefore(item, container.firstChild);
-                } else {
-                    const refNode = container.children[newIndex];
-                    if (refNode && refNode !== item) {
-                        container.insertBefore(item, refNode);
-                    }
-                }
-                
-                // Get new position
-                const newTop = item.offsetTop;
-                const distance = currentTop - newTop;
-                
-                // Animate from old position to new position
-                item.style.transform = `translateY(${distance}px)`;
-                item.style.transition = 'none';
-                
-                // Trigger reflow
-                item.offsetHeight;
-                
-                // Animate to new position
-                item.style.transition = 'transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1)';
-                item.style.transform = 'translateY(0)';
-            }
-            
-            // Update rank and styling
-            const rankEl = item.querySelector('.rank');
-            if (rankEl) {
-                rankEl.textContent = '#' + (newIndex + 1);
-            }
-            
-            // Update rank class
-            item.classList.remove('rank-1', 'rank-2', 'rank-3');
-            if (newIndex === 0) item.classList.add('rank-1');
-            else if (newIndex === 1) item.classList.add('rank-2');
-            else if (newIndex === 2) item.classList.add('rank-3');
-        });
-    }
-    
-    /**
-     * Escape HTML
-     */
-    function escapeHtml(text) {
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        };
-        return text.replace(/[&<>"']/g, function(m) { return map[m]; });
-    }
-
     function showScreen(screenId) {
-        document.querySelectorAll('.quiz-screen').forEach(screen => {
+        document.querySelectorAll('.quiz-screen').forEach(function(screen) {
             screen.classList.remove('active');
         });
         
@@ -2079,180 +959,67 @@
         
         if (screenId === 'quiz-lobby') {
             setFloatingLeaveVisibility(false);
-        } else if (state.sessionId) {
+        } else if (QuizCore.state.sessionId) {
             setFloatingLeaveVisibility(true);
         }
     }
-    /**
-     * Start ping measurement
-     */
-    function startPingMeasurement() {
-        if (!state.socket || !state.isConnected) {
-            return;
-        }
-        
-        // Clear existing interval
-        if (state.pingInterval) {
-            clearInterval(state.pingInterval);
-        }
-        
-        // Measure ping every 2 seconds
-        state.pingInterval = setInterval(() => {
-            if (state.socket && state.isConnected) {
-                state.lastPing = Date.now();
-                state.socket.emit('ping_measure', { timestamp: state.lastPing });
-            }
-        }, 2000);
-        
-        // Show ping indicator
-        const pingEl = document.getElementById('ping-indicator');
-        if (pingEl) {
-            pingEl.style.display = 'flex';
-        }
-    }
     
     /**
-     * Stop ping measurement
+     * Set floating leave button visibility
      */
-    function stopPingMeasurement() {
-        if (state.pingInterval) {
-            clearInterval(state.pingInterval);
-            state.pingInterval = null;
-        }
+    function setFloatingLeaveVisibility(visible) {
+        if (!elements.leaveButton) return;
         
-        // Hide ping indicator
-        const pingEl = document.getElementById('ping-indicator');
-        if (pingEl) {
-            pingEl.style.display = 'none';
-        }
-    }
-    
-    /**
-     * Update ping display
-     */
-    function updatePingDisplay(ping) {
-        state.currentPing = ping;
-        
-        const pingEl = document.getElementById('ping-indicator');
-        if (!pingEl) return;
-        
-        const pingValue = pingEl.querySelector('.ping-value');
-        if (pingValue) {
-            pingValue.textContent = ping;
-        }
-    }
-    
-    /**
-     * Start clock synchronization with server
-     */
-    function startClockSync() {
-        if (!state.socket || !state.isConnected) {
-            return;
-        }
-        
-        console.log('[PLAYER] Starting clock synchronization...');
-        state.syncAttempts = 0;
-        syncClock();
-    }
-    
-    /**
-     * Sync clock with server (send request)
-     */
-    function syncClock() {
-        if (state.syncAttempts >= state.maxSyncAttempts) {
-            console.log('[PLAYER] Clock sync complete after', state.syncAttempts, 'attempts');
-            console.log('[PLAYER] Final clock offset:', state.clockOffset, 'ms');
-            return;
-        }
-        
-        const clientTime = Date.now();
-        state.syncAttempts++;
-        
-        console.log('[PLAYER] Clock sync attempt', state.syncAttempts, '- sending client_time:', clientTime);
-        state.socket.emit('clock_sync_request', { client_time: clientTime });
-    }
-    
-    /**
-     * Handle clock sync response from server
-     */
-    function handleClockSyncResponse(data) {
-        const clientTimeNow = Date.now();
-        const clientTimeSent = data.client_time;
-        const serverTime = data.server_time;
-        
-        // Calculate round-trip time
-        const rtt = clientTimeNow - clientTimeSent;
-        
-        // Estimate one-way latency (half of RTT)
-        const oneWayLatency = rtt / 2;
-        
-        // Calculate clock offset
-        // server_time was measured when server received our request
-        // We estimate server time "now" by adding half of RTT
-        const estimatedServerTimeNow = serverTime + oneWayLatency;
-        const offset = estimatedServerTimeNow - clientTimeNow;
-        
-        console.log('[PLAYER] Clock sync response:');
-        console.log('  Client time sent:', clientTimeSent);
-        console.log('  Server time:', serverTime);
-        console.log('  Client time now:', clientTimeNow);
-        console.log('  RTT:', rtt, 'ms');
-        console.log('  One-way latency:', oneWayLatency, 'ms');
-        console.log('  Calculated offset:', offset, 'ms');
-        
-        // Average the offset over multiple attempts for better accuracy
-        if (state.syncAttempts === 1) {
-            state.clockOffset = offset;
+        if (visible) {
+            elements.leaveButton.classList.add('is-visible');
         } else {
-            // Weighted average (give more weight to recent measurements)
-            state.clockOffset = (state.clockOffset * 0.7) + (offset * 0.3);
+            elements.leaveButton.classList.remove('is-visible');
         }
-        
-        console.log('[PLAYER] Clock offset updated to:', state.clockOffset, 'ms');
-        
-        // Continue syncing
-        setTimeout(() => syncClock(), 200);
     }
     
     /**
-     * Get synchronized server time
-     * @returns {number} Estimated server time in milliseconds
+     * Show error message
      */
-    function getServerTime() {
-        return Date.now() + state.clockOffset;
-    }
-    
     function showError(elementId, message) {
         const elem = document.getElementById(elementId);
         if (elem) {
             elem.textContent = message;
             elem.style.display = 'block';
-            setTimeout(() => {
+            setTimeout(function() {
                 elem.style.display = 'none';
             }, 5000);
         }
     }
     
+    /**
+     * Show connection status
+     */
     function showConnectionStatus(message, type) {
         const statusElem = document.getElementById('connection-status');
+        if (!statusElem) return;
+        
         const textElem = statusElem.querySelector('.status-text');
         
         statusElem.className = 'connection-status ' + type;
+        if (textElem) {
         textElem.textContent = message;
+        }
         statusElem.style.display = 'block';
     }
     
+    /**
+     * Hide connection status
+     */
     function hideConnectionStatus() {
         const statusElem = document.getElementById('connection-status');
+        if (statusElem) {
         statusElem.style.display = 'none';
+        }
     }
     
     // Cleanup on page unload
-    window.addEventListener('beforeunload', () => {
-        if (state.socket && state.socket.connected) {
-            state.socket.disconnect();
-        }
-        clearInterval(state.timerInterval);
+    window.addEventListener('beforeunload', function() {
+        QuizCore.cleanup();
     });
     
 })();
