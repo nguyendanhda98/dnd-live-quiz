@@ -749,10 +749,14 @@ class Live_Quiz_Session_Manager {
      * @param int $session_id Session ID
      * @param string $user_id User ID
      * @param int $choice_id Choice ID
+     * @param float|null $submit_time Optional client-provided synchronized server time (in seconds)
      * @return array|WP_Error Result or error
      */
-    public static function submit_answer($session_id, $user_id, $choice_id) {
+    public static function submit_answer($session_id, $user_id, $choice_id, $submit_time = null) {
         error_log("SessionManager::submit_answer called - Session: $session_id, User: $user_id, Choice: $choice_id");
+        if ($submit_time) {
+            error_log("Client submit_time (synchronized): $submit_time");
+        }
         
         try {
             $session = self::get_session($session_id);
@@ -793,14 +797,23 @@ class Live_Quiz_Session_Manager {
                 return new WP_Error('already_answered', __('Đã trả lời câu hỏi này', 'live-quiz'));
             }
             
-            // Calculate time taken (server-side)
-            $answer_time = microtime(true);
-            $time_taken = Live_Quiz_Scoring::calculate_time_taken(
-                (float)$session['question_start_time'],
-                $answer_time
-            );
-            
-            error_log("Time taken: $time_taken seconds");
+            // Calculate time taken
+            // If client provided synchronized submit_time, use it (more accurate with clock sync)
+            // Otherwise fall back to server-side time (backward compatibility)
+            if ($submit_time && is_numeric($submit_time)) {
+                $time_taken = Live_Quiz_Scoring::calculate_time_taken(
+                    (float)$session['question_start_time'],
+                    (float)$submit_time
+                );
+                error_log("Time taken (from client sync): $time_taken seconds");
+            } else {
+                $answer_time = microtime(true);
+                $time_taken = Live_Quiz_Scoring::calculate_time_taken(
+                    (float)$session['question_start_time'],
+                    $answer_time
+                );
+                error_log("Time taken (server-side): $time_taken seconds");
+            }
             
             // Validate answer using ORIGINAL choice_id
             $validation = Live_Quiz_Scoring::validate_answer(

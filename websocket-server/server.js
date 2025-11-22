@@ -823,6 +823,23 @@ io.on('connection', async (socket) => {
             timestamp: data.timestamp
         });
     });
+    
+    // Handle clock synchronization request
+    socket.on('clock_sync_request', (data) => {
+        const serverTime = Date.now(); // Server time in milliseconds
+        
+        logger.debug('Clock sync request', {
+            userId: socket.userId,
+            clientTime: data.client_time,
+            serverTime,
+        });
+        
+        // Send back both client_time (for RTT calculation) and server_time
+        socket.emit('clock_sync_response', {
+            client_time: data.client_time,
+            server_time: serverTime,
+        });
+    });
 
     // Handle disconnect
     socket.on('disconnect', async (reason) => {

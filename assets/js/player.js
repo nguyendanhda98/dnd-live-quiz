@@ -37,6 +37,11 @@
         lastPing: null,
         currentPing: null,
         
+        // Clock synchronization
+        clockOffset: 0, // Difference between server time and client time (server_time - client_time)
+        syncAttempts: 0,
+        maxSyncAttempts: 5,
+        
         // Players tracking
         players: {}, // Map of user_id to player info
         answeredPlayers: [], // Track players who answered current question
@@ -485,6 +490,9 @@
             // Start ping measurement
             startPingMeasurement();
             
+            // Start clock synchronization
+            startClockSync();
+            
             // Join the session room with connection ID
             state.socket.emit('join_session', {
                 session_id: state.sessionId,
@@ -581,6 +589,9 @@
                 updatePingDisplay(ping);
             }
         });
+        
+        // Listen for clock sync response
+        state.socket.on('clock_sync_response', handleClockSyncResponse);
         
         // Listen for answer submitted events
         state.socket.on('answer_submitted', handleAnswerSubmitted);
@@ -826,14 +837,16 @@
         console.log('[PLAYER] Max points:', maxPoints);
         console.log('[PLAYER] Time limit:', seconds, 'seconds');
         console.log('[PLAYER] Server start time:', startTimestamp);
-        console.log('[PLAYER] Current time:', Date.now() / 1000);
+        console.log('[PLAYER] Current server time (sync):', getServerTime() / 1000);
+        console.log('[PLAYER] Clock offset:', state.clockOffset, 'ms');
         console.log('[PLAYER] ========================================');
         
         const timerFill = document.querySelector('.timer-fill');
         const timerText = document.querySelector('.timer-text');
         
         const updateTimer = () => {
-            const nowSeconds = Date.now() / 1000;
+            // Use synchronized server time instead of local client time
+            const nowSeconds = getServerTime() / 1000;
             const elapsed = Math.max(0, nowSeconds - startTimestamp);
             const remaining = Math.max(0, seconds - elapsed);
             
@@ -965,6 +978,18 @@
         // Timer continues running - server records the submission time
         console.log('[PLAYER] Answer selected, timer continues running');
         
+        // Get synchronized server time when answer is submitted
+        const submitServerTime = getServerTime() / 1000; // in seconds
+        const elapsed = submitServerTime - state.serverStartTime;
+        
+        console.log('[PLAYER] ========================================');
+        console.log('[PLAYER] Answer Submit Timing');
+        console.log('[PLAYER] Server start time:', state.serverStartTime);
+        console.log('[PLAYER] Submit server time (sync):', submitServerTime);
+        console.log('[PLAYER] Elapsed time:', elapsed, 'seconds');
+        console.log('[PLAYER] Clock offset used:', state.clockOffset, 'ms');
+        console.log('[PLAYER] ========================================');
+        
         // Disable all choices
         disableChoices();
         
@@ -982,6 +1007,7 @@
                 body: JSON.stringify({
                     session_id: state.sessionId,
                     choice_id: choiceId,
+                    submit_time: submitServerTime, // Send synchronized server time
                 }),
             });
             
@@ -2114,6 +2140,86 @@
         if (pingValue) {
             pingValue.textContent = ping;
         }
+    }
+    
+    /**
+     * Start clock synchronization with server
+     */
+    function startClockSync() {
+        if (!state.socket || !state.isConnected) {
+            return;
+        }
+        
+        console.log('[PLAYER] Starting clock synchronization...');
+        state.syncAttempts = 0;
+        syncClock();
+    }
+    
+    /**
+     * Sync clock with server (send request)
+     */
+    function syncClock() {
+        if (state.syncAttempts >= state.maxSyncAttempts) {
+            console.log('[PLAYER] Clock sync complete after', state.syncAttempts, 'attempts');
+            console.log('[PLAYER] Final clock offset:', state.clockOffset, 'ms');
+            return;
+        }
+        
+        const clientTime = Date.now();
+        state.syncAttempts++;
+        
+        console.log('[PLAYER] Clock sync attempt', state.syncAttempts, '- sending client_time:', clientTime);
+        state.socket.emit('clock_sync_request', { client_time: clientTime });
+    }
+    
+    /**
+     * Handle clock sync response from server
+     */
+    function handleClockSyncResponse(data) {
+        const clientTimeNow = Date.now();
+        const clientTimeSent = data.client_time;
+        const serverTime = data.server_time;
+        
+        // Calculate round-trip time
+        const rtt = clientTimeNow - clientTimeSent;
+        
+        // Estimate one-way latency (half of RTT)
+        const oneWayLatency = rtt / 2;
+        
+        // Calculate clock offset
+        // server_time was measured when server received our request
+        // We estimate server time "now" by adding half of RTT
+        const estimatedServerTimeNow = serverTime + oneWayLatency;
+        const offset = estimatedServerTimeNow - clientTimeNow;
+        
+        console.log('[PLAYER] Clock sync response:');
+        console.log('  Client time sent:', clientTimeSent);
+        console.log('  Server time:', serverTime);
+        console.log('  Client time now:', clientTimeNow);
+        console.log('  RTT:', rtt, 'ms');
+        console.log('  One-way latency:', oneWayLatency, 'ms');
+        console.log('  Calculated offset:', offset, 'ms');
+        
+        // Average the offset over multiple attempts for better accuracy
+        if (state.syncAttempts === 1) {
+            state.clockOffset = offset;
+        } else {
+            // Weighted average (give more weight to recent measurements)
+            state.clockOffset = (state.clockOffset * 0.7) + (offset * 0.3);
+        }
+        
+        console.log('[PLAYER] Clock offset updated to:', state.clockOffset, 'ms');
+        
+        // Continue syncing
+        setTimeout(() => syncClock(), 200);
+    }
+    
+    /**
+     * Get synchronized server time
+     * @returns {number} Estimated server time in milliseconds
+     */
+    function getServerTime() {
+        return Date.now() + state.clockOffset;
     }
     
     function showError(elementId, message) {

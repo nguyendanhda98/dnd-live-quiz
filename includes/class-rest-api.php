@@ -815,8 +815,12 @@ class Live_Quiz_REST_API {
         try {
             $session_id = $request->get_param('session_id');
             $choice_id = $request->get_param('choice_id');
+            $submit_time = $request->get_param('submit_time'); // Client's synchronized server time
             
             error_log("Session ID: $session_id, Choice ID: $choice_id");
+            if ($submit_time) {
+                error_log("Submit time (from client sync): $submit_time");
+            }
             
             if (!$session_id || !is_numeric($choice_id)) {
                 error_log('ERROR: Missing params');
@@ -848,8 +852,8 @@ class Live_Quiz_REST_API {
             
             error_log('About to call Session_Manager::submit_answer');
             
-            // Submit answer
-            $result = Live_Quiz_Session_Manager::submit_answer($session_id, $user_id, (int)$choice_id);
+            // Submit answer (pass submit_time if available)
+            $result = Live_Quiz_Session_Manager::submit_answer($session_id, $user_id, (int)$choice_id, $submit_time);
             
             error_log('Session_Manager::submit_answer returned: ' . print_r($result, true));
             
