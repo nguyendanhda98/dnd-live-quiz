@@ -23,6 +23,7 @@
         displayStartTime: null, // Local timestamp when we start displaying (for offset calculation)
         displayDelay: 3,
         timerInterval: null,
+        timerAccelerated: false, // Track if timer has been accelerated to zero
         connectionId: null, // Unique ID for this tab/device
         
         // WebSocket connection
@@ -706,19 +707,17 @@
         
         state.currentQuestion = data;
         state.questionStartTime = data.start_time;
+        state.timerAccelerated = false; // Reset acceleration flag for new question
         
-        const actualTimerStart = data.question && data.question.actual_timer_start
-            ? parseFloat(data.question.actual_timer_start)
-            : null;
-        const timerDelay = data.question && typeof data.question.timer_delay !== 'undefined'
-            ? parseFloat(data.question.timer_delay) || 0
-            : 3;
+        // Fixed timing: Question displays immediately, choices show after 3 seconds
+        // Timer starts when choices appear (3 seconds after question broadcast)
+        const DISPLAY_DELAY = 3; // Fixed 3 second delay
+        state.serverStartTime = data.start_time + DISPLAY_DELAY;
+        state.displayDelay = DISPLAY_DELAY;
         
-        state.serverStartTime = actualTimerStart || data.start_time || (Date.now() / 1000);
-        state.displayDelay = timerDelay || 3;
-        
-        const nowSeconds = Date.now() / 1000;
-        const skipIntro = nowSeconds >= state.serverStartTime;
+        console.log('[PLAYER] Question start time:', data.start_time);
+        console.log('[PLAYER] Timer will start at:', state.serverStartTime);
+        console.log('[PLAYER] Display delay:', DISPLAY_DELAY);
         
         // Clear answered players list for new question
         state.answeredPlayers = [];
@@ -741,14 +740,11 @@
         }
         
         showScreen('quiz-question');
-        displayQuestion(data, { skipIntro });
-        // Timer will be started by displayQuestion after question is displayed
+        displayQuestion(data);
+        // Timer will be started by displayQuestion after 3 second delay
     }
     
-    function displayQuestion(data, options = {}) {
-        const skipIntro = !!options.skipIntro;
-        const introDelay = skipIntro ? 0 : (state.displayDelay || 3);
-        
+    function displayQuestion(data) {
         const questionNumber = data.question_index + 1;
         
         document.querySelector('.question-number').textContent = 
@@ -763,11 +759,15 @@
         container.innerHTML = '';
         container.style.display = 'none'; // Hide initially
         
-        // Record when we finish displaying question (for offset calculation)
-        state.displayStartTime = Date.now() / 1000;
-        state.displayDelay = introDelay;
+        console.log('[PLAYER] Question displayed, waiting 3 seconds before showing choices...');
         
-        const renderChoices = () => {
+        // Always wait exactly 3 seconds before showing choices and starting timer
+        const DISPLAY_DELAY = 3000; // 3 seconds in milliseconds
+        
+        setTimeout(() => {
+            console.log('[PLAYER] Displaying choices and starting timer...');
+            
+            // Render choices
             container.innerHTML = '';
             data.question.choices.forEach((choice, index) => {
                 const button = document.createElement('button');
@@ -779,14 +779,10 @@
             });
             
             container.style.display = '';
+            
+            // Start timer synchronized with server
             startTimer(data.question.time_limit);
-        };
-        
-        if (introDelay <= 0) {
-            renderChoices();
-        } else {
-            setTimeout(renderChoices, introDelay * 1000);
-        }
+        }, DISPLAY_DELAY);
     }
     
     /**
@@ -819,12 +815,22 @@
         
         const maxPoints = 1000;
         const minPoints = 0;
+        const freezePeriod = 1; // 1 second freeze at max points
         
-        console.log('[PLAYER] Timer start - Max points:', maxPoints);
+        // Timer should start from serverStartTime
+        // serverStartTime = question broadcast time + 3 seconds (display delay)
+        const startTimestamp = state.serverStartTime;
+        
+        console.log('[PLAYER] ========================================');
+        console.log('[PLAYER] Starting Timer');
+        console.log('[PLAYER] Max points:', maxPoints);
+        console.log('[PLAYER] Time limit:', seconds, 'seconds');
+        console.log('[PLAYER] Server start time:', startTimestamp);
+        console.log('[PLAYER] Current time:', Date.now() / 1000);
+        console.log('[PLAYER] ========================================');
         
         const timerFill = document.querySelector('.timer-fill');
         const timerText = document.querySelector('.timer-text');
-        const startTimestamp = state.serverStartTime || (Date.now() / 1000);
         
         const updateTimer = () => {
             const nowSeconds = Date.now() / 1000;
@@ -843,16 +849,15 @@
             const percentage = (remaining / seconds) * 100;
             timerFill.style.width = percentage + '%';
             
-            // Freeze period: 1 second at max points, then linear decrease for remaining time
-            const freezePeriod = 1; // 1 second freeze at max points
+            // Calculate points based on elapsed time
             let currentPoints;
             
             if (elapsed < freezePeriod) {
-                // During freeze period, stay at max points
+                // During freeze period (0-1s), stay at max points
                 currentPoints = maxPoints;
             } else {
-                // After freeze period, decrease linearly from maxPoints to 0 over remaining time
-                const decreaseTime = seconds - freezePeriod; // Time for decrease (e.g., 19 seconds)
+                // After freeze period, decrease linearly from maxPoints to 0
+                const decreaseTime = seconds - freezePeriod; // e.g., 19 seconds for 20s total
                 const elapsedAfterFreeze = elapsed - freezePeriod;
                 const pointsPerSecond = maxPoints / decreaseTime;
                 currentPoints = Math.max(minPoints, Math.min(maxPoints, Math.floor(maxPoints - (elapsedAfterFreeze * pointsPerSecond))));
@@ -878,16 +883,87 @@
         state.timerInterval = setInterval(updateTimer, 100);
     }
     
-    async function handleAnswerSelect(choiceId) {
-        // Stop the timer immediately and freeze the points
-        clearInterval(state.timerInterval);
-        state.timerInterval = null;
+    /**
+     * Accelerate timer to zero when all players have answered
+     * Timer decreases linearly to 0 over 1 second
+     */
+    function accelerateTimerToZero() {
+        // Check if already accelerated
+        if (state.timerAccelerated) {
+            console.log('[PLAYER] Timer already accelerated, skipping');
+            return;
+        }
         
-        // Get current points value to freeze it
+        // Mark as accelerated
+        state.timerAccelerated = true;
+        
+        // Stop current timer
+        if (state.timerInterval) {
+            clearInterval(state.timerInterval);
+            state.timerInterval = null;
+        }
+        
+        const timerFill = document.querySelector('.timer-fill');
         const timerText = document.querySelector('.timer-text');
-        const currentPoints = timerText.textContent; // Keep the current display
         
-        console.log('[PLAYER] Answer selected, timer stopped at:', currentPoints);
+        if (!timerFill || !timerText) {
+            console.warn('[PLAYER] Timer elements not found');
+            return;
+        }
+        
+        // Get current values
+        const currentWidth = parseFloat(timerFill.style.width) || 0;
+        const currentPointsText = timerText.textContent;
+        const currentPoints = parseInt(currentPointsText.replace(' pts', '')) || 0;
+        
+        console.log('[PLAYER] Starting acceleration from:', currentPoints, 'pts,', currentWidth, '%');
+        
+        // Animation duration: 1 second
+        const animationDuration = 1000; // 1 second in milliseconds
+        const startTime = Date.now();
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / animationDuration, 1); // 0 to 1
+            
+            // Linear interpolation from current values to 0
+            const newWidth = currentWidth * (1 - progress);
+            const newPoints = Math.floor(currentPoints * (1 - progress));
+            
+            timerFill.style.width = newWidth + '%';
+            timerText.textContent = newPoints + ' pts';
+            
+            // Update color as points decrease
+            const pointsPercentage = (newPoints / 1000) * 100;
+            if (pointsPercentage < 40) {
+                timerFill.style.backgroundColor = '#e74c3c';
+                timerText.style.color = '#e74c3c';
+            } else if (pointsPercentage < 70) {
+                timerFill.style.backgroundColor = '#f39c12';
+                timerText.style.color = '#f39c12';
+            } else {
+                timerFill.style.backgroundColor = '#2ecc71';
+                timerText.style.color = '#2ecc71';
+            }
+            
+            if (progress < 1) {
+                // Continue animation
+                requestAnimationFrame(animate);
+            } else {
+                // Animation complete
+                timerFill.style.width = '0%';
+                timerText.textContent = '0 pts';
+                console.log('[PLAYER] Timer acceleration complete');
+            }
+        };
+        
+        // Start animation
+        requestAnimationFrame(animate);
+    }
+    
+    async function handleAnswerSelect(choiceId) {
+        // Timer continues running - server records the submission time
+        console.log('[PLAYER] Answer selected, timer continues running');
         
         // Disable all choices
         disableChoices();
@@ -932,14 +1008,9 @@
             
             console.log('Answer submitted:', data);
             
-            // Update timer text with actual score from server
-            if (data.score !== undefined) {
-                const timerText = document.querySelector('.timer-text');
-                if (timerText) {
-                    timerText.textContent = data.score + ' pts';
-                    console.log('[PLAYER] Updated display with server score:', data.score);
-                }
-            }
+            // Server has recorded the time and calculated score
+            // Timer continues to run until question ends
+            // Final score will be shown when question_end event is received
             
             // Don't show correct/incorrect yet - wait for question_end
             // Just keep the 'selected' highlight
@@ -1570,6 +1641,12 @@
             if (answerCountDisplay && answerCountText) {
                 answerCountText.textContent = data.answered_count + '/' + data.total_players + ' đã trả lời';
                 answerCountDisplay.style.display = 'block';
+            }
+            
+            // Check if all players have answered
+            if (data.answered_count >= data.total_players && data.total_players > 0) {
+                console.log('[PLAYER] ✓ ALL PLAYERS ANSWERED - Accelerating timer to zero');
+                accelerateTimerToZero();
             }
         }
     }

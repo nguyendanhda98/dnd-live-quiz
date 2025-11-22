@@ -229,16 +229,12 @@ class Live_Quiz_Session_Manager {
         
         $start_time = microtime(true);
         
-        // Calculate timer delay for client-side animations
-        // Typewriter effect: 50ms per character
-        $question_text = $session['questions'][$question_index]['text'];
-        $typewriter_duration = (strlen($question_text) * 0.05); // 50ms = 0.05s per char
-        
-        // Timer starts immediately after typewriter + 0.5s buffer
-        $timer_delay = $typewriter_duration + 0.5;
+        // Fixed 3-second delay before choices appear and timer starts
+        // This gives players time to read the question
+        $timer_delay = 3.0;
         $actual_timer_start = $start_time + $timer_delay;
         
-        // First 1 second is "freeze period" at 1000 points
+        // First 1 second after timer starts is "freeze period" at 1000 points
         $freeze_period = 1.0;
         $scoring_start = $actual_timer_start + $freeze_period;
         
