@@ -471,6 +471,33 @@ class Live_Quiz_REST_API {
         error_log("Session ID: {$session_id}");
         error_log("Timestamp: " . date('Y-m-d H:i:s'));
         
+        // Get previous quiz IDs before resetting (to return them for pre-selection)
+        $previous_quiz_ids = get_post_meta($session_id, '_session_quiz_ids', true);
+        if (!is_array($previous_quiz_ids)) {
+            $previous_quiz_ids = array();
+        }
+        
+        // Get quiz details for pre-selection
+        $previous_quizzes = array();
+        foreach ($previous_quiz_ids as $quiz_id) {
+            $quiz = get_post($quiz_id);
+            if ($quiz && $quiz->post_type === 'live_quiz') {
+                $questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
+                if (is_string($questions)) {
+                    $questions = json_decode($questions, true);
+                }
+                $question_count = is_array($questions) ? count($questions) : 0;
+                
+                $previous_quizzes[] = array(
+                    'id' => (int)$quiz_id,
+                    'title' => $quiz->post_title,
+                    'question_count' => $question_count
+                );
+            }
+        }
+        
+        error_log("✓ Found " . count($previous_quizzes) . " previous quizzes to pre-select");
+        
         // Step 1: Reset session status to lobby in database
         update_post_meta($session_id, '_session_status', 'lobby');
         update_post_meta($session_id, '_current_question', 0);
@@ -558,7 +585,8 @@ class Live_Quiz_REST_API {
         return rest_ensure_response(array(
             'success' => true,
             'message' => 'Session replayed successfully',
-            'session_id' => $session_id
+            'session_id' => $session_id,
+            'previous_quizzes' => $previous_quizzes // Return previous quizzes for pre-selection
         ));
     }
     

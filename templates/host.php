@@ -202,12 +202,6 @@ if ($has_session) {
                     <button id="replay-session-btn-top3" class="btn btn-success">
                         <?php _e('🔄 Chơi lại', 'live-quiz'); ?>
                     </button>
-                    <button id="end-session-btn-top3" class="btn btn-danger">
-                        <?php _e('Kết thúc phiên', 'live-quiz'); ?>
-                    </button>
-                    <a href="<?php echo admin_url('edit.php?post_type=live_quiz'); ?>" class="btn btn-secondary">
-                        <?php _e('Quay về danh sách Quiz', 'live-quiz'); ?>
-                    </a>
                 </div>
             </div>
         </div>
@@ -307,12 +301,6 @@ if ($has_session) {
                     <button id="replay-session-btn" class="btn btn-success">
                         <?php _e('🔄 Chơi lại', 'live-quiz'); ?>
                     </button>
-                    <button id="end-session-btn" class="btn btn-danger">
-                        <?php _e('Kết thúc phiên', 'live-quiz'); ?>
-                    </button>
-                    <a href="<?php echo admin_url('edit.php?post_type=live_quiz'); ?>" class="btn btn-secondary">
-                        <?php _e('Quay về danh sách Quiz', 'live-quiz'); ?>
-                    </a>
                 </div>
             </div>
         </div>

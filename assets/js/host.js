@@ -219,8 +219,8 @@
                 self.nextQuestion();
             });
             
-            // End Session buttons
-            $('#end-session-btn, #end-session-btn-top3').on('click', function(e) {
+            // End Session button (only in header, not in final screens)
+            $('#end-session-btn').on('click', function(e) {
                 e.preventDefault();
                 console.log('[HOST] End session button clicked');
                 self.endSession();
@@ -755,6 +755,22 @@
                 },
                 success: function(response) {
                     console.log('[HOST] Session replay initiated:', response);
+                    
+                    // Pre-select previous quizzes if available
+                    if (response.previous_quizzes && response.previous_quizzes.length > 0) {
+                        console.log('[HOST] Pre-selecting previous quizzes:', response.previous_quizzes);
+                        self.selectedQuizzes = response.previous_quizzes.map(function(quiz) {
+                            return {
+                                id: quiz.id,
+                                title: quiz.title,
+                                question_count: quiz.question_count
+                            };
+                        });
+                        self.updateSelectedQuizzes();
+                        self.updateStartButton();
+                        console.log('[HOST] ✓ Previous quizzes pre-selected');
+                    }
+                    
                     // Return to lobby
                     self.showScreen('host-lobby');
                 },

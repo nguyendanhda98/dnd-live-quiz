@@ -210,14 +210,6 @@ $show_title = get_query_var('show_title', 'yes');
             <div id="player-top10-list" class="top10-list">
                 <!-- Ranks 4-10 will be inserted here -->
             </div>
-            
-            <button onclick="location.reload()" class="btn btn-primary">
-                <?php _e('Tham gia phiên mới', 'live-quiz'); ?>
-            </button>
-            
-            <button class="btn btn-secondary leave-room-btn" style="margin-top: 10px;">
-                <?php _e('Rời khỏi phòng', 'live-quiz'); ?>
-            </button>
         </div>
     </div>
     
