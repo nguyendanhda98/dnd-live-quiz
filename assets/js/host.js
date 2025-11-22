@@ -30,6 +30,21 @@
         // API config
         apiConfig: null,
         
+        // DOM Elements (shared structure with player)
+        elements: {
+            questionNumber: null,
+            questionText: null,
+            choicesContainer: null,
+            answeredPlayersList: null,
+            answerCountDisplay: null,
+            answerCountText: null,
+            timerFill: null,
+            timerText: null,
+            leaderboardOverlay: null,
+            animatedLeaderboard: null,
+            playersList: null // Players waiting list (shared with player)
+        },
+        
         /**
          * Initialize host
          */
@@ -66,11 +81,38 @@
                 }, 100);
             }
             
+            // Initialize DOM elements (shared structure with player)
+            this.initElements();
+            
             // Bind events
             this.bindEvents();
             
             // Connect WebSocket
             this.connectWebSocket();
+        },
+        
+        /**
+         * Initialize DOM elements (shared structure with player)
+         */
+        initElements: function() {
+            // Question elements
+            this.elements.questionNumber = document.querySelector('.question-number');
+            this.elements.questionText = document.querySelector('.question-text');
+            this.elements.choicesContainer = document.getElementById('choices-preview');
+            this.elements.answeredPlayersList = document.getElementById('answered-players-list');
+            this.elements.answerCountDisplay = document.querySelector('.answer-count-display');
+            this.elements.answerCountText = document.querySelector('.answer-count-text');
+            
+            // Timer elements
+            this.elements.timerFill = document.querySelector('.timer-fill');
+            this.elements.timerText = document.querySelector('.timer-text');
+            
+            // Leaderboard elements (shared with player)
+            this.elements.leaderboardOverlay = document.getElementById('leaderboard-overlay');
+            this.elements.animatedLeaderboard = document.getElementById('animated-leaderboard');
+            
+            // Players list element (shared with player)
+            this.elements.playersList = document.getElementById('players-list');
         },
         
         /**
@@ -341,43 +383,65 @@
             
             QuizCore.state.currentQuestion = data;
             QuizCore.state.questionStartTime = data.start_time;
-            QuizCore.state.serverStartTime = data.start_time;
             QuizCore.state.timerAccelerated = false;
             
-            // Hide leaderboard overlay
-            $('#leaderboard-overlay').fadeOut(300);
+            // Fixed timing: Question displays immediately, choices show after 3 seconds
+            const DISPLAY_DELAY = 3;
+            QuizCore.state.serverStartTime = data.start_time + DISPLAY_DELAY;
+            QuizCore.state.displayDelay = DISPLAY_DELAY;
+            
+            console.log('[HOST] Server start time for timer:', QuizCore.state.serverStartTime);
+            
+            // Hide leaderboard overlay (using elements object - shared with player)
+            const self = this;
+            if (this.elements.leaderboardOverlay && !this.elements.leaderboardOverlay.classList.contains('leaderboard-overlay-hidden')) {
+                this.elements.leaderboardOverlay.style.opacity = '0';
+                setTimeout(function() {
+                    self.elements.leaderboardOverlay.classList.add('leaderboard-overlay-hidden');
+                }, 300);
+            }
             
             // Reset answered players
             QuizCore.resetForNewQuestion();
-            $('#answered-players-list').empty();
+            if (this.elements.answeredPlayersList) {
+                this.elements.answeredPlayersList.innerHTML = '';
+            }
+            
+            // Initialize answer count display with total players
+            const totalPlayers = Object.keys(QuizCore.state.players || {}).length;
+            if (this.elements.answerCountDisplay && this.elements.answerCountText) {
+                this.elements.answerCountText.textContent = '0/' + totalPlayers + ' đã trả lời';
+                this.elements.answerCountDisplay.style.display = 'block';
+            }
             
             // Show question screen
             this.showScreen('host-question');
             
             // Reset stats and buttons
-            $('#answer-stats').hide();
-            $('#next-question-btn').hide();
-            $('.answer-count-display').hide();
-            $('.answer-count-text').text('0/0 đã trả lời');
+            const answerStats = document.getElementById('answer-stats');
+            if (answerStats) {
+                answerStats.style.display = 'none';
+            }
+            const nextQuestionBtn = document.getElementById('next-question-btn');
+            if (nextQuestionBtn) {
+                nextQuestionBtn.style.display = 'none';
+            }
             
-            // Display question using QuizUI (host view - choices disabled)
+            // Display question using QuizUI (shared code with player)
             QuizUI.displayQuestion(data, {
-                questionNumber: $('.question-number')[0],
-                questionText: $('.question-text')[0],
-                choicesContainer: $('#choices-preview')[0]
+                questionNumber: this.elements.questionNumber,
+                questionText: this.elements.questionText,
+                choicesContainer: this.elements.choicesContainer
             }, true, null); // isHost=true, no onAnswerSelect
             
             // Start timer after 3 seconds (when choices appear)
-            const self = this;
+ 
             setTimeout(function() {
-                const DISPLAY_DELAY = 3;
-                QuizCore.state.serverStartTime = data.start_time + DISPLAY_DELAY;
-                
                 QuizCore.startTimer(
                     data.question.time_limit,
                     {
-                        fill: $('.timer-fill')[0],
-                        text: $('.timer-text')[0]
+                        fill: self.elements.timerFill,
+                        text: self.elements.timerText
                     },
                     null,
                     function() {
@@ -390,7 +454,7 @@
         },
         
         /**
-         * Handle question end (using QuizUI)
+         * Handle question end (using QuizUI - shared code with player)
          */
         handleQuestionEnd: function(data) {
             console.log('[HOST] Question end:', data);
@@ -403,30 +467,37 @@
             // Wait 1 second before showing correct answer
             const self = this;
             setTimeout(function() {
-                // Show correct answer using QuizUI
-                QuizUI.showCorrectAnswer(data.correct_answer, $('#choices-preview')[0]);
+                // Show correct answer using QuizUI (shared code with player)
+                QuizUI.showCorrectAnswer(data.correct_answer, self.elements.choicesContainer);
                 
                 console.log('[HOST] Correct answer shown');
                 
-                // After 2 seconds, show leaderboard animation
+                // After 2 seconds, show leaderboard animation (using shared QuizUI - same as player)
                 setTimeout(function() {
                     QuizUI.showLeaderboardAnimation(
                         data,
-                        $('#leaderboard-overlay')[0],
-                        $('#animated-leaderboard')[0],
+                        self.elements.leaderboardOverlay,
+                        self.elements.animatedLeaderboard,
                         QuizCore.state.userId
                     );
                     
                     // Show next question button after animation
                     setTimeout(function() {
-                        $('#next-question-btn').fadeIn();
+                        const nextQuestionBtn = document.getElementById('next-question-btn');
+                        if (nextQuestionBtn) {
+                            nextQuestionBtn.style.display = 'block';
+                            nextQuestionBtn.style.opacity = '0';
+                            setTimeout(function() {
+                                nextQuestionBtn.style.opacity = '1';
+                            }, 10);
+                        }
                     }, 5000);
                 }, 2000);
             }, 1000);
         },
         
         /**
-         * Handle answer submitted
+         * Handle answer submitted (using shared QuizUI - same as player)
          */
         handleAnswerSubmitted: function(data) {
             console.log('[HOST] Answer submitted:', data);
@@ -438,25 +509,25 @@
                 // Find player info
                 const player = QuizCore.state.players[data.user_id];
                 if (player) {
-                    QuizUI.displayAnsweredPlayer(player, data.score || 0, $('#answered-players-list')[0]);
+                    QuizUI.displayAnsweredPlayer(player, data.score || 0, this.elements.answeredPlayersList);
                 }
             }
             
-            // Update answer count
+            // Update answer count (using shared QuizUI - same as player)
             if (data.answered_count !== undefined && data.total_players !== undefined) {
                 QuizUI.updateAnswerCount(
                     data.answered_count,
                     data.total_players,
-                    $('.answer-count-display')[0],
-                    $('.answer-count-text')[0]
+                    this.elements.answerCountDisplay,
+                    this.elements.answerCountText
                 );
                 
                 // If all players answered, accelerate timer
                 if (data.answered_count >= data.total_players && data.total_players > 0) {
                     console.log('[HOST] All players answered - accelerating timer');
                     QuizCore.accelerateTimerToZero({
-                        fill: $('.timer-fill')[0],
-                        text: $('.timer-text')[0]
+                        fill: this.elements.timerFill,
+                        text: this.elements.timerText
                     });
                     
                     // Auto end question after timer reaches 0
@@ -551,27 +622,31 @@
         },
         
         /**
-         * Show countdown and start quiz
+         * Show countdown and start quiz (using shared QuizUI module)
          */
         showCountdownAndStartQuiz: function() {
             const self = this;
             
-            // Show countdown screen
-            this.showScreen('host-countdown');
+            // Broadcast countdown to all players via WebSocket
+            if (QuizCore.state.socket && QuizCore.state.socket.connected) {
+                QuizCore.state.socket.emit('broadcast_countdown', {
+                    count: 3,
+                    session_id: QuizCore.state.sessionId
+                });
+                console.log('[HOST] Broadcasted countdown to all players');
+            }
             
-            let count = 3;
-            $('#host-countdown-number').text(count);
-            
-            const countdownInterval = setInterval(function() {
-                count--;
-                if (count > 0) {
-                    $('#host-countdown-number').text(count);
-                } else {
-                    clearInterval(countdownInterval);
-                    // Start quiz via API
+            // Show countdown using shared module
+            QuizUI.showCountdown(
+                $('#host-countdown-number'),
+                'host-countdown',
+                this.showScreen.bind(this),
+                3,
+                function() {
+                    // Start quiz via API when countdown completes
                     self.sendStartQuizCommand();
                 }
-            }, 1000);
+            );
         },
         
         /**
@@ -714,7 +789,7 @@
         // ========================================
         
         /**
-         * Fetch players (using shared QuizPlayers module)
+         * Fetch players (using shared QuizPlayers module - same as player)
          */
         fetchPlayers: function() {
             const self = this;
@@ -724,7 +799,7 @@
                 QuizCore.state.sessionId,
                 '/players',
                 this.apiConfig.nonce,
-                $('#players-list')[0],
+                this.elements.playersList,
                 QuizCore.state.displayName,
                 true, // isHost
                 function(count) {
@@ -751,12 +826,12 @@
         },
         
         /**
-         * Handle player joined (using shared QuizPlayers module)
+         * Handle player joined (using shared QuizPlayers module - same as player)
          */
         handlePlayerJoined: function(data) {
             QuizPlayers.handlePlayerJoined(
                 data,
-                $('#players-list')[0],
+                this.elements.playersList,
                 QuizCore.state.displayName,
                 true // isHost
             );
@@ -771,12 +846,12 @@
         },
         
         /**
-         * Handle player left (using shared QuizPlayers module)
+         * Handle player left (using shared QuizPlayers module - same as player)
          */
         handlePlayerLeft: function(data) {
             QuizPlayers.handlePlayerLeft(
                 data,
-                $('#players-list')[0],
+                this.elements.playersList,
                 QuizCore.state.displayName,
                 true // isHost
             );
@@ -788,10 +863,9 @@
         },
         
         /**
-         * Update players list (using shared QuizPlayers module)
+         * Update players list (using shared QuizPlayers module - same as player)
          */
         updatePlayersList: function(players) {
-            const $list = $('#players-list');
             const $count = $('#player-count');
             
             // Update count
@@ -800,8 +874,8 @@
             // Update start button
             this.updateStartButton();
             
-            // Update list using shared module
-            QuizPlayers.updatePlayersList(players, $list[0], QuizCore.state.displayName, true);
+            // Update list using shared module (same as player)
+            QuizPlayers.updatePlayersList(players, this.elements.playersList, QuizCore.state.displayName, true);
             
             // Bind click events for player actions (host-specific)
             this.bindPlayerClickEvents();

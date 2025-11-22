@@ -538,16 +538,23 @@
         }
     }
     
+    /**
+     * Handle quiz countdown (using shared QuizUI module)
+     */
     function handleQuizCountdown(data) {
         console.log('[PLAYER] Quiz countdown:', data);
         
-        showScreen('quiz-countdown');
-        
-        let count = data.count || 3;
         const countdownEl = document.getElementById('countdown-number');
-        if (countdownEl) {
-            countdownEl.textContent = count;
-        }
+        const count = data.count || 3;
+        
+        // Show countdown using shared module
+        QuizUI.showCountdown(
+            countdownEl,
+            'quiz-countdown',
+            showScreen,
+            count,
+            null // No callback needed for player
+        );
     }
     
     function handleQuestionStart(data) {
@@ -569,8 +576,12 @@
         if (elements.answeredPlayersList) {
             elements.answeredPlayersList.innerHTML = '';
         }
-        if (elements.answerCountDisplay) {
-            elements.answerCountDisplay.style.display = 'none';
+        
+        // Initialize answer count display with total players
+        const totalPlayers = Object.keys(QuizCore.state.players || {}).length;
+        if (elements.answerCountDisplay && elements.answerCountText) {
+            elements.answerCountText.textContent = '0/' + totalPlayers + ' đã trả lời';
+            elements.answerCountDisplay.style.display = 'block';
         }
         
         // Hide leaderboard overlay if visible

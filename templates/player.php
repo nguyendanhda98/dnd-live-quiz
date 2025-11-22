@@ -127,9 +127,6 @@ $show_title = get_query_var('show_title', 'yes');
                     <div class="timer-fill"></div>
                 </div>
                 <div class="timer-text"></div>
-                <div class="answer-count-display" style="display: none;">
-                    <span class="answer-count-text">0/0 đã trả lời</span>
-                </div>
             </div>
             <button class="leave-room-btn leave-room-icon" title="<?php esc_attr_e('Rời khỏi phòng', 'live-quiz'); ?>">
                 ✕
@@ -145,6 +142,9 @@ $show_title = get_query_var('show_title', 'yes');
             
             <div class="answered-players-section">
                 <h4><?php _e('Người chơi đã trả lời', 'live-quiz'); ?></h4>
+                <div class="answer-count-display" style="display: none;">
+                    <span class="answer-count-text">0/0 đã trả lời</span>
+                </div>
                 <div id="answered-players-list" class="answered-players-list">
                     <!-- Answered players will be displayed here -->
                 </div>

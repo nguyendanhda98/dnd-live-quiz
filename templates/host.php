@@ -218,25 +218,28 @@ if ($has_session) {
                 <div class="question-header">
                     <div class="question-info">
                         <span class="question-number"></span>
-                        <h2 class="question-text"></h2>
                     </div>
                     <div class="timer-container">
                         <div class="timer-bar">
                             <div class="timer-fill"></div>
                         </div>
                         <div class="timer-text"></div>
-                        <div class="answer-count-display" style="display: none;">
-                            <span class="answer-count-text">0/0 đã trả lời</span>
-                        </div>
                     </div>
                 </div>
 
-                <div class="choices-preview" id="choices-preview">
-                    <!-- Choices will be displayed here -->
+                <div class="question-content">
+                    <h2 class="question-text"></h2>
+                    
+                    <div class="choices-preview" id="choices-preview">
+                        <!-- Choices will be displayed here -->
+                    </div>
                 </div>
 
                 <div class="answered-players-section">
                     <h4><?php _e('Người chơi đã trả lời', 'live-quiz'); ?></h4>
+                    <div class="answer-count-display" style="display: none;">
+                        <span class="answer-count-text">0/0 đã trả lời</span>
+                    </div>
                     <div id="answered-players-list" class="answered-players-list">
                         <!-- Answered players will be displayed here -->
                     </div>
@@ -254,8 +257,8 @@ if ($has_session) {
                 </button>
             </div>
             
-            <!-- Leaderboard Overlay -->
-            <div id="leaderboard-overlay" class="leaderboard-overlay" style="display: none;">
+            <!-- Leaderboard Overlay (shared structure with player) -->
+            <div id="leaderboard-overlay" class="leaderboard-overlay leaderboard-overlay-hidden">
                 <div class="leaderboard-container">
                     <h2><?php _e('Bảng xếp hạng', 'live-quiz'); ?></h2>
                     <div id="animated-leaderboard" class="animated-leaderboard">

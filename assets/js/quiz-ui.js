@@ -72,7 +72,8 @@
             
             choices.forEach(function(choice, index) {
                 const button = document.createElement('button');
-                button.className = isHost ? 'choice-preview' : 'choice-button';
+                // Use same class for both host and player (shared CSS)
+                button.className = 'choice-button';
                 button.dataset.choiceId = index;
                 button.textContent = choice.text;
                 
@@ -82,7 +83,9 @@
                         onAnswerSelect(index);
                     });
                 } else {
-                    button.disabled = true; // Host cannot select
+                    // Host cannot select - disable button
+                    button.disabled = true;
+                    button.style.cursor = 'default'; // Override cursor for disabled host buttons
                 }
                 
                 container.appendChild(button);
@@ -635,6 +638,56 @@
             // Use QuizUI.updatePlayersList for rendering
             QuizUI.updatePlayersList(players, container, currentUserName, isHost);
         }
+    };
+    
+    /**
+     * Show countdown screen (shared for both host and player)
+     * @param {HTMLElement|jQuery} countdownElement - Element to display countdown number
+     * @param {string} screenId - Screen ID to show ('host-countdown' or 'quiz-countdown')
+     * @param {Function} showScreenFunc - Function to show screen
+     * @param {number} startCount - Starting count (default: 3)
+     * @param {Function} onComplete - Callback when countdown completes
+     */
+    QuizUI.showCountdown = function(countdownElement, screenId, showScreenFunc, startCount, onComplete) {
+        const count = startCount || 3;
+        
+        // Show countdown screen
+        if (showScreenFunc) {
+            showScreenFunc(screenId);
+        }
+        
+        // Update countdown number
+        if (countdownElement) {
+            if (typeof countdownElement.text === 'function') {
+                // jQuery element
+                countdownElement.text(count);
+            } else {
+                // DOM element
+                countdownElement.textContent = count;
+            }
+        }
+        
+        let currentCount = count;
+        const countdownInterval = setInterval(function() {
+            currentCount--;
+            if (currentCount > 0) {
+                // Update countdown number
+                if (countdownElement) {
+                    if (typeof countdownElement.text === 'function') {
+                        countdownElement.text(currentCount);
+                    } else {
+                        countdownElement.textContent = currentCount;
+                    }
+                }
+            } else {
+                clearInterval(countdownInterval);
+                if (onComplete) {
+                    onComplete();
+                }
+            }
+        }, 1000);
+        
+        return countdownInterval; // Return interval ID in case need to clear
     };
     
     // Export to window

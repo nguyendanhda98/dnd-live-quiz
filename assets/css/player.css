@@ -582,6 +582,30 @@
     border-radius: 2px;
 }
 
+.answered-players-section .answer-count-display {
+    text-align: center;
+    margin: 15px 0 20px 0;
+    padding: 10px 18px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.9) 0%, rgba(118, 75, 162, 0.9) 100%);
+    border-radius: 20px;
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+}
+
+.answered-players-section .answer-count-display:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.5);
+}
+
+.answered-players-section .answer-count-text {
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    letter-spacing: 0.5px;
+}
+
 .answered-players-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
@@ -714,10 +738,13 @@
 }
 
 /* Choices */
-.choices-container {
+/* Shared choices container styles (same for both host and player) */
+.choices-container,
+.choices-preview {
     display: grid;
     grid-template-columns: 1fr;
     gap: 15px;
+    margin: 30px 0;
 }
 
 .choice-button {
