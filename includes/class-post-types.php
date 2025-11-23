@@ -559,8 +559,8 @@ class Live_Quiz_Post_Types {
                     </label>
                     
                     <label>
-                        <strong><?php _e('Số lượng câu hỏi:', 'live-quiz'); ?></strong>
-                        <input type="number" id="ai-question-count" value="1" min="1">
+                        <strong><?php _e('Số lượng câu hỏi (max:50):', 'live-quiz'); ?></strong>
+                        <input type="number" id="ai-question-count" value="1" min="1" max="50">
                     </label>
                     
                     <label>

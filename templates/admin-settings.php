@@ -260,46 +260,6 @@ if (!defined('ABSPATH')) {
                     </script>
                 </td>
             </tr>
-            
-            <tr>
-                <th scope="row">
-                    <label for="live_quiz_gemini_max_tokens"><?php _e('Max Output Tokens', 'live-quiz'); ?></label>
-                </th>
-                <td>
-                    <input type="number" 
-                           name="live_quiz_gemini_max_tokens" 
-                           id="live_quiz_gemini_max_tokens" 
-                           value="<?php echo esc_attr(get_option('live_quiz_gemini_max_tokens', 8192)); ?>"
-                           min="1024" 
-                           max="65536" 
-                           step="512"
-                           class="regular-text">
-                    <p class="description">
-                        <?php _e('Số lượng tokens tối đa cho response từ AI. Giá trị cao hơn cho phép tạo nhiều câu hỏi hơn nhưng tốn token hơn.', 'live-quiz'); ?><br>
-                        <?php _e('Khuyến nghị: 2048-4096 cho 1-5 câu hỏi, 8192 cho 5-10 câu hỏi, 16384+ cho 10+ câu hỏi. Max 65536.', 'live-quiz'); ?>
-                    </p>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row">
-                    <label for="live_quiz_gemini_timeout"><?php _e('API Timeout (giây)', 'live-quiz'); ?></label>
-                </th>
-                <td>
-                    <input type="number" 
-                           name="live_quiz_gemini_timeout" 
-                           id="live_quiz_gemini_timeout" 
-                           value="<?php echo esc_attr(get_option('live_quiz_gemini_timeout', 60)); ?>"
-                           min="10" 
-                           max="300" 
-                           step="10"
-                           class="regular-text">
-                    <p class="description">
-                        <?php _e('Thời gian chờ tối đa cho API request. Tăng timeout nếu tạo nhiều câu hỏi phức tạp.', 'live-quiz'); ?><br>
-                        <?php _e('Khuyến nghị: 30-60 giây cho 1-5 câu hỏi, 60-120 giây cho 5-10 câu hỏi, 120+ cho nhiều hơn.', 'live-quiz'); ?>
-                    </p>
-                </td>
-            </tr>
             </table>
         </div>
         

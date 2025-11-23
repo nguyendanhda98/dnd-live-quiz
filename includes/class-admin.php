@@ -63,8 +63,6 @@ class Live_Quiz_Admin {
         // AI settings
         register_setting('live_quiz_settings', 'live_quiz_gemini_api_key');
         register_setting('live_quiz_settings', 'live_quiz_gemini_model');
-        register_setting('live_quiz_settings', 'live_quiz_gemini_max_tokens');
-        register_setting('live_quiz_settings', 'live_quiz_gemini_timeout');
         register_setting('live_quiz_settings', 'live_quiz_ai_prompt_single_choice');
         register_setting('live_quiz_settings', 'live_quiz_ai_prompt_multiple_choice');
         register_setting('live_quiz_settings', 'live_quiz_ai_prompt_free_choice');
@@ -174,14 +172,6 @@ class Live_Quiz_Admin {
             }
             if (isset($_POST['live_quiz_gemini_model'])) {
                 update_option('live_quiz_gemini_model', sanitize_text_field($_POST['live_quiz_gemini_model']));
-            }
-            if (isset($_POST['live_quiz_gemini_max_tokens'])) {
-                $max_tokens = max(1024, min(65536, intval($_POST['live_quiz_gemini_max_tokens'])));
-                update_option('live_quiz_gemini_max_tokens', $max_tokens);
-            }
-            if (isset($_POST['live_quiz_gemini_timeout'])) {
-                $timeout = max(10, min(300, intval($_POST['live_quiz_gemini_timeout'])));
-                update_option('live_quiz_gemini_timeout', $timeout);
             }
             if (isset($_POST['live_quiz_ai_prompt_single_choice'])) {
                 update_option('live_quiz_ai_prompt_single_choice', sanitize_textarea_field(wp_unslash($_POST['live_quiz_ai_prompt_single_choice'])));

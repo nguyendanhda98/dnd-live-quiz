@@ -167,6 +167,9 @@ class Live_Quiz_AI_Generator {
         $count = (int) $request->get_param('count') ?: 1;
         $choices_count = (int) $request->get_param('choices_count') ?: 4;
         
+        // Validate count - max 50 questions
+        $count = max(1, min(50, $count));
+        
         // Validate choices_count
         $choices_count = max(2, min(6, $choices_count));
         
@@ -214,8 +217,8 @@ class Live_Quiz_AI_Generator {
         $model = get_option('live_quiz_gemini_model', 'gemini-1.5-flash');
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent?key=' . $api_key;
         
-        // Get max tokens from settings
-        $max_tokens = get_option('live_quiz_gemini_max_tokens', 8192);
+        // Always use max tokens (65536 - maximum allowed by Gemini API)
+        $max_tokens = 65536;
         
         $body = array(
             'contents' => array(
@@ -231,8 +234,8 @@ class Live_Quiz_AI_Generator {
             ),
         );
         
-        // Get timeout from settings, default to 60 seconds
-        $timeout = get_option('live_quiz_gemini_timeout', 60);
+        // Always use 300 seconds timeout
+        $timeout = 300;
         
         $response = wp_remote_post($url, array(
             'headers' => array(

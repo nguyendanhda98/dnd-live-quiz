@@ -317,13 +317,24 @@
      */
     async function generateAIQuestions(startIndex) {
         const type = $('#ai-question-type').val();
-        const count = parseInt($('#ai-question-count').val());
+        let count = parseInt($('#ai-question-count').val());
         const choicesCount = parseInt($('#ai-choices-count').val());
         const content = $('#ai-question-content').val();
         
         if (!content) {
             alert('Vui lòng nhập nội dung để AI tạo câu hỏi!');
             return;
+        }
+        
+        // Validate count - max 50 questions
+        if (count < 1) {
+            alert('Số lượng câu hỏi phải lớn hơn 0!');
+            return;
+        }
+        if (count > 50) {
+            alert('Số lượng câu hỏi tối đa là 50!');
+            count = 50;
+            $('#ai-question-count').val(50);
         }
         
         // Show progress
