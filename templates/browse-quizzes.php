@@ -100,7 +100,7 @@ $show_filters = get_query_var('show_filters', true);
             </button>
         </div>
         <div class="live-quiz-preview-modal-body">
-            <div class="live-quiz-preview-info">
+            <div class="live-quiz-preview-info live-quiz-preview-info-sticky">
                 <span id="live-quiz-preview-question-count" class="live-quiz-preview-meta"></span>
                 <button type="button" id="live-quiz-toggle-answers" class="live-quiz-toggle-answers">
                     <?php _e('Hiện đáp án', 'live-quiz'); ?>
@@ -109,6 +109,10 @@ $show_filters = get_query_var('show_filters', true);
             <div id="live-quiz-preview-questions" class="live-quiz-preview-questions">
                 <!-- Questions will be loaded here -->
             </div>
+            <!-- Floating toggle button for easy access when scrolling -->
+            <button type="button" id="live-quiz-toggle-answers-floating" class="live-quiz-toggle-answers-floating" title="<?php esc_attr_e('Hiện/Ẩn đáp án', 'live-quiz'); ?>">
+                <span class="dashicons dashicons-visibility"></span>
+            </button>
         </div>
     </div>
 </div>

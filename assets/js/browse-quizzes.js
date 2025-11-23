@@ -90,7 +90,12 @@
             
             // Toggle answers
             $('#live-quiz-toggle-answers').on('click', () => {
-                this.toggleAnswers();
+                self.toggleAnswers();
+            });
+            
+            // Floating toggle button
+            $(document).on('click', '#live-quiz-toggle-answers-floating', () => {
+                self.toggleAnswers();
             });
             
             // Pagination
@@ -314,6 +319,7 @@
             }
             
             $modal.show();
+            $('#live-quiz-toggle-answers-floating').show();
             $('body').css('overflow', 'hidden');
             
             this.showAnswers = false;
@@ -498,11 +504,14 @@
         toggleAnswers: function() {
             this.showAnswers = !this.showAnswers;
             const $toggleBtn = $('#live-quiz-toggle-answers');
+            const $floatingBtn = $('#live-quiz-toggle-answers-floating');
             
             if (this.showAnswers) {
                 $toggleBtn.text(this.config.i18n.hideAnswers || 'Ẩn đáp án');
+                $floatingBtn.addClass('showing-answers');
             } else {
                 $toggleBtn.text(this.config.i18n.showAnswers || 'Hiện đáp án');
+                $floatingBtn.removeClass('showing-answers');
             }
             
             if (this.currentQuiz) {
@@ -512,6 +521,7 @@
         
         closePreview: function() {
             $('#live-quiz-preview-modal').hide();
+            $('#live-quiz-toggle-answers-floating').hide();
             $('body').css('overflow', '');
             this.showAnswers = false;
             this.currentQuiz = null;
