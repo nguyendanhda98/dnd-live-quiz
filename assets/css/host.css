@@ -1627,6 +1627,13 @@
     animation: countdown-pulse 1s ease-in-out;
 }
 
+.total-questions-display {
+    font-size: 24px;
+    color: #666;
+    margin-top: 30px;
+    font-weight: 500;
+}
+
 @keyframes countdown-pulse {
     0% {
         transform: scale(0.5);

@@ -25,10 +25,15 @@
          */
         displayQuestion: function(data, elements, isHost, onAnswerSelect) {
             const questionNumber = data.question_index + 1;
+            const totalQuestions = data.total_questions || 0;
             
-            // Update question number
+            // Update question number with total questions
             if (elements.questionNumber) {
-                elements.questionNumber.textContent = 'Câu ' + questionNumber;
+                if (totalQuestions > 0) {
+                    elements.questionNumber.textContent = 'Câu ' + questionNumber + ' / ' + totalQuestions;
+                } else {
+                    elements.questionNumber.textContent = 'Câu ' + questionNumber;
+                }
             }
             
             // Display question text immediately
