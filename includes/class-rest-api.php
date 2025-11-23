@@ -235,6 +235,13 @@ class Live_Quiz_REST_API {
             'permission_callback' => '__return_true',
         ));
         
+        // Frontend: Get all available categories (public)
+        register_rest_route(self::NAMESPACE, '/categories', array(
+            'methods' => 'GET',
+            'callback' => array(__CLASS__, 'get_categories'),
+            'permission_callback' => '__return_true',
+        ));
+        
         // Frontend: Create session from frontend (requires authentication)
         register_rest_route(self::NAMESPACE, '/sessions/create-frontend', array(
             'methods' => 'POST',
@@ -1645,10 +1652,21 @@ class Live_Quiz_REST_API {
                 }
                 $questions = $questions ? $questions : array();
                 
+                // Get categories for this quiz
+                $quiz_categories = get_post_meta($post_id, '_live_quiz_categories', true);
+                if (is_string($quiz_categories)) {
+                    $quiz_categories = !empty($quiz_categories) ? explode(',', $quiz_categories) : array();
+                }
+                if (!is_array($quiz_categories)) {
+                    $quiz_categories = array();
+                }
+                $quiz_categories = array_map('trim', $quiz_categories);
+                
                 $quizzes[] = array(
                     'id' => $post_id,
                     'title' => get_the_title(),
                     'question_count' => count($questions),
+                    'categories' => $quiz_categories,
                 );
             }
             wp_reset_postdata();
@@ -1669,6 +1687,7 @@ class Live_Quiz_REST_API {
         $search = $request->get_param('search');
         $min_questions = $request->get_param('min_questions');
         $max_questions = $request->get_param('max_questions');
+        $categories = $request->get_param('categories'); // Can be comma-separated string or array
         $sort_by = $request->get_param('sort_by') ?: 'date_desc';
         
         $args = array(
@@ -1735,11 +1754,48 @@ class Live_Quiz_REST_API {
                     continue;
                 }
                 
+                // Get categories for this quiz
+                $quiz_categories = get_post_meta($post_id, '_live_quiz_categories', true);
+                if (is_string($quiz_categories)) {
+                    $quiz_categories = !empty($quiz_categories) ? explode(',', $quiz_categories) : array();
+                }
+                if (!is_array($quiz_categories)) {
+                    $quiz_categories = array();
+                }
+                $quiz_categories = array_map('trim', $quiz_categories);
+                
+                // Filter by categories
+                if (!empty($categories)) {
+                    // Handle both comma-separated string and array
+                    if (is_string($categories)) {
+                        $filter_categories = explode(',', $categories);
+                    } else {
+                        $filter_categories = $categories;
+                    }
+                    $filter_categories = array_map('trim', $filter_categories);
+                    $filter_categories = array_filter($filter_categories);
+                    
+                    if (!empty($filter_categories)) {
+                        // Check if quiz has at least one of the requested categories
+                        $has_category = false;
+                        foreach ($filter_categories as $filter_cat) {
+                            if (in_array($filter_cat, $quiz_categories)) {
+                                $has_category = true;
+                                break;
+                            }
+                        }
+                        if (!$has_category) {
+                            continue; // Skip this quiz if it doesn't have any of the requested categories
+                        }
+                    }
+                }
+                
                 $all_quizzes[] = array(
                     'id' => $post_id,
                     'title' => get_the_title(),
                     'description' => get_post_meta($post_id, '_live_quiz_description', true),
                     'question_count' => $question_count,
+                    'categories' => $quiz_categories,
                     'created_date' => get_the_date('Y-m-d H:i:s'),
                 );
             }
@@ -1803,6 +1859,16 @@ class Live_Quiz_REST_API {
         $alpha = get_post_meta($quiz_id, '_live_quiz_alpha', true);
         $max_players = get_post_meta($quiz_id, '_live_quiz_max_players', true);
         
+        // Get categories for this quiz
+        $quiz_categories = get_post_meta($quiz_id, '_live_quiz_categories', true);
+        if (is_string($quiz_categories)) {
+            $quiz_categories = !empty($quiz_categories) ? explode(',', $quiz_categories) : array();
+        }
+        if (!is_array($quiz_categories)) {
+            $quiz_categories = array();
+        }
+        $quiz_categories = array_map('trim', $quiz_categories);
+        
         return rest_ensure_response(array(
             'success' => true,
             'quiz' => array(
@@ -1811,10 +1877,26 @@ class Live_Quiz_REST_API {
                 'description' => $description,
                 'question_count' => count($questions),
                 'questions' => $questions,
+                'categories' => $quiz_categories,
                 'alpha' => $alpha,
                 'max_players' => $max_players,
                 'created_date' => get_the_date('Y-m-d H:i:s', $quiz_id),
             ),
+        ));
+    }
+    
+    /**
+     * Get all available categories
+     */
+    public static function get_categories($request) {
+        $categories = get_option('live_quiz_categories', '');
+        $categories_array = !empty($categories) ? explode(',', $categories) : array();
+        $categories_array = array_map('trim', $categories_array);
+        $categories_array = array_filter($categories_array);
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'categories' => array_values($categories_array),
         ));
     }
     

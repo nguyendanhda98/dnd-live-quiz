@@ -13,6 +13,8 @@
         sortBy: 'date_desc',
         minQuestions: null,
         maxQuestions: null,
+        selectedCategories: [],
+        allCategories: [],
         showAnswers: false,
         currentQuiz: null,
         
@@ -28,7 +30,150 @@
             }
             
             this.bindEvents();
+            this.loadCategories();
             this.loadQuizzes();
+        },
+        
+        loadCategories: function() {
+            const self = this;
+            let apiUrl = this.config.restUrl;
+            if (apiUrl && !apiUrl.endsWith('/')) {
+                apiUrl += '/';
+            }
+            
+            $.ajax({
+                url: apiUrl + 'categories',
+                method: 'GET',
+                beforeSend: (xhr) => {
+                    xhr.setRequestHeader('X-WP-Nonce', this.config.nonce);
+                }
+            })
+            .done((response) => {
+                if (response.success && response.categories) {
+                    self.allCategories = response.categories;
+                    self.renderCategoryFilters();
+                }
+            })
+            .fail((xhr, status, error) => {
+                console.error('Error loading categories:', error);
+            });
+        },
+        
+        renderCategoryFilters: function() {
+            const self = this;
+            const $container = $('.live-quiz-filters');
+            if ($container.length === 0 || this.allCategories.length === 0) {
+                return;
+            }
+            
+            // Check if category filter already exists
+            if ($('#live-quiz-category-filter').length > 0) {
+                return;
+            }
+            
+            let html = '<div class="live-quiz-filter-group live-quiz-category-filter-wrapper" id="live-quiz-category-filter">';
+            html += '<label>Lọc theo thẻ:</label>';
+            html += '<select id="live-quiz-category-select" class="live-quiz-category-select" style="width: 100%;">';
+            html += '<option value="">-- Chọn thẻ --</option>';
+            this.allCategories.forEach((category) => {
+                html += '<option value="' + this.escapeHtml(category) + '">' + this.escapeHtml(category) + '</option>';
+            });
+            html += '</select>';
+            html += '<div id="live-quiz-selected-categories-display" class="live-quiz-selected-categories-display">';
+            html += '<p class="no-categories-selected">Chưa chọn thẻ nào</p>';
+            html += '</div>';
+            html += '</div>';
+            
+            // Insert before per-page selector
+            const $perPageGroup = $container.find('.live-quiz-filter-group:has(#live-quiz-per-page)');
+            if ($perPageGroup.length > 0) {
+                $perPageGroup.before(html);
+            } else {
+                $container.append(html);
+            }
+            
+            // Initialize Select2
+            $('#live-quiz-category-select').select2({
+                placeholder: '-- Chọn thẻ --',
+                allowClear: false,
+                width: '100%',
+                language: {
+                    noResults: function() {
+                        return 'Không tìm thấy thẻ nào';
+                    },
+                    searching: function() {
+                        return 'Đang tìm...';
+                    }
+                }
+            });
+            
+            // When a category is selected
+            $('#live-quiz-category-select').on('select2:select', function(e) {
+                const category = e.params.data.id;
+                
+                if (!category || self.selectedCategories.includes(category)) {
+                    // Reset select
+                    $('#live-quiz-category-select').val('').trigger('change');
+                    return;
+                }
+                
+                // Add to selected categories
+                self.selectedCategories.push(category);
+                
+                // Update display
+                const $display = $('#live-quiz-selected-categories-display');
+                if ($display.find('.no-categories-selected').length > 0) {
+                    $display.find('.no-categories-selected').remove();
+                }
+                
+                const $tag = $('<span>')
+                    .addClass('live-quiz-selected-category-tag')
+                    .attr('data-category', category)
+                    .html(self.escapeHtml(category) + 
+                          '<button type="button" class="remove-category-btn" data-category="' + self.escapeHtml(category) + '" title="Xóa thẻ">×</button>');
+                $display.append($tag);
+                
+                // Reset select
+                $('#live-quiz-category-select').val('').trigger('change');
+                
+                // Reload quizzes
+                self.currentPage = 1;
+                self.loadQuizzes();
+            });
+            
+            // Remove category
+            $(document).on('click', '.remove-category-btn', function(e) {
+                e.stopPropagation();
+                const category = $(this).data('category');
+                
+                const index = self.selectedCategories.indexOf(category);
+                if (index > -1) {
+                    self.selectedCategories.splice(index, 1);
+                }
+                
+                // Remove from display
+                $('#live-quiz-selected-categories-display').find('[data-category="' + self.escapeHtml(category) + '"]').remove();
+                
+                // Show "no categories" message if empty
+                if (self.selectedCategories.length === 0) {
+                    $('#live-quiz-selected-categories-display').html('<p class="no-categories-selected">Chưa chọn thẻ nào</p>');
+                }
+                
+                // Reload quizzes
+                self.currentPage = 1;
+                self.loadQuizzes();
+            });
+        },
+        
+        escapeHtml: function(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, (m) => map[m]);
         },
         
         bindEvents: function() {
@@ -165,6 +310,10 @@
                 params.max_questions = this.maxQuestions;
             }
             
+            if (this.selectedCategories.length > 0) {
+                params.categories = this.selectedCategories.join(',');
+            }
+            
             // Ensure proper URL formatting
             let apiUrl = this.config.restUrl;
             if (apiUrl && !apiUrl.endsWith('/')) {
@@ -236,6 +385,19 @@
                     .addClass('live-quiz-quiz-card-question-count')
                     .html('<span class="dashicons dashicons-editor-help"></span>' + 
                           quiz.question_count + ' ' + (this.config.i18n.questions || 'câu hỏi'));
+                
+                // Categories
+                if (quiz.categories && quiz.categories.length > 0) {
+                    const $categories = $('<div>')
+                        .addClass('live-quiz-quiz-card-categories');
+                    quiz.categories.forEach((category) => {
+                        const $tag = $('<span>')
+                            .addClass('live-quiz-category-tag')
+                            .text(category);
+                        $categories.append($tag);
+                    });
+                    $card.append($categories);
+                }
                 
                 const $previewBtn = $('<button>')
                     .addClass('live-quiz-quiz-card-preview-btn')

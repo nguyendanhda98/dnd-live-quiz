@@ -637,11 +637,15 @@ final class Live_Quiz {
             LIVE_QUIZ_VERSION
         );
         
+        // Enqueue Select2 for category filter
+        wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+        wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
+        
         // Enqueue browse JS
         wp_enqueue_script(
             'live-quiz-browse',
             LIVE_QUIZ_PLUGIN_URL . 'assets/js/browse-quizzes.js',
-            array('jquery'),
+            array('jquery', 'select2'),
             LIVE_QUIZ_VERSION,
             true
         );
@@ -715,6 +719,12 @@ final class Live_Quiz {
             array(),
             LIVE_QUIZ_VERSION
         );
+        
+        // Enqueue Select2 for quiz edit pages
+        if ($is_quiz_edit) {
+            wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+            wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
+        }
         
         // Scripts
         wp_enqueue_script(

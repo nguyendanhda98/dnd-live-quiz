@@ -146,7 +146,22 @@ class Live_Quiz_Post_Types {
         wp_nonce_field('live_quiz_save_info', 'live_quiz_info_nonce');
         
         $description = get_post_meta($post->ID, '_live_quiz_description', true);
-        $tags = get_post_meta($post->ID, '_live_quiz_tags', true);
+        
+        // Get selected categories for this quiz
+        $selected_categories = get_post_meta($post->ID, '_live_quiz_categories', true);
+        if (is_string($selected_categories)) {
+            $selected_categories = !empty($selected_categories) ? explode(',', $selected_categories) : array();
+        }
+        if (!is_array($selected_categories)) {
+            $selected_categories = array();
+        }
+        $selected_categories = array_map('trim', $selected_categories);
+        
+        // Get all available categories
+        $all_categories = get_option('live_quiz_categories', '');
+        $categories_array = !empty($all_categories) ? explode(',', $all_categories) : array();
+        $categories_array = array_map('trim', $categories_array);
+        $categories_array = array_filter($categories_array);
         ?>
         <p>
             <label>
@@ -160,16 +175,316 @@ class Live_Quiz_Post_Types {
         
         <p>
             <label>
-                <strong><?php _e('Tags (phân cách bằng dấu phẩy):', 'live-quiz'); ?></strong><br>
-                <input type="text" 
-                       name="live_quiz_tags" 
-                       class="widefat"
-                       value="<?php echo esc_attr($tags); ?>"
-                       placeholder="<?php esc_attr_e('Ví dụ: tiếng anh, ngữ pháp, level 2', 'live-quiz'); ?>">
+                <strong><?php _e('Thẻ Quiz:', 'live-quiz'); ?></strong><br>
+                <?php if (empty($categories_array)): ?>
+                    <p class="description" style="color: #d63638;">
+                        <?php _e('Chưa có thẻ nào. Vui lòng vào ', 'live-quiz'); ?>
+                        <a href="<?php echo admin_url('edit.php?post_type=live_quiz&page=live-quiz-settings&tab=categories'); ?>" target="_blank">
+                            <?php _e('Cài đặt > Thẻ Quiz', 'live-quiz'); ?>
+                        </a>
+                        <?php _e(' để thêm thẻ.', 'live-quiz'); ?>
+                    </p>
+                <?php else: ?>
+                    <div class="live-quiz-categories-select-wrapper">
+                        <!-- Hidden inputs for selected categories -->
+                        <div id="live-quiz-selected-categories-inputs">
+                            <?php foreach ($selected_categories as $cat): ?>
+                                <input type="hidden" name="live_quiz_categories[]" value="<?php echo esc_attr($cat); ?>" class="selected-category-input" data-category="<?php echo esc_attr($cat); ?>">
+                            <?php endforeach; ?>
+                        </div>
+                        
+                        <!-- Select2 dropdown (single select) -->
+                        <select id="live-quiz-categories-select" 
+                                class="live-quiz-categories-select" 
+                                style="width: 100%;">
+                            <option value=""><?php _e('-- Chọn thẻ --', 'live-quiz'); ?></option>
+                            <?php foreach ($categories_array as $category): ?>
+                                <option value="<?php echo esc_attr($category); ?>">
+                                    <?php echo esc_html($category); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        
+                        <!-- Selected categories display below -->
+                        <div id="live-quiz-selected-categories-display" class="live-quiz-selected-categories-display">
+                            <?php if (!empty($selected_categories)): ?>
+                                <?php foreach ($selected_categories as $cat): ?>
+                                    <span class="live-quiz-selected-category-tag" data-category="<?php echo esc_attr($cat); ?>">
+                                        <?php echo esc_html($cat); ?>
+                                        <button type="button" class="remove-category-btn" data-category="<?php echo esc_attr($cat); ?>" title="<?php esc_attr_e('Xóa thẻ', 'live-quiz'); ?>">×</button>
+                                    </span>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <p class="no-categories-selected"><?php _e('Chưa chọn thẻ nào', 'live-quiz'); ?></p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <p class="description">
+                        <?php _e('Click vào ô để mở dropdown, cuộn để xem tất cả thẻ hoặc nhập để tìm kiếm. Các thẻ đã chọn sẽ hiển thị bên dưới.', 'live-quiz'); ?>
+                        <a href="<?php echo admin_url('edit.php?post_type=live_quiz&page=live-quiz-settings&tab=categories'); ?>" target="_blank">
+                            <?php _e('Quản lý thẻ', 'live-quiz'); ?>
+                        </a>
+                    </p>
+                    
+                    <style>
+                    /* Select2 Custom Styles - Single Select */
+                    .live-quiz-categories-select-wrapper {
+                        margin: 10px 0;
+                        clear: both;
+                    }
+                    
+                    /* Container */
+                    .live-quiz-categories-select-wrapper .select2-container {
+                        width: 100% !important;
+                        font-size: 14px;
+                        line-height: 1.5;
+                        margin-bottom: 12px;
+                    }
+                    
+                    /* Selection Box (Single Select) */
+                    .live-quiz-categories-select-wrapper .select2-selection {
+                        min-height: 30px;
+                        height: 30px;
+                        border: 1px solid #8c8f94 !important;
+                        border-radius: 3px !important;
+                        background-color: #fff !important;
+                    }
+                    
+                    .live-quiz-categories-select-wrapper .select2-selection:focus {
+                        border-color: #2271b1 !important;
+                        box-shadow: 0 0 0 1px #2271b1 !important;
+                        outline: none !important;
+                    }
+                    
+                    /* Rendered Area */
+                    .live-quiz-categories-select-wrapper .select2-selection__rendered {
+                        padding: 0 8px !important;
+                        line-height: 28px !important;
+                    }
+                    
+                    /* Dropdown Arrow */
+                    .live-quiz-categories-select-wrapper .select2-selection__arrow {
+                        height: 28px !important;
+                        right: 8px !important;
+                    }
+                    
+                    /* Dropdown Menu */
+                    .live-quiz-categories-select-wrapper .select2-dropdown {
+                        border: 1px solid #8c8f94 !important;
+                        border-radius: 3px !important;
+                        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
+                        margin-top: 4px !important;
+                        z-index: 999999 !important;
+                    }
+                    
+                    /* Dropdown Search */
+                    .live-quiz-categories-select-wrapper .select2-search--dropdown {
+                        padding: 8px;
+                    }
+                    
+                    .live-quiz-categories-select-wrapper .select2-search--dropdown .select2-search__field {
+                        border: 1px solid #8c8f94 !important;
+                        border-radius: 3px !important;
+                        padding: 6px 8px !important;
+                        font-size: 14px !important;
+                        width: 100% !important;
+                        box-sizing: border-box !important;
+                    }
+                    
+                    .live-quiz-categories-select-wrapper .select2-search--dropdown .select2-search__field:focus {
+                        border-color: #2271b1 !important;
+                        box-shadow: 0 0 0 1px #2271b1 !important;
+                        outline: none !important;
+                    }
+                    
+                    /* Results */
+                    .live-quiz-categories-select-wrapper .select2-results {
+                        max-height: 200px;
+                        overflow-y: auto;
+                    }
+                    
+                    .live-quiz-categories-select-wrapper .select2-results__option {
+                        padding: 8px 12px !important;
+                        font-size: 14px !important;
+                        line-height: 1.5 !important;
+                        margin: 0 !important;
+                        cursor: pointer;
+                    }
+                    
+                    .live-quiz-categories-select-wrapper .select2-results__option--highlighted {
+                        background-color: #2271b1 !important;
+                        color: #fff !important;
+                    }
+                    
+                    /* No Results Message */
+                    .live-quiz-categories-select-wrapper .select2-results__message {
+                        padding: 8px 12px;
+                        color: #646970;
+                        font-size: 14px;
+                    }
+                    
+                    /* Selected Categories Display Below */
+                    .live-quiz-selected-categories-display {
+                        margin-top: 12px;
+                        padding: 12px;
+                        background: #f9f9f9;
+                        border: 1px solid #ddd;
+                        border-radius: 3px;
+                        min-height: 40px;
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 8px;
+                        align-items: flex-start;
+                    }
+                    
+                    .live-quiz-selected-category-tag {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 6px 12px;
+                        background: #f0f6fc;
+                        color: #1d2327;
+                        border: 1px solid #c3d4e6;
+                        border-radius: 16px;
+                        font-size: 13px;
+                        font-weight: 500;
+                        line-height: 1.4;
+                    }
+                    
+                    .remove-category-btn {
+                        background: none;
+                        border: none;
+                        color: #50575e;
+                        cursor: pointer;
+                        font-size: 18px;
+                        line-height: 1;
+                        padding: 0;
+                        width: 18px;
+                        height: 18px;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        border-radius: 50%;
+                        transition: all 0.2s;
+                        margin-left: 2px;
+                    }
+                    
+                    .remove-category-btn:hover {
+                        background: #d63638;
+                        color: #fff;
+                    }
+                    
+                    .no-categories-selected {
+                        color: #646970;
+                        font-style: italic;
+                        margin: 0;
+                        font-size: 13px;
+                    }
+                    
+                    /* Fix for WordPress Admin */
+                    .postbox .live-quiz-categories-select-wrapper {
+                        margin-top: 8px;
+                    }
+                    </style>
+                    
+                    <script>
+                    jQuery(document).ready(function($) {
+                        const allCategories = <?php echo json_encode($categories_array); ?>;
+                        const selectedCategories = <?php echo json_encode($selected_categories); ?>;
+                        
+                        const $select = $('#live-quiz-categories-select');
+                        const $display = $('#live-quiz-selected-categories-display');
+                        const $inputsContainer = $('#live-quiz-selected-categories-inputs');
+                        
+                        // Initialize Select2 (single select)
+                        $select.select2({
+                            placeholder: '<?php esc_js(_e('-- Chọn thẻ --', 'live-quiz')); ?>',
+                            allowClear: false,
+                            width: '100%',
+                            language: {
+                                noResults: function() {
+                                    return '<?php esc_js(_e('Không tìm thấy thẻ nào', 'live-quiz')); ?>';
+                                },
+                                searching: function() {
+                                    return '<?php esc_js(_e('Đang tìm...', 'live-quiz')); ?>';
+                                }
+                            }
+                        });
+                        
+                        // When a category is selected
+                        $select.on('select2:select', function(e) {
+                            const category = e.params.data.id;
+                            
+                            if (!category || selectedCategories.includes(category)) {
+                                // Reset select
+                                $select.val('').trigger('change');
+                                return;
+                            }
+                            
+                            // Add to selected categories
+                            selectedCategories.push(category);
+                            
+                            // Add hidden input
+                            const $input = $('<input>')
+                                .attr('type', 'hidden')
+                                .attr('name', 'live_quiz_categories[]')
+                                .attr('value', category)
+                                .addClass('selected-category-input')
+                                .attr('data-category', category);
+                            $inputsContainer.append($input);
+                            
+                            // Add to display
+                            if ($display.find('.no-categories-selected').length > 0) {
+                                $display.find('.no-categories-selected').remove();
+                            }
+                            
+                            const $tag = $('<span>')
+                                .addClass('live-quiz-selected-category-tag')
+                                .attr('data-category', category)
+                                .html(escapeHtml(category) + 
+                                      '<button type="button" class="remove-category-btn" data-category="' + escapeHtml(category) + '" title="<?php esc_js(_e('Xóa thẻ', 'live-quiz')); ?>">×</button>');
+                            $display.append($tag);
+                            
+                            // Reset select
+                            $select.val('').trigger('change');
+                        });
+                        
+                        // Remove category
+                        $(document).on('click', '.remove-category-btn', function(e) {
+                            e.stopPropagation();
+                            const category = $(this).data('category');
+                            
+                            const index = selectedCategories.indexOf(category);
+                            if (index > -1) {
+                                selectedCategories.splice(index, 1);
+                            }
+                            
+                            // Remove hidden input
+                            $inputsContainer.find('input[data-category="' + escapeHtml(category) + '"]').remove();
+                            
+                            // Remove from display
+                            $display.find('[data-category="' + escapeHtml(category) + '"]').remove();
+                            
+                            // Show "no categories" message if empty
+                            if (selectedCategories.length === 0) {
+                                $display.html('<p class="no-categories-selected"><?php esc_js(_e('Chưa chọn thẻ nào', 'live-quiz')); ?></p>');
+                            }
+                        });
+                        
+                        function escapeHtml(text) {
+                            const map = {
+                                '&': '&amp;',
+                                '<': '&lt;',
+                                '>': '&gt;',
+                                '"': '&quot;',
+                                "'": '&#039;'
+                            };
+                            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+                        }
+                    });
+                    </script>
+                <?php endif; ?>
             </label>
-            <span class="description">
-                <?php _e('Nhập các tags để phân loại quiz, phân cách bằng dấu phẩy.', 'live-quiz'); ?>
-            </span>
         </p>
         <?php
     }
@@ -488,7 +803,7 @@ class Live_Quiz_Post_Types {
             return;
         }
         
-        // Save quiz info (description, tags)
+        // Save quiz info (description, categories)
         if ($post->post_type === 'live_quiz') {
             if (isset($_POST['live_quiz_info_nonce']) && 
                 wp_verify_nonce($_POST['live_quiz_info_nonce'], 'live_quiz_save_info')) {
@@ -497,8 +812,14 @@ class Live_Quiz_Post_Types {
                     update_post_meta($post_id, '_live_quiz_description', sanitize_textarea_field($_POST['live_quiz_description']));
                 }
                 
-                if (isset($_POST['live_quiz_tags'])) {
-                    update_post_meta($post_id, '_live_quiz_tags', sanitize_text_field($_POST['live_quiz_tags']));
+                // Save categories as comma-separated string
+                if (isset($_POST['live_quiz_categories']) && is_array($_POST['live_quiz_categories'])) {
+                    $categories = array_map('sanitize_text_field', $_POST['live_quiz_categories']);
+                    $categories = array_filter($categories);
+                    update_post_meta($post_id, '_live_quiz_categories', implode(',', $categories));
+                } else {
+                    // No categories selected
+                    update_post_meta($post_id, '_live_quiz_categories', '');
                 }
             }
         }

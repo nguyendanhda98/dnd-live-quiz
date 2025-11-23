@@ -19,6 +19,8 @@ class Live_Quiz_Admin {
         add_action('admin_init', array(__CLASS__, 'register_settings'));
         add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue_admin_scripts'));
         add_action('wp_ajax_live_quiz_search_pages', array(__CLASS__, 'ajax_search_pages'));
+        add_action('wp_ajax_live_quiz_add_category', array(__CLASS__, 'ajax_add_category'));
+        add_action('wp_ajax_live_quiz_delete_category', array(__CLASS__, 'ajax_delete_category'));
     }
     
     /**
@@ -82,6 +84,9 @@ class Live_Quiz_Admin {
         register_setting('live_quiz_settings', 'live_quiz_redis_port');
         register_setting('live_quiz_settings', 'live_quiz_redis_password');
         register_setting('live_quiz_settings', 'live_quiz_redis_database');
+        
+        // Quiz tags/categories settings
+        register_setting('live_quiz_settings', 'live_quiz_categories');
     }
     
     /**
@@ -185,18 +190,67 @@ class Live_Quiz_Admin {
                 update_option('live_quiz_ai_prompt_multiple_choice', sanitize_textarea_field(wp_unslash($_POST['live_quiz_ai_prompt_multiple_choice'])));
             }
             
-            // Phase 2 settings
-            update_option('live_quiz_websocket_enabled', !empty($_POST['live_quiz_websocket_enabled']));
+            // Phase 2 settings - WebSocket and Redis are always enabled
+            update_option('live_quiz_websocket_enabled', true);
             update_option('live_quiz_websocket_url', sanitize_text_field($_POST['live_quiz_websocket_url']));
             update_option('live_quiz_websocket_secret', sanitize_text_field($_POST['live_quiz_websocket_secret']));
             update_option('live_quiz_websocket_jwt_secret', sanitize_text_field($_POST['live_quiz_websocket_jwt_secret']));
-            update_option('live_quiz_redis_enabled', !empty($_POST['live_quiz_redis_enabled']));
+            update_option('live_quiz_redis_enabled', true);
             update_option('live_quiz_redis_host', sanitize_text_field($_POST['live_quiz_redis_host']));
             update_option('live_quiz_redis_port', intval($_POST['live_quiz_redis_port']));
             update_option('live_quiz_redis_password', sanitize_text_field($_POST['live_quiz_redis_password']));
             update_option('live_quiz_redis_database', intval($_POST['live_quiz_redis_database']));
             
+            // Quiz categories/tags
+            if (isset($_POST['live_quiz_categories'])) {
+                $categories = sanitize_text_field($_POST['live_quiz_categories']);
+                // Store as comma-separated string, we'll convert to array when needed
+                update_option('live_quiz_categories', $categories);
+            }
+            
             echo '<div class="notice notice-success"><p>' . __('Đã lưu cài đặt!', 'live-quiz') . '</p></div>';
+        }
+        
+        // Handle AJAX for managing categories
+        if (isset($_POST['action']) && $_POST['action'] === 'live_quiz_add_category') {
+            check_ajax_referer('live_quiz_manage_categories');
+            
+            $new_category = sanitize_text_field($_POST['category']);
+            if (!empty($new_category)) {
+                $categories = get_option('live_quiz_categories', '');
+                $categories_array = !empty($categories) ? explode(',', $categories) : array();
+                $categories_array = array_map('trim', $categories_array);
+                
+                if (!in_array($new_category, $categories_array)) {
+                    $categories_array[] = $new_category;
+                    update_option('live_quiz_categories', implode(',', $categories_array));
+                    wp_send_json_success(array('message' => __('Đã thêm thẻ mới', 'live-quiz')));
+                } else {
+                    wp_send_json_error(array('message' => __('Thẻ đã tồn tại', 'live-quiz')));
+                }
+            } else {
+                wp_send_json_error(array('message' => __('Tên thẻ không được để trống', 'live-quiz')));
+            }
+        }
+        
+        if (isset($_POST['action']) && $_POST['action'] === 'live_quiz_delete_category') {
+            check_ajax_referer('live_quiz_manage_categories');
+            
+            $category_to_delete = sanitize_text_field($_POST['category']);
+            if (!empty($category_to_delete)) {
+                $categories = get_option('live_quiz_categories', '');
+                $categories_array = !empty($categories) ? explode(',', $categories) : array();
+                $categories_array = array_map('trim', $categories_array);
+                
+                $key = array_search($category_to_delete, $categories_array);
+                if ($key !== false) {
+                    unset($categories_array[$key]);
+                    update_option('live_quiz_categories', implode(',', array_values($categories_array)));
+                    wp_send_json_success(array('message' => __('Đã xóa thẻ', 'live-quiz')));
+                } else {
+                    wp_send_json_error(array('message' => __('Không tìm thấy thẻ', 'live-quiz')));
+                }
+            }
         }
         
         include LIVE_QUIZ_PLUGIN_DIR . 'templates/admin-settings.php';
@@ -247,6 +301,71 @@ class Live_Quiz_Admin {
         }
         
         wp_send_json_success($results);
+    }
+    
+    /**
+     * AJAX handler for adding category
+     */
+    public static function ajax_add_category() {
+        check_ajax_referer('live_quiz_manage_categories');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Không có quyền', 'live-quiz')));
+        }
+        
+        $new_category = isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '';
+        if (empty($new_category)) {
+            wp_send_json_error(array('message' => __('Tên thẻ không được để trống', 'live-quiz')));
+        }
+        
+        $categories = get_option('live_quiz_categories', '');
+        $categories_array = !empty($categories) ? explode(',', $categories) : array();
+        $categories_array = array_map('trim', $categories_array);
+        
+        if (in_array($new_category, $categories_array)) {
+            wp_send_json_error(array('message' => __('Thẻ đã tồn tại', 'live-quiz')));
+        }
+        
+        $categories_array[] = $new_category;
+        update_option('live_quiz_categories', implode(',', $categories_array));
+        
+        wp_send_json_success(array(
+            'message' => __('Đã thêm thẻ mới', 'live-quiz'),
+            'categories' => $categories_array
+        ));
+    }
+    
+    /**
+     * AJAX handler for deleting category
+     */
+    public static function ajax_delete_category() {
+        check_ajax_referer('live_quiz_manage_categories');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Không có quyền', 'live-quiz')));
+        }
+        
+        $category_to_delete = isset($_POST['category']) ? sanitize_text_field($_POST['category']) : '';
+        if (empty($category_to_delete)) {
+            wp_send_json_error(array('message' => __('Tên thẻ không hợp lệ', 'live-quiz')));
+        }
+        
+        $categories = get_option('live_quiz_categories', '');
+        $categories_array = !empty($categories) ? explode(',', $categories) : array();
+        $categories_array = array_map('trim', $categories_array);
+        
+        $key = array_search($category_to_delete, $categories_array);
+        if ($key === false) {
+            wp_send_json_error(array('message' => __('Không tìm thấy thẻ', 'live-quiz')));
+        }
+        
+        unset($categories_array[$key]);
+        update_option('live_quiz_categories', implode(',', array_values($categories_array)));
+        
+        wp_send_json_success(array(
+            'message' => __('Đã xóa thẻ', 'live-quiz'),
+            'categories' => array_values($categories_array)
+        ));
     }
     
     /**
