@@ -17,6 +17,7 @@
         console.log('Document ready fired');
         initSessionControls();
         initQuestionBuilder();
+        initQuizFormValidation();
     });
     
     /**
@@ -756,6 +757,87 @@
         const checked = $('.question-item:visible .question-select-checkbox:checked').length;
         
         $('#select-all-questions').prop('checked', total > 0 && total === checked);
+    }
+    
+    /**
+     * Initialize quiz form validation
+     */
+    function initQuizFormValidation() {
+        // Only run on quiz edit page
+        if ($('#live-quiz-questions-container').length === 0) {
+            return;
+        }
+        
+        // Validate before form submit
+        $('form#post').on('submit', function(e) {
+            const errors = [];
+            let questionNumber = 0;
+            
+            // Check each question
+            $('#questions-list .question-item').each(function() {
+                questionNumber++;
+                const $question = $(this);
+                const questionIndex = $question.data('index');
+                const questionType = $question.find('.question-type-selector').val();
+                const isMultiple = questionType === 'multiple_choice';
+                
+                // Skip if question text is empty (will be handled by required attribute)
+                const questionText = $question.find('.question-text').val().trim();
+                if (!questionText) {
+                    return; // Skip validation for empty questions
+                }
+                
+                // Check if at least one correct answer is selected
+                let hasCorrectAnswer = false;
+                
+                if (isMultiple) {
+                    // Multiple choice: check if any checkbox is checked
+                    hasCorrectAnswer = $question.find('input[type="checkbox"][name*="[correct]"]:checked').length > 0;
+                } else {
+                    // Single choice: check if any radio is checked
+                    hasCorrectAnswer = $question.find('input[type="radio"][name*="[correct]"]:checked').length > 0;
+                }
+                
+                if (!hasCorrectAnswer) {
+                    errors.push(`Câu hỏi #${questionNumber}: Vui lòng chọn ít nhất một đáp án đúng.`);
+                    
+                    // Highlight the question
+                    $question.css({
+                        'border': '2px solid #d63638',
+                        'padding': '10px',
+                        'margin': '10px 0',
+                        'background-color': '#fff5f5'
+                    });
+                } else {
+                    // Remove highlight if valid
+                    $question.css({
+                        'border': '',
+                        'padding': '',
+                        'margin': '',
+                        'background-color': ''
+                    });
+                }
+            });
+            
+            // If there are errors, prevent submit and show alert
+            if (errors.length > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                let errorMessage = 'Vui lòng sửa các lỗi sau trước khi lưu:\n\n';
+                errorMessage += errors.join('\n');
+                
+                alert(errorMessage);
+                
+                // Scroll to first error
+                const $firstError = $('#questions-list .question-item').first();
+                $('html, body').animate({
+                    scrollTop: $firstError.offset().top - 100
+                }, 500);
+                
+                return false;
+            }
+        });
     }
     
     /**

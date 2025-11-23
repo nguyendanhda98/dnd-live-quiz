@@ -396,6 +396,25 @@ class Live_Quiz_Post_Types {
                         const $display = $('#live-quiz-selected-categories-display');
                         const $inputsContainer = $('#live-quiz-selected-categories-inputs');
                         
+                        // Function to update dropdown options (filter out selected categories)
+                        function updateDropdownOptions() {
+                            const availableCategories = allCategories.filter(cat => !selectedCategories.includes(cat));
+                            
+                            // Clear existing options except placeholder
+                            $select.empty();
+                            $select.append('<option value=""><?php esc_js(_e('-- Chọn thẻ --', 'live-quiz')); ?></option>');
+                            
+                            // Add only unselected categories
+                            availableCategories.forEach(function(category) {
+                                $select.append($('<option></option>')
+                                    .attr('value', category)
+                                    .text(category));
+                            });
+                            
+                            // Trigger change to update Select2
+                            $select.trigger('change');
+                        }
+                        
                         // Initialize Select2 (single select)
                         $select.select2({
                             placeholder: '<?php esc_js(_e('-- Chọn thẻ --', 'live-quiz')); ?>',
@@ -410,6 +429,9 @@ class Live_Quiz_Post_Types {
                                 }
                             }
                         });
+                        
+                        // Initialize dropdown with unselected categories only
+                        updateDropdownOptions();
                         
                         // When a category is selected
                         $select.on('select2:select', function(e) {
@@ -445,8 +467,8 @@ class Live_Quiz_Post_Types {
                                       '<button type="button" class="remove-category-btn" data-category="' + escapeHtml(category) + '" title="<?php esc_js(_e('Xóa thẻ', 'live-quiz')); ?>">×</button>');
                             $display.append($tag);
                             
-                            // Reset select
-                            $select.val('').trigger('change');
+                            // Update dropdown to remove selected category
+                            updateDropdownOptions();
                         });
                         
                         // Remove category
@@ -469,6 +491,9 @@ class Live_Quiz_Post_Types {
                             if (selectedCategories.length === 0) {
                                 $display.html('<p class="no-categories-selected"><?php esc_js(_e('Chưa chọn thẻ nào', 'live-quiz')); ?></p>');
                             }
+                            
+                            // Update dropdown to add back the removed category
+                            updateDropdownOptions();
                         });
                         
                         function escapeHtml(text) {
@@ -883,17 +908,23 @@ class Live_Quiz_Post_Types {
                 wp_verify_nonce($_POST['live_quiz_questions_nonce'], 'live_quiz_save_questions')) {
                 
                 $questions = array();
+                $validation_errors = array();
+                
                 if (isset($_POST['live_quiz_questions']) && is_array($_POST['live_quiz_questions'])) {
+                    $question_index = 0;
                     foreach ($_POST['live_quiz_questions'] as $q) {
+                        $question_index++;
+                        
+                        // Skip empty questions
                         if (empty($q['text'])) continue;
                         
                         $question_type = isset($q['type']) ? sanitize_text_field($q['type']) : 'single_choice';
                         $is_multiple = $question_type === 'multiple_choice';
                         
                         $choices = array();
+                        $correct_answers = array();
+                        
                         if (isset($q['choices']) && is_array($q['choices'])) {
-                            $correct_answers = array();
-                            
                             // Handle multiple choice (array of correct answers)
                             if ($is_multiple && isset($q['correct']) && is_array($q['correct'])) {
                                 $correct_answers = array_map('intval', $q['correct']);
@@ -901,6 +932,15 @@ class Live_Quiz_Post_Types {
                             // Handle single choice (single correct answer)
                             elseif (!$is_multiple && isset($q['correct'])) {
                                 $correct_answers = array((int)$q['correct']);
+                            }
+                            
+                            // Validate: must have at least one correct answer
+                            if (empty($correct_answers)) {
+                                $validation_errors[] = sprintf(
+                                    __('Câu hỏi #%d: Vui lòng chọn ít nhất một đáp án đúng.', 'live-quiz'),
+                                    $question_index
+                                );
+                                continue; // Skip this question
                             }
                             
                             foreach ($q['choices'] as $choice_index => $choice_text) {
@@ -922,6 +962,30 @@ class Live_Quiz_Post_Types {
                             'base_points' => max(100, min(10000, (int)($q['base_points'] ?? 1000))),
                         );
                     }
+                }
+                
+                // If there are validation errors, prevent save and show error
+                if (!empty($validation_errors)) {
+                    // Store errors in transient to display after redirect
+                    set_transient('live_quiz_validation_errors_' . $post_id, $validation_errors, 30);
+                    
+                    // Add admin notice hook
+                    add_action('admin_notices', function() use ($validation_errors, $post_id) {
+                        $stored_errors = get_transient('live_quiz_validation_errors_' . $post_id);
+                        if ($stored_errors) {
+                            delete_transient('live_quiz_validation_errors_' . $post_id);
+                            echo '<div class="notice notice-error is-dismissible"><p><strong>' . 
+                                 __('Lỗi khi lưu Quiz:', 'live-quiz') . '</strong></p><ul>';
+                            foreach ($stored_errors as $error) {
+                                echo '<li>' . esc_html($error) . '</li>';
+                            }
+                            echo '</ul></div>';
+                        }
+                    });
+                    
+                    // Prevent save by not updating the meta
+                    // The form will stay on the page and show the error
+                    return; // Stop saving questions
                 }
                 
                 update_post_meta($post_id, '_live_quiz_questions', $questions);
