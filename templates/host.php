@@ -87,9 +87,24 @@ if ($has_session) {
                             <input type="radio" name="lobby_quiz_type" value="random">
                             <span><?php _e('Ngẫu nhiên', 'live-quiz'); ?></span>
                         </label>
+                        <label class="radio-option">
+                            <input type="radio" name="lobby_quiz_type" value="range">
+                            <span><?php _e('Từ câu x đến câu y', 'live-quiz'); ?></span>
+                        </label>
                         <div id="lobby-random-count" class="random-count-input" style="display:none;">
                             <input type="number" id="lobby-question-count" min="1" value="10" class="number-input">
                             <span class="hint" id="lobby-question-hint"></span>
+                        </div>
+                        <div id="lobby-range-input" class="range-input" style="display:none;">
+                            <div class="range-input-group">
+                                <label><?php _e('Từ câu:', 'live-quiz'); ?></label>
+                                <input type="number" id="lobby-question-start" min="1" value="1" class="number-input">
+                            </div>
+                            <div class="range-input-group">
+                                <label><?php _e('Đến câu:', 'live-quiz'); ?></label>
+                                <input type="number" id="lobby-question-end" min="1" value="10" class="number-input">
+                            </div>
+                            <span class="hint" id="lobby-range-hint"></span>
                         </div>
                     </div>
                     

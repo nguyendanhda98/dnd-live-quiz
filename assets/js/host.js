@@ -287,11 +287,29 @@
             });
             
             $('input[name="lobby_quiz_type"]').on('change', function() {
-                if ($(this).val() === 'random') {
+                const quizType = $(this).val();
+                if (quizType === 'random') {
                     $('#lobby-random-count').slideDown();
+                    $('#lobby-range-input').slideUp();
+                    self.updateRandomHint();
+                } else if (quizType === 'range') {
+                    $('#lobby-random-count').slideUp();
+                    $('#lobby-range-input').slideDown();
+                    self.updateRangeHint();
                 } else {
                     $('#lobby-random-count').slideUp();
+                    $('#lobby-range-input').slideUp();
                 }
+            });
+            
+            // Update range hint when inputs change
+            $('#lobby-question-start, #lobby-question-end').on('input', function() {
+                self.updateRangeHint();
+            });
+            
+            // Update random hint when count changes
+            $('#lobby-question-count').on('input', function() {
+                self.updateRandomHint();
             });
             
             // Enable start button when conditions are met
@@ -578,6 +596,8 @@
             const quizIds = this.selectedQuizzes.map(q => q.id);
             const quizType = $('input[name="lobby_quiz_type"]:checked').val();
             const questionCount = quizType === 'random' ? parseInt($('#lobby-question-count').val()) : null;
+            const questionStart = quizType === 'range' ? parseInt($('#lobby-question-start').val()) : null;
+            const questionEnd = quizType === 'range' ? parseInt($('#lobby-question-end').val()) : null;
             const questionOrder = $('input[name="lobby_question_order"]:checked').val();
             const hideLeaderboard = $('#lobby-hide-leaderboard').is(':checked');
             const joiningOpen = $('#lobby-joining-open').is(':checked');
@@ -595,6 +615,8 @@
                     quiz_ids: quizIds,
                     quiz_type: quizType,
                     question_count: questionCount,
+                    question_start: questionStart,
+                    question_end: questionEnd,
                     question_order: questionOrder,
                     hide_leaderboard: hideLeaderboard,
                     joining_open: joiningOpen,
@@ -1401,6 +1423,9 @@
             
             if (this.selectedQuizzes.length === 0) {
                 $container.html('<p class="no-selection">Chưa chọn bộ câu hỏi</p>');
+                // Update hints when quizzes are cleared
+                this.updateRandomHint();
+                this.updateRangeHint();
                 return;
             }
             
@@ -1425,6 +1450,10 @@
                     self.toggleQuizSelection(quizId, quiz.title, quiz.question_count);
                 }
             });
+            
+            // Update hints when quizzes change
+            this.updateRandomHint();
+            this.updateRangeHint();
         },
         
         /**
@@ -1438,6 +1467,70 @@
                 $('#start-quiz-btn').prop('disabled', false);
             } else {
                 $('#start-quiz-btn').prop('disabled', true);
+            }
+        },
+        
+        /**
+         * Get total question count from selected quizzes
+         */
+        getTotalQuestionCount: function() {
+            return this.selectedQuizzes.reduce(function(total, quiz) {
+                return total + (quiz.question_count || 0);
+            }, 0);
+        },
+        
+        /**
+         * Update random hint
+         */
+        updateRandomHint: function() {
+            const totalQuestions = this.getTotalQuestionCount();
+            const selectedCount = parseInt($('#lobby-question-count').val()) || 0;
+            const $hint = $('#lobby-question-hint');
+            
+            if (totalQuestions > 0) {
+                if (selectedCount > totalQuestions) {
+                    $hint.text('(Tối đa: ' + totalQuestions + ' câu)').css('color', '#d63638');
+                } else {
+                    $hint.text('(Tổng: ' + totalQuestions + ' câu)').css('color', '');
+                }
+            } else {
+                $hint.text('(Chưa chọn bộ câu hỏi)').css('color', '#d63638');
+            }
+        },
+        
+        /**
+         * Update range hint
+         */
+        updateRangeHint: function() {
+            const totalQuestions = this.getTotalQuestionCount();
+            const start = parseInt($('#lobby-question-start').val()) || 1;
+            const end = parseInt($('#lobby-question-end').val()) || 1;
+            const $hint = $('#lobby-range-hint');
+            const $startInput = $('#lobby-question-start');
+            const $endInput = $('#lobby-question-end');
+            
+            if (totalQuestions > 0) {
+                // Update max values
+                $startInput.attr('max', totalQuestions);
+                $endInput.attr('max', totalQuestions);
+                
+                // Validate range
+                if (start > end) {
+                    $hint.text('(Cảnh báo: Câu bắt đầu phải ≤ câu kết thúc)').css('color', '#d63638');
+                    $endInput.css('border-color', '#d63638');
+                } else if (start < 1 || end < 1) {
+                    $hint.text('(Cảnh báo: Số câu hỏi phải ≥ 1)').css('color', '#d63638');
+                } else if (end > totalQuestions) {
+                    $hint.text('(Cảnh báo: Vượt quá tổng số câu hỏi: ' + totalQuestions + ')').css('color', '#d63638');
+                    $endInput.css('border-color', '#d63638');
+                } else {
+                    const count = end - start + 1;
+                    $hint.text('(Tổng: ' + totalQuestions + ' câu, sẽ chọn ' + count + ' câu)').css('color', '');
+                    $startInput.css('border-color', '');
+                    $endInput.css('border-color', '');
+                }
+            } else {
+                $hint.text('(Chưa chọn bộ câu hỏi)').css('color', '#d63638');
             }
         },
         

@@ -275,6 +275,31 @@
     border-radius: 6px;
 }
 
+.range-input {
+    margin-top: 10px;
+    padding: 10px;
+    background: #f9fafb;
+    border-radius: 6px;
+}
+
+.range-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.range-input-group:last-child {
+    margin-bottom: 0;
+}
+
+.range-input-group label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    min-width: 70px;
+}
+
 .number-input {
     width: 100px;
     padding: 6px 10px;
@@ -287,6 +312,8 @@
     font-size: 12px;
     color: #666;
     margin-left: 10px;
+    margin-top: 8px;
+    display: block;
 }
 
 .settings-info {

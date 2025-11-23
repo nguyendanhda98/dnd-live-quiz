@@ -1905,8 +1905,10 @@ class Live_Quiz_REST_API {
      */
     public static function create_session_frontend($request) {
         $quiz_ids = $request->get_param('quiz_ids');
-        $quiz_type = $request->get_param('quiz_type'); // 'all' or 'random'
+        $quiz_type = $request->get_param('quiz_type'); // 'all', 'random', or 'range'
         $question_count = $request->get_param('question_count'); // Only for random mode
+        $question_start = $request->get_param('question_start'); // Only for range mode
+        $question_end = $request->get_param('question_end'); // Only for range mode
         $question_order = $request->get_param('question_order'); // 'sequential' or 'random'
         $session_name = $request->get_param('session_name'); // Optional custom name
         
@@ -1947,6 +1949,17 @@ class Live_Quiz_REST_API {
             if ($question_count < count($all_questions)) {
                 shuffle($all_questions);
                 $all_questions = array_slice($all_questions, 0, $question_count);
+            }
+        } elseif ($quiz_type === 'range' && $question_start > 0 && $question_end > 0) {
+            // Convert from 1-based (frontend) to 0-based (PHP array)
+            $start_index = max(0, $question_start - 1);
+            $end_index = min(count($all_questions), $question_end);
+            
+            // Validate range
+            if ($start_index < $end_index && $start_index < count($all_questions)) {
+                $all_questions = array_slice($all_questions, $start_index, $end_index - $start_index);
+            } else {
+                return new WP_Error('invalid_range', __('Khoảng câu hỏi không hợp lệ', 'live-quiz'), array('status' => 400));
             }
         }
         
@@ -2065,8 +2078,10 @@ class Live_Quiz_REST_API {
     public static function update_session_settings($request) {
         $session_id = $request->get_param('id');
         $quiz_ids = $request->get_param('quiz_ids');
-        $quiz_type = $request->get_param('quiz_type'); // 'all' or 'random'
+        $quiz_type = $request->get_param('quiz_type'); // 'all', 'random', or 'range'
         $question_count = $request->get_param('question_count');
+        $question_start = $request->get_param('question_start');
+        $question_end = $request->get_param('question_end');
         $question_order = $request->get_param('question_order'); // 'sequential' or 'random'
         $hide_leaderboard = $request->get_param('hide_leaderboard'); // true/false
         $joining_open = $request->get_param('joining_open'); // true/false
@@ -2104,11 +2119,22 @@ class Live_Quiz_REST_API {
             return new WP_Error('no_questions', __('Các bộ câu hỏi đã chọn không có câu hỏi nào', 'live-quiz'), array('status' => 400));
         }
         
-        // Handle question mode (select random subset)
+        // Handle question mode (select random subset or range)
         if ($quiz_type === 'random' && $question_count > 0) {
             if ($question_count < count($all_questions)) {
                 shuffle($all_questions);
                 $all_questions = array_slice($all_questions, 0, $question_count);
+            }
+        } elseif ($quiz_type === 'range' && $question_start > 0 && $question_end > 0) {
+            // Convert from 1-based (frontend) to 0-based (PHP array)
+            $start_index = max(0, $question_start - 1);
+            $end_index = min(count($all_questions), $question_end);
+            
+            // Validate range
+            if ($start_index < $end_index && $start_index < count($all_questions)) {
+                $all_questions = array_slice($all_questions, $start_index, $end_index - $start_index);
+            } else {
+                return new WP_Error('invalid_range', __('Khoảng câu hỏi không hợp lệ', 'live-quiz'), array('status' => 400));
             }
         }
         
