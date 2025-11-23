@@ -181,6 +181,7 @@ final class Live_Quiz {
         add_shortcode('live_quiz_player', array($this, 'shortcode_player'));
         add_shortcode('live_quiz_host', array($this, 'shortcode_host'));
         add_shortcode('live_quiz_sessions', array($this, 'shortcode_sessions'));
+        add_shortcode('live_quiz_browse', array($this, 'shortcode_browse_quizzes'));
         
         // Backward compatibility
         add_shortcode('live_quiz', array($this, 'shortcode_player'));
@@ -307,6 +308,28 @@ final class Live_Quiz {
     }
     
     /**
+     * Browse quizzes shortcode
+     */
+    public function shortcode_browse_quizzes($atts) {
+        $atts = shortcode_atts(array(
+            'per_page' => 12,
+            'show_search' => 'yes',
+            'show_filters' => 'yes',
+        ), $atts, 'live_quiz_browse');
+        
+        ob_start();
+        
+        // Set query vars for template
+        set_query_var('per_page', intval($atts['per_page']));
+        set_query_var('show_search', $atts['show_search'] === 'yes');
+        set_query_var('show_filters', $atts['show_filters'] === 'yes');
+        
+        include LIVE_QUIZ_PLUGIN_DIR . 'templates/browse-quizzes.php';
+        
+        return ob_get_clean();
+    }
+    
+    /**
      * Sessions shortcode
      */
     public function shortcode_sessions($atts) {
@@ -396,6 +419,11 @@ final class Live_Quiz {
         // Check for host shortcode
         if (has_shortcode($post->post_content, 'live_quiz_host')) {
             $this->enqueue_host_scripts();
+        }
+        
+        // Check for browse quizzes shortcode
+        if (has_shortcode($post->post_content, 'live_quiz_browse')) {
+            $this->enqueue_browse_scripts();
         }
     }
     
@@ -595,6 +623,63 @@ final class Live_Quiz {
         );
         
         wp_localize_script('live-quiz-host', 'liveQuizPlayer', $config);
+    }
+    
+    /**
+     * Enqueue browse quizzes scripts and styles
+     */
+    public function enqueue_browse_scripts() {
+        // Enqueue browse CSS
+        wp_enqueue_style(
+            'live-quiz-browse',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/css/browse-quizzes.css',
+            array(),
+            LIVE_QUIZ_VERSION
+        );
+        
+        // Enqueue browse JS
+        wp_enqueue_script(
+            'live-quiz-browse',
+            LIVE_QUIZ_PLUGIN_URL . 'assets/js/browse-quizzes.js',
+            array('jquery'),
+            LIVE_QUIZ_VERSION,
+            true
+        );
+        
+        // Configuration
+        $rest_url = rest_url('live-quiz/v1');
+        // Ensure URL ends with /
+        if (substr($rest_url, -1) !== '/') {
+            $rest_url .= '/';
+        }
+        
+        $config = array(
+            'restUrl' => $rest_url,
+            'nonce' => wp_create_nonce('wp_rest'),
+            'i18n' => array(
+                'loading' => __('Đang tải...', 'live-quiz'),
+                'noQuizzes' => __('Không tìm thấy bộ câu hỏi nào', 'live-quiz'),
+                'searchPlaceholder' => __('Tìm kiếm bộ câu hỏi...', 'live-quiz'),
+                'questions' => __('câu hỏi', 'live-quiz'),
+                'preview' => __('Xem trước', 'live-quiz'),
+                'close' => __('Đóng', 'live-quiz'),
+                'showAnswers' => __('Hiện đáp án', 'live-quiz'),
+                'hideAnswers' => __('Ẩn đáp án', 'live-quiz'),
+                'correctAnswer' => __('Đáp án đúng', 'live-quiz'),
+                'question' => __('Câu hỏi', 'live-quiz'),
+                'of' => __('của', 'live-quiz'),
+                'filterByQuestions' => __('Lọc theo số câu hỏi', 'live-quiz'),
+                'sortBy' => __('Sắp xếp theo', 'live-quiz'),
+                'sortDateDesc' => __('Mới nhất', 'live-quiz'),
+                'sortDateAsc' => __('Cũ nhất', 'live-quiz'),
+                'sortTitleAsc' => __('Tên A-Z', 'live-quiz'),
+                'sortTitleDesc' => __('Tên Z-A', 'live-quiz'),
+                'sortQuestionsDesc' => __('Nhiều câu hỏi nhất', 'live-quiz'),
+                'sortQuestionsAsc' => __('Ít câu hỏi nhất', 'live-quiz'),
+            )
+        );
+        
+        wp_localize_script('live-quiz-browse', 'liveQuizBrowse', $config);
     }
     
     /**

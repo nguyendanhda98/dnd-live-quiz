@@ -228,6 +228,13 @@ class Live_Quiz_REST_API {
             'permission_callback' => '__return_true',
         ));
         
+        // Frontend: Get single quiz with questions for preview (public)
+        register_rest_route(self::NAMESPACE, '/quizzes/(?P<id>\d+)', array(
+            'methods' => 'GET',
+            'callback' => array(__CLASS__, 'get_quiz_preview'),
+            'permission_callback' => '__return_true',
+        ));
+        
         // Frontend: Create session from frontend (requires authentication)
         register_rest_route(self::NAMESPACE, '/sessions/create-frontend', array(
             'methods' => 'POST',
@@ -1654,20 +1661,50 @@ class Live_Quiz_REST_API {
     }
     
     /**
-     * List quizzes with pagination
+     * List quizzes with pagination, filters, and sorting
      */
     public static function list_quizzes($request) {
         $page = $request->get_param('page') ?: 1;
         $per_page = $request->get_param('per_page') ?: 10;
+        $search = $request->get_param('search');
+        $min_questions = $request->get_param('min_questions');
+        $max_questions = $request->get_param('max_questions');
+        $sort_by = $request->get_param('sort_by') ?: 'date_desc';
         
         $args = array(
             'post_type' => 'live_quiz',
             'post_status' => 'publish',
             'posts_per_page' => $per_page,
             'paged' => $page,
-            'orderby' => 'date',
-            'order' => 'DESC',
         );
+        
+        // Search
+        if (!empty($search)) {
+            $args['s'] = $search;
+        }
+        
+        // Sorting
+        switch ($sort_by) {
+            case 'date_desc':
+                $args['orderby'] = 'date';
+                $args['order'] = 'DESC';
+                break;
+            case 'date_asc':
+                $args['orderby'] = 'date';
+                $args['order'] = 'ASC';
+                break;
+            case 'title_asc':
+                $args['orderby'] = 'title';
+                $args['order'] = 'ASC';
+                break;
+            case 'title_desc':
+                $args['orderby'] = 'title';
+                $args['order'] = 'DESC';
+                break;
+            default:
+                $args['orderby'] = 'date';
+                $args['order'] = 'DESC';
+        }
         
         $query = new WP_Query($args);
         $quizzes = array();
@@ -1684,23 +1721,88 @@ class Live_Quiz_REST_API {
                 }
                 $questions = $questions ? $questions : array();
                 
+                $question_count = count($questions);
+                
+                // Filter by question count
+                if ($min_questions !== null && $question_count < intval($min_questions)) {
+                    continue;
+                }
+                if ($max_questions !== null && $question_count > intval($max_questions)) {
+                    continue;
+                }
+                
                 $quizzes[] = array(
                     'id' => $post_id,
                     'title' => get_the_title(),
                     'description' => get_post_meta($post_id, '_live_quiz_description', true),
-                    'question_count' => count($questions),
+                    'question_count' => $question_count,
                     'created_date' => get_the_date('Y-m-d H:i:s'),
                 );
             }
             wp_reset_postdata();
         }
         
+        // Sort by question count if needed (after filtering)
+        if ($sort_by === 'questions_desc' || $sort_by === 'questions_asc') {
+            usort($quizzes, function($a, $b) use ($sort_by) {
+                if ($sort_by === 'questions_desc') {
+                    return $b['question_count'] - $a['question_count'];
+                } else {
+                    return $a['question_count'] - $b['question_count'];
+                }
+            });
+        }
+        
         return rest_ensure_response(array(
             'success' => true,
             'quizzes' => $quizzes,
-            'total' => $query->found_posts,
-            'pages' => $query->max_num_pages,
+            'total' => count($quizzes),
+            'pages' => ceil(count($quizzes) / $per_page),
             'current_page' => $page,
+        ));
+    }
+    
+    /**
+     * Get single quiz with questions for preview
+     */
+    public static function get_quiz_preview($request) {
+        $quiz_id = $request->get_param('id');
+        
+        if (!$quiz_id) {
+            return new WP_Error('missing_quiz_id', __('Thiếu ID quiz', 'live-quiz'), array('status' => 400));
+        }
+        
+        $quiz = get_post($quiz_id);
+        
+        if (!$quiz || $quiz->post_type !== 'live_quiz' || $quiz->post_status !== 'publish') {
+            return new WP_Error('quiz_not_found', __('Không tìm thấy quiz', 'live-quiz'), array('status' => 404));
+        }
+        
+        $questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
+        
+        // Handle both JSON string and array
+        if (is_string($questions)) {
+            $questions = json_decode($questions, true);
+        }
+        $questions = $questions ? $questions : array();
+        
+        // Get additional metadata
+        $description = get_post_meta($quiz_id, '_live_quiz_description', true);
+        $alpha = get_post_meta($quiz_id, '_live_quiz_alpha', true);
+        $max_players = get_post_meta($quiz_id, '_live_quiz_max_players', true);
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'quiz' => array(
+                'id' => $quiz_id,
+                'title' => get_the_title($quiz_id),
+                'description' => $description,
+                'question_count' => count($questions),
+                'questions' => $questions,
+                'alpha' => $alpha,
+                'max_players' => $max_players,
+                'created_date' => get_the_date('Y-m-d H:i:s', $quiz_id),
+            ),
         ));
     }
     
