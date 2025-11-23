@@ -45,7 +45,6 @@ if ($has_session) {
         <div class="host-header">
             <div class="quiz-info">
                 <h1><?php echo esc_html($quiz_title); ?></h1>
-                <p class="question-count"><?php printf(__('%d câu hỏi', 'live-quiz'), $total_questions); ?></p>
             </div>
             <div class="host-controls">
                 <button id="end-session-btn" class="btn btn-danger">
@@ -328,6 +327,12 @@ if ($has_session) {
         }
         ?>
         
+        // Get host page URL from settings
+        <?php
+        $host_page_id = get_option('live_quiz_host_page', 0);
+        $host_page_url = $host_page_id ? get_permalink($host_page_id) : home_url('/');
+        ?>
+        
         // Pass session data to JavaScript
         window.liveQuizHostData = {
             sessionId: <?php echo json_encode($session_id); ?>,
@@ -337,7 +342,8 @@ if ($has_session) {
             session: <?php echo json_encode($session); ?>,
             hostToken: <?php echo json_encode($host_token); ?>,
             hostUserId: <?php echo json_encode($host_user_id); ?>,
-            hostName: <?php echo json_encode($host_display_name); ?>
+            hostName: <?php echo json_encode($host_display_name); ?>,
+            hostPageUrl: <?php echo json_encode($host_page_url); ?>
         };
         
         // Also set liveQuizPlayer for API calls compatibility

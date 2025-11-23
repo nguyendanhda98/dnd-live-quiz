@@ -723,9 +723,10 @@
                 success: function(response) {
                     console.log('[HOST] Session ended successfully:', response);
                     
-                    // Redirect to quiz list
+                    // Redirect to host page configured in settings
                     setTimeout(function() {
-                        window.location.href = window.liveQuizHostData.homeUrl || '/';
+                        const hostPageUrl = window.liveQuizHostData.hostPageUrl || window.liveQuizHostData.homeUrl || '/';
+                        window.location.href = hostPageUrl;
                     }, 1000);
                 },
                 error: function(xhr) {
