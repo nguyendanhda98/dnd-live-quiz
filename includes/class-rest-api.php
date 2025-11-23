@@ -1706,8 +1706,12 @@ class Live_Quiz_REST_API {
                 $args['order'] = 'DESC';
         }
         
+        // First, get all quizzes without pagination limit to apply filters
+        $args['posts_per_page'] = -1; // Get all to filter properly
+        $args['paged'] = 1; // Reset paged
+        
         $query = new WP_Query($args);
-        $quizzes = array();
+        $all_quizzes = array();
         
         if ($query->have_posts()) {
             while ($query->have_posts()) {
@@ -1731,7 +1735,7 @@ class Live_Quiz_REST_API {
                     continue;
                 }
                 
-                $quizzes[] = array(
+                $all_quizzes[] = array(
                     'id' => $post_id,
                     'title' => get_the_title(),
                     'description' => get_post_meta($post_id, '_live_quiz_description', true),
@@ -1744,7 +1748,7 @@ class Live_Quiz_REST_API {
         
         // Sort by question count if needed (after filtering)
         if ($sort_by === 'questions_desc' || $sort_by === 'questions_asc') {
-            usort($quizzes, function($a, $b) use ($sort_by) {
+            usort($all_quizzes, function($a, $b) use ($sort_by) {
                 if ($sort_by === 'questions_desc') {
                     return $b['question_count'] - $a['question_count'];
                 } else {
@@ -1753,12 +1757,20 @@ class Live_Quiz_REST_API {
             });
         }
         
+        // Calculate pagination
+        $total_quizzes = count($all_quizzes);
+        $total_pages = $total_quizzes > 0 ? ceil($total_quizzes / $per_page) : 1;
+        
+        // Apply pagination to results
+        $offset = ($page - 1) * $per_page;
+        $paginated_quizzes = array_slice($all_quizzes, $offset, $per_page);
+        
         return rest_ensure_response(array(
             'success' => true,
-            'quizzes' => $quizzes,
-            'total' => count($quizzes),
-            'pages' => ceil(count($quizzes) / $per_page),
-            'current_page' => $page,
+            'quizzes' => $paginated_quizzes,
+            'total' => $total_quizzes,
+            'pages' => $total_pages,
+            'current_page' => intval($page),
         ));
     }
     

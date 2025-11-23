@@ -18,7 +18,14 @@
         
         init: function() {
             this.config = typeof liveQuizBrowse !== 'undefined' ? liveQuizBrowse : {};
-            this.perPage = parseInt($('#live-quiz-quizzes-grid').data('per-page')) || 12;
+            const defaultPerPage = parseInt($('#live-quiz-quizzes-grid').data('per-page')) || 12;
+            this.perPage = defaultPerPage;
+            
+            // Set initial per-page value in select
+            const $perPageSelect = $('#live-quiz-per-page');
+            if ($perPageSelect.length) {
+                $perPageSelect.val(this.perPage);
+            }
             
             this.bindEvents();
             this.loadQuizzes();
@@ -55,6 +62,15 @@
                 this.currentPage = 1;
                 this.loadQuizzes();
             }, 500));
+            
+            // Per page selector
+            $('#live-quiz-per-page').on('change', (e) => {
+                this.perPage = parseInt($(e.target).val()) || 12;
+                this.currentPage = 1;
+                this.loadQuizzes();
+                // Scroll to top of grid
+                $('html, body').animate({ scrollTop: $('.live-quiz-browse-wrapper').offset().top - 20 }, 300);
+            });
             
             // Preview modal
             const self = this;
@@ -164,13 +180,19 @@
                 }
             })
             .done((response) => {
+                console.log('Quizzes response:', response);
                 if (response.success && response.quizzes && response.quizzes.length > 0) {
                     this.renderQuizzes(response.quizzes);
-                    this.renderPagination(response.current_page, response.pages, response.total);
+                    const total = response.total || response.quizzes.length;
+                    const pages = response.pages || Math.ceil(total / this.perPage);
+                    const currentPage = response.current_page || this.currentPage;
+                    console.log('Pagination data:', { currentPage, pages, total, perPage: this.perPage, quizzesCount: response.quizzes.length });
+                    this.renderPagination(currentPage, pages, total);
                     $grid.show();
                     $pagination.show();
                 } else {
                     $noResults.show();
+                    $pagination.hide();
                 }
             })
             .fail((xhr, status, error) => {
@@ -229,16 +251,31 @@
             const $pagination = $('#live-quiz-pagination');
             $pagination.empty();
             
+            console.log('renderPagination called:', { currentPage, totalPages, total, perPage: this.perPage });
+            
+            // Show pagination info (always show, even if only 1 page)
+            const startItem = total > 0 ? (currentPage - 1) * this.perPage + 1 : 0;
+            const endItem = Math.min(currentPage * this.perPage, total);
+            const $info = $('<div>')
+                .addClass('live-quiz-pagination-info')
+                .text(`Hiển thị ${startItem}-${endItem} của ${total} bộ câu hỏi`);
+            $pagination.append($info);
+            
+            // Only show pagination buttons if more than 1 page
             if (totalPages <= 1) {
+                console.log('Only 1 page, not showing pagination buttons');
                 return;
             }
+            
+            // Create button container
+            const $buttonContainer = $('<div>').addClass('live-quiz-pagination-buttons');
             
             // Previous button
             const $prev = $('<button>')
                 .text('←')
                 .attr('data-page', currentPage - 1)
                 .prop('disabled', currentPage === 1);
-            $pagination.append($prev);
+            $buttonContainer.append($prev);
             
             // Page numbers
             const maxVisible = 5;
@@ -253,10 +290,10 @@
                 const $first = $('<button>')
                     .text('1')
                     .attr('data-page', 1);
-                $pagination.append($first);
+                $buttonContainer.append($first);
                 
                 if (startPage > 2) {
-                    $pagination.append($('<span>').text('...'));
+                    $buttonContainer.append($('<span>').text('...'));
                 }
             }
             
@@ -265,18 +302,18 @@
                     .text(i)
                     .attr('data-page', i)
                     .toggleClass('active', i === currentPage);
-                $pagination.append($pageBtn);
+                $buttonContainer.append($pageBtn);
             }
             
             if (endPage < totalPages) {
                 if (endPage < totalPages - 1) {
-                    $pagination.append($('<span>').text('...'));
+                    $buttonContainer.append($('<span>').text('...'));
                 }
                 
                 const $last = $('<button>')
                     .text(totalPages)
                     .attr('data-page', totalPages);
-                $pagination.append($last);
+                $buttonContainer.append($last);
             }
             
             // Next button
@@ -284,7 +321,9 @@
                 .text('→')
                 .attr('data-page', currentPage + 1)
                 .prop('disabled', currentPage === totalPages);
-            $pagination.append($next);
+            $buttonContainer.append($next);
+            
+            $pagination.append($buttonContainer);
         },
         
         showPreview: function(quizId) {

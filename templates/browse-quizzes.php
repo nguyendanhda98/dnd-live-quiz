@@ -63,6 +63,17 @@ $show_filters = get_query_var('show_filters', true);
                                min="0">
                     </div>
                 </div>
+                
+                <div class="live-quiz-filter-group">
+                    <label for="live-quiz-per-page"><?php _e('Hiển thị:', 'live-quiz'); ?></label>
+                    <select id="live-quiz-per-page" class="live-quiz-per-page-select">
+                        <option value="6">6 <?php _e('bộ câu hỏi', 'live-quiz'); ?></option>
+                        <option value="12" selected>12 <?php _e('bộ câu hỏi', 'live-quiz'); ?></option>
+                        <option value="24">24 <?php _e('bộ câu hỏi', 'live-quiz'); ?></option>
+                        <option value="48">48 <?php _e('bộ câu hỏi', 'live-quiz'); ?></option>
+                        <option value="96">96 <?php _e('bộ câu hỏi', 'live-quiz'); ?></option>
+                    </select>
+                </div>
             </div>
             <?php endif; ?>
         </div>

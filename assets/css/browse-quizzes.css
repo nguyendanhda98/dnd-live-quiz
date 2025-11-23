@@ -84,7 +84,8 @@
 }
 
 .live-quiz-sort-select,
-.live-quiz-question-input {
+.live-quiz-question-input,
+.live-quiz-per-page-select {
     padding: 10px 12px;
     border: 2px solid #ddd;
     border-radius: 6px;
@@ -94,7 +95,8 @@
 }
 
 .live-quiz-sort-select:focus,
-.live-quiz-question-input:focus {
+.live-quiz-question-input:focus,
+.live-quiz-per-page-select:focus {
     outline: none;
     border-color: #2271b1;
 }
@@ -234,10 +236,23 @@
 
 .live-quiz-pagination {
     display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    margin-top: 30px;
+}
+
+.live-quiz-pagination-info {
+    font-size: 14px;
+    color: #666;
+    font-weight: 500;
+}
+
+.live-quiz-pagination-buttons {
+    display: flex;
     justify-content: center;
     align-items: center;
     gap: 10px;
-    margin-top: 30px;
     flex-wrap: wrap;
 }
 
