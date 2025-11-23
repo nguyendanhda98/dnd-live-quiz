@@ -685,19 +685,26 @@ class Live_Quiz_REST_API {
         // Get session and check bans
         $session = Live_Quiz_Session_Manager::get_session($session_id);
         $current_user = wp_get_current_user();
+        $host_id = $session['host_id'];
+        $is_host = ($current_user->ID && $current_user->ID == $host_id);
+        
         if ($current_user->ID) {
-            // CHECK BAN STATUS
-            // 1. Check if banned from this session
-            if (Live_Quiz_Session_Manager::is_banned_from_session($session_id, $current_user->ID)) {
-                error_log('[LiveQuiz] User ' . $current_user->ID . ' is banned from session ' . $session_id);
-                return new WP_Error('banned_from_session', __('Bạn đã bị ban khỏi phòng này', 'live-quiz'), array('status' => 403));
-            }
-            
-            // 2. Check if permanently banned by host
-            $host_id = $session['host_id'];
-            if (Live_Quiz_Session_Manager::is_permanently_banned($host_id, $current_user->ID)) {
-                error_log('[LiveQuiz] User ' . $current_user->ID . ' is permanently banned by host ' . $host_id);
-                return new WP_Error('permanently_banned', __('Bạn đã bị ban vĩnh viễn bởi host này', 'live-quiz'), array('status' => 403));
+            // Host can always join their own room, skip ban checks
+            if (!$is_host) {
+                // CHECK BAN STATUS (only for non-host users)
+                // 1. Check if banned from this session
+                if (Live_Quiz_Session_Manager::is_banned_from_session($session_id, $current_user->ID)) {
+                    error_log('[LiveQuiz] User ' . $current_user->ID . ' is banned from session ' . $session_id);
+                    return new WP_Error('banned_from_session', __('Bạn đã bị ban khỏi phòng này', 'live-quiz'), array('status' => 403));
+                }
+                
+                // 2. Check if permanently banned by host
+                if (Live_Quiz_Session_Manager::is_permanently_banned($host_id, $current_user->ID)) {
+                    error_log('[LiveQuiz] User ' . $current_user->ID . ' is permanently banned by host ' . $host_id);
+                    return new WP_Error('permanently_banned', __('Bạn đã bị ban vĩnh viễn bởi host này', 'live-quiz'), array('status' => 403));
+                }
+            } else {
+                error_log('[LiveQuiz] Host ' . $current_user->ID . ' joining their own room ' . $session_id . ' as player');
             }
             
             $participants = Live_Quiz_Session_Manager::get_participants($session_id);
@@ -743,24 +750,64 @@ class Live_Quiz_REST_API {
         $wp_user_id = get_current_user_id();
         
         // MULTI-DEVICE ENFORCEMENT: Check old connection BEFORE generating new token
+        // Only kick old player connections, not host connections (host can have both host and player connections)
         if ($wp_user_id) {
+            // Check both regular session and player session (for host who joined as player before)
             $old_session = get_user_meta($wp_user_id, '_live_quiz_active_session', true);
-            if ($old_session && is_array($old_session)) {
-                $old_connection_id = isset($old_session['connectionId']) ? $old_session['connectionId'] : null;
+            $old_player_session = get_user_meta($wp_user_id, '_live_quiz_active_player_session', true);
+            
+            // If host is joining as player, NEVER kick any existing connections
+            // Host can have multiple connections (host tab + player tab)
+            if ($is_host) {
+                if ($old_session || $old_player_session) {
+                    error_log("[Live Quiz] Host {$wp_user_id} joining as player, keeping all existing connections active.");
+                    if ($old_session && is_array($old_session)) {
+                        $old_conn = isset($old_session['connectionId']) ? $old_session['connectionId'] : 'none';
+                        $old_role = isset($old_session['role']) ? $old_session['role'] : 'unknown';
+                        error_log("  Existing session connection: {$old_conn} (role: {$old_role})");
+                    }
+                    if ($old_player_session && is_array($old_player_session)) {
+                        $old_conn = isset($old_player_session['connectionId']) ? $old_player_session['connectionId'] : 'none';
+                        error_log("  Existing player session connection: {$old_conn}");
+                    }
+                    error_log("  New player connection: {$connection_id}");
+                }
+            } else {
+                // For non-host users, check and kick old player connections
+                $sessions_to_check = array();
+                if ($old_session && is_array($old_session)) {
+                    $sessions_to_check[] = $old_session;
+                }
+                if ($old_player_session && is_array($old_player_session)) {
+                    $sessions_to_check[] = $old_player_session;
+                }
                 
-                // If there's a different connection, emit event to kick it via WebSocket
-                if ($old_connection_id && $old_connection_id !== $connection_id) {
-                    error_log("[Live Quiz] Multi-device detected! User {$wp_user_id} joining from new device.");
-                    error_log("  Old connection: {$old_connection_id}");
-                    error_log("  New connection: {$connection_id}");
-                    error_log("  Sending kick event to old connection...");
+                foreach ($sessions_to_check as $old_sess) {
+                    $old_connection_id = isset($old_sess['connectionId']) ? $old_sess['connectionId'] : null;
+                    $old_role = isset($old_sess['role']) ? $old_sess['role'] : 'player';
                     
-                    // Notify old connection via WebSocket
-                    self::send_websocket_event('session_kicked', array(
-                        'message' => 'Bạn đã tham gia phòng này từ tab/thiết bị khác.',
-                        'new_connection_id' => $connection_id,
-                        'timestamp' => time() * 1000,
-                    ), $old_connection_id);
+                    // Only kick if it's a different connection and same session (or no session specified)
+                    if ($old_connection_id && $old_connection_id !== $connection_id) {
+                        $old_session_id = isset($old_sess['sessionId']) ? $old_sess['sessionId'] : null;
+                        
+                        // Only kick if same session or old session not specified
+                        if (!$old_session_id || $old_session_id == $session_id) {
+                            if ($old_role === 'player') {
+                                error_log("[Live Quiz] Multi-device detected! User {$wp_user_id} joining from new device.");
+                                error_log("  Old connection: {$old_connection_id} (role: {$old_role}, session: {$old_session_id})");
+                                error_log("  New connection: {$connection_id} (role: player, session: {$session_id})");
+                                error_log("  Sending kick event to old connection...");
+                                
+                                // Notify old connection via WebSocket
+                                self::send_websocket_event('session_kicked', array(
+                                    'message' => 'Bạn đã tham gia phòng này từ tab/thiết bị khác.',
+                                    'new_connection_id' => $connection_id,
+                                    'timestamp' => time() * 1000,
+                                ), $old_connection_id);
+                                break; // Only kick one connection
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -796,20 +843,31 @@ class Live_Quiz_REST_API {
         }
         
         // Save active session to user meta (for session restore on other devices)
+        // For host joining as player, we use a separate meta key to avoid conflicts
         if ($wp_user_id) {
-            update_user_meta($wp_user_id, '_live_quiz_active_session', array(
+            $session_meta = array(
                 'sessionId' => $session_id,
                 'userId' => $participant['user_id'],
                 'displayName' => $participant['display_name'],
                 'roomCode' => $room_code,
                 'websocketToken' => $jwt_token,
                 'connectionId' => $connection_id,
+                'role' => 'player', // Mark as player role
                 'timestamp' => time() * 1000, // milliseconds
-            ));
+            );
+            
+            // If host is joining as player, save to separate meta key to preserve host connection
+            if ($is_host) {
+                update_user_meta($wp_user_id, '_live_quiz_active_player_session', $session_meta);
+                error_log("[Live Quiz] Host {$wp_user_id} saved player session to separate meta key");
+            } else {
+                update_user_meta($wp_user_id, '_live_quiz_active_session', $session_meta);
+            }
             
             error_log("[Live Quiz] Saved active session to user meta for user {$wp_user_id}");
             error_log("  Session ID: {$session_id}");
             error_log("  Connection ID: {$connection_id}");
+            error_log("  Role: player");
         }
         
         return rest_ensure_response($response);

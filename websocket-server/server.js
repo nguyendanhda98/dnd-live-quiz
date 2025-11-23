@@ -476,11 +476,52 @@ io.on('connection', async (socket) => {
         // Determine role for Redis key separation
         const role = is_host ? 'host' : 'player';
         
+        // Check if user is the host of this session (for special handling)
+        // If user is host, they can have both host and player connections
+        // Method 1: Check if user already has a host connection in memory (fastest check)
+        const existingHostSocket = Array.from(io.sockets.sockets.values()).find(s => 
+            s.userId === user_id && 
+            s.sessionId === session_id && 
+            s.isHost === true &&
+            s.id !== socket.id
+        );
+        const hasHostConnectionInMemory = !!existingHostSocket;
+        
+        // Method 2: Check Redis for host connection
+        const existingHostConnection = await RedisHelper.getActiveConnection(user_id, session_id, 'host');
+        const hasHostConnectionInRedis = existingHostConnection && existingHostConnection.socket_id !== socket.id;
+        
+        // Method 3: Check session data in Redis (if available)
+        const session = await RedisHelper.getSession(session_id);
+        const is_session_host_by_data = session && session.host_id && String(session.host_id) === String(user_id);
+        
+        // User is session host if:
+        // - Current connection is host, OR
+        // - They have host connection in memory, OR
+        // - They have host connection in Redis, OR
+        // - Session data says they are host
+        const is_session_host = is_host || hasHostConnectionInMemory || hasHostConnectionInRedis || is_session_host_by_data;
+        
+        if (is_session_host && !is_host) {
+            logger.info('  ✓ Detected session host joining as player, allowing multiple connections', {
+                user_id,
+                session_id,
+                has_host_in_memory: hasHostConnectionInMemory,
+                has_host_in_redis: hasHostConnectionInRedis,
+                is_host_by_data: is_session_host_by_data
+            });
+        }
+        
         // SINGLE DEVICE ENFORCEMENT (Redis-based): Only allow ONE device/tab at a time per user
+        // BUT: If user is the session host, allow multiple connections (host + player)
         // Step 1: Check Redis for existing active connection
         const existingConnection = await RedisHelper.getActiveConnection(user_id, session_id, role);
         
-        if (existingConnection && existingConnection.socket_id !== socket.id) {
+        // Only kick if:
+        // 1. There's an existing connection with same role
+        // 2. User is NOT the session host (host can have multiple connections)
+        // 3. It's a different socket
+        if (existingConnection && existingConnection.socket_id !== socket.id && !is_session_host) {
             logger.info('🔄 Multi-device detection (Redis) - Found existing connection', {
                 user_id,
                 display_name,
@@ -488,6 +529,8 @@ io.on('connection', async (socket) => {
                 old_connection_id: existingConnection.connection_id,
                 new_socket_id: socket.id,
                 new_connection_id: connection_id,
+                role: role,
+                is_session_host: is_session_host,
                 action: 'force_disconnect_old_device'
             });
             
@@ -522,35 +565,65 @@ io.on('connection', async (socket) => {
                     old_socket_id: existingConnection.socket_id
                 });
             }
+        } else if (is_session_host && existingConnection && existingConnection.socket_id !== socket.id) {
+            logger.info('  ℹ Session host joining with multiple connections, keeping all active', {
+                user_id,
+                role: role,
+                existing_socket: existingConnection.socket_id,
+                new_socket: socket.id
+            });
         }
         
         // Step 3: Also check in-memory sockets (fallback for same server)
-        const existingSockets = Array.from(io.sockets.sockets.values()).filter(s => 
-            s.userId === user_id && s.sessionId === session_id && s.id !== socket.id
-        );
-        
-        if (existingSockets.length > 0) {
-            logger.info('  ⚠ Found additional sockets in memory (fallback check)', {
-                count: existingSockets.length
-            });
+        // Only kick sockets with the same role, BUT NOT if user is session host
+        // Session host can have both host and player connections
+        if (!is_session_host) {
+            const existingSockets = Array.from(io.sockets.sockets.values()).filter(s => 
+                s.userId === user_id && 
+                s.sessionId === session_id && 
+                s.id !== socket.id &&
+                s.isHost === is_host // Only kick if same role
+            );
             
-            existingSockets.forEach((oldSocket, index) => {
-                logger.info(`  ✗ Kicking memory socket #${index + 1}`, {
-                    old_socket_id: oldSocket.id
+            if (existingSockets.length > 0) {
+                logger.info('  ⚠ Found additional sockets in memory (fallback check)', {
+                    count: existingSockets.length,
+                    role: role,
+                    is_session_host: is_session_host
                 });
                 
-                oldSocket.emit('force_disconnect', {
-                    reason: 'new_device_connection',
-                    message: 'Bạn đã mở phiên này từ thiết bị/tab khác. Phiên này sẽ bị đóng.',
-                    new_connection_id: connection_id,
-                    timestamp: Date.now()
+                existingSockets.forEach((oldSocket, index) => {
+                    logger.info(`  ✗ Kicking memory socket #${index + 1}`, {
+                        old_socket_id: oldSocket.id,
+                        old_role: oldSocket.isHost ? 'host' : 'player'
+                    });
+                    
+                    oldSocket.emit('force_disconnect', {
+                        reason: 'new_device_connection',
+                        message: 'Bạn đã mở phiên này từ thiết bị/tab khác. Phiên này sẽ bị đóng.',
+                        new_connection_id: connection_id,
+                        timestamp: Date.now()
+                    });
+                    
+                    oldSocket.disconnect(true);
+                    
+                    if (oldSocket.connectionId) {
+                        activeConnections.delete(oldSocket.connectionId);
+                    }
                 });
-                
-                oldSocket.disconnect(true);
-                
-                if (oldSocket.connectionId) {
-                    activeConnections.delete(oldSocket.connectionId);
-                }
+            }
+        } else {
+            // User is session host - log but don't kick any connections
+            const allSockets = Array.from(io.sockets.sockets.values()).filter(s => 
+                s.userId === user_id && 
+                s.sessionId === session_id
+            );
+            
+            logger.info('  ℹ Session host has multiple connections, keeping all active', {
+                total_sockets: allSockets.length,
+                host_sockets: allSockets.filter(s => s.isHost).length,
+                player_sockets: allSockets.filter(s => !s.isHost).length,
+                new_role: role
             });
         }
         
@@ -604,10 +677,10 @@ io.on('connection', async (socket) => {
         
         // Send current session state to the newly joined user
         // This ensures they sync with ongoing question if quiz is in progress
-        const session = await redisClient.hGetAll(`session:${session_id}`);
-        if (session) {
-            if (session.status === 'question') {
-                const questionPayload = await getCurrentQuestionPayload(session_id, session);
+        const sessionState = await redisClient.hGetAll(`session:${session_id}`);
+        if (sessionState && Object.keys(sessionState).length > 0) {
+            if (sessionState.status === 'question') {
+                const questionPayload = await getCurrentQuestionPayload(session_id, sessionState);
                 if (questionPayload) {
                     logger.info('Sending current question state to newly joined user', {
                         user_id,
@@ -616,9 +689,9 @@ io.on('connection', async (socket) => {
                     });
                     socket.emit('question_start', questionPayload);
                 }
-            } else if (session.status === 'results' && session.latest_results_payload) {
+            } else if (sessionState.status === 'results' && sessionState.latest_results_payload) {
                 try {
-                    const resultsPayload = JSON.parse(session.latest_results_payload);
+                    const resultsPayload = JSON.parse(sessionState.latest_results_payload);
                     if (resultsPayload) {
                         logger.info('Sending current results state to newly joined user', {
                             user_id,

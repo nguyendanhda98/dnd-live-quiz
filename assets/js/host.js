@@ -356,7 +356,28 @@
                 },
                 
                 onForceDisconnect: function(data) {
-                    console.log('[HOST] Force disconnected:', data);
+                    console.log('[HOST] Force disconnected event received:', data);
+                    console.log('[HOST] Current session ID:', QuizCore.state.sessionId);
+                    console.log('[HOST] Host session ID:', window.liveQuizHostData ? window.liveQuizHostData.sessionId : 'N/A');
+                    
+                    // IMPORTANT: Host should NEVER be force disconnected
+                    // If this event is received, it's likely a bug or the host is joining as player
+                    // Check if this is the host's own session - if so, ignore the disconnect
+                    const isOwnSession = window.liveQuizHostData && 
+                                        window.liveQuizHostData.sessionId && 
+                                        QuizCore.state.sessionId &&
+                                        String(window.liveQuizHostData.sessionId) === String(QuizCore.state.sessionId);
+                    
+                    if (isOwnSession) {
+                        console.warn('[HOST] Received force_disconnect for own session - IGNORING (host can have multiple connections)');
+                        console.warn('[HOST] Reason:', data.reason);
+                        console.warn('[HOST] This is normal when host also joins as player');
+                        // Do NOT disconnect or redirect - host should keep this connection
+                        return;
+                    }
+                    
+                    // Only redirect if it's NOT the host's own session (shouldn't happen, but safety check)
+                    console.error('[HOST] Force disconnected from different session - redirecting');
                     if (QuizCore.state.socket) {
                         QuizCore.state.socket.disconnect();
                     }
