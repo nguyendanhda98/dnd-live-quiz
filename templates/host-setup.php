@@ -33,41 +33,6 @@ $user_id = get_current_user_id();
             
             <div id="form-error" class="error-message" style="display: none;"></div>
         </div>
-
-        <!-- Recent Sessions (Optional) -->
-        <?php
-        $recent_sessions = get_posts(array(
-            'post_type' => 'live_quiz_session',
-            'posts_per_page' => 5,
-            'author' => $user_id,
-            'orderby' => 'date',
-            'order' => 'DESC',
-        ));
-        
-        if (!empty($recent_sessions)): ?>
-        <div class="recent-sessions">
-            <h3><?php _e('Phòng gần đây', 'live-quiz'); ?></h3>
-            <div class="sessions-list">
-                <?php foreach ($recent_sessions as $session_post): 
-                    $session_id = $session_post->ID;
-                    $room_code = get_post_meta($session_id, '_session_room_code', true);
-                    $session_status = get_post_meta($session_id, '_session_status', true);
-                    $created_date = get_the_date('d/m/Y H:i', $session_post);
-                ?>
-                <div class="session-item">
-                    <div class="session-info">
-                        <h4><?php echo esc_html($session_post->post_title); ?></h4>
-                        <span class="session-meta">PIN: <strong><?php echo esc_html($room_code); ?></strong> | <?php echo esc_html($created_date); ?></span>
-                        <span class="session-status status-<?php echo esc_attr($session_status); ?>"><?php echo esc_html($session_status); ?></span>
-                    </div>
-                    <a href="?session_id=<?php echo $session_id; ?>" class="btn btn-small btn-secondary">
-                        <?php _e('Mở phòng', 'live-quiz'); ?>
-                    </a>
-                </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-        <?php endif; ?>
     </div>
 
     <script>
