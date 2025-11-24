@@ -393,6 +393,20 @@
     font-family: 'Courier New', monospace;
 }
 
+.room-code.clickable-room-code {
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.2s ease;
+}
+
+.room-code.clickable-room-code:hover {
+    opacity: 0.8;
+}
+
+.room-code.room-code-hidden {
+    letter-spacing: 3px;
+}
+
 .participant-count {
     color: #7f8c8d;
     font-size: 16px;

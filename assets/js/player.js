@@ -82,10 +82,6 @@
         // Check Socket.IO library
         checkSocketIOLibrary();
         
-        // Extract room code from URL
-        const urlRoomCode = extractRoomCodeFromUrl();
-        console.log('[PLAYER] URL room code:', urlRoomCode);
-        
         // Restore session from server (if user is logged in)
         console.log('[PLAYER] Fetching user active session from server...');
         const serverSession = await fetchUserActiveSession();
@@ -93,7 +89,7 @@
         
         if (serverSession) {
             console.log('[PLAYER] Found server session, attempting to restore...');
-            const restored = await restoreSessionFromData(serverSession, urlRoomCode);
+            const restored = await restoreSessionFromData(serverSession);
             if (restored) {
                 console.log('[PLAYER] Session restored from server successfully');
                 return;
@@ -102,15 +98,6 @@
         }
         
         console.log('[PLAYER] No active session found on server');
-        
-        // If URL has room code, pre-fill it
-        if (urlRoomCode) {
-            console.log('[PLAYER] Pre-filling room code in form');
-            const roomCodeInput = document.getElementById('room-code');
-            if (roomCodeInput) {
-                roomCodeInput.value = urlRoomCode;
-            }
-        }
         
         console.log('=== [PLAYER] INIT COMPLETED ===');
     }
@@ -159,6 +146,25 @@
         elements.leaveButton = document.querySelector('.leave-room-floating');
     }
     
+    // Room code toggle state
+    let roomCodeToggleState = {
+        isHidden: false,
+        originalCode: ''
+    };
+    
+    /**
+     * Set room code display (helper function to ensure toggle state is reset)
+     */
+    function setRoomCodeDisplay(roomCode) {
+        if (elements.waitingRoomCode) {
+            elements.waitingRoomCode.textContent = roomCode;
+            // Reset toggle state
+            roomCodeToggleState.isHidden = false;
+            roomCodeToggleState.originalCode = roomCode;
+            elements.waitingRoomCode.classList.remove('room-code-hidden');
+        }
+    }
+    
     /**
      * Setup event listeners
      */
@@ -183,6 +189,26 @@
                 handleLeaveRoom();
             }
         });
+        
+        // Room code toggle (hide/show on click)
+        if (elements.waitingRoomCode) {
+            elements.waitingRoomCode.addEventListener('click', function() {
+                // Initialize original code if not set
+                if (!roomCodeToggleState.originalCode) {
+                    roomCodeToggleState.originalCode = this.textContent.trim();
+                }
+                
+                roomCodeToggleState.isHidden = !roomCodeToggleState.isHidden;
+                
+                if (roomCodeToggleState.isHidden) {
+                    this.textContent = '••••••';
+                    this.classList.add('room-code-hidden');
+                } else {
+                    this.textContent = roomCodeToggleState.originalCode;
+                    this.classList.remove('room-code-hidden');
+                }
+            });
+        }
     }
     
     /**
@@ -195,21 +221,6 @@
         } else {
             console.log('[PLAYER] Socket.io library ready');
         }
-    }
-    
-    /**
-     * Extract room code from URL (/play/{code})
-     */
-    function extractRoomCodeFromUrl() {
-        const pathParts = window.location.pathname.split('/');
-        const playIndex = pathParts.findIndex(part => part === 'play');
-        if (playIndex !== -1 && pathParts[playIndex + 1]) {
-            const code = pathParts[playIndex + 1];
-            if (/^\d{6}$/.test(code)) {
-                return code;
-            }
-        }
-        return null;
     }
     
     /**
@@ -240,15 +251,9 @@
     /**
      * Restore session from data object
      */
-    async function restoreSessionFromData(session, urlRoomCode) {
+    async function restoreSessionFromData(session) {
         try {
             console.log('[PLAYER] Restoring session from data:', session);
-            
-            // If URL has code that doesn't match, don't restore
-            if (urlRoomCode && session.roomCode !== urlRoomCode) {
-                console.log('[PLAYER] URL code mismatch, not restoring');
-                return false;
-            }
             
             // Restore state to QuizCore
             QuizCore.state.sessionId = session.sessionId;
@@ -262,12 +267,6 @@
                 roomCode: QuizCore.state.roomCode,
                 status: session.sessionStatus
             });
-            
-            // Update URL if needed
-            if (!urlRoomCode) {
-                const playUrl = '/play/' + QuizCore.state.roomCode;
-                window.history.replaceState({ roomCode: QuizCore.state.roomCode }, '', playUrl);
-            }
             
             // Check if session is ended - show final leaderboard
             if (session.sessionStatus === 'ended') {
@@ -301,9 +300,7 @@
             if (elements.waitingPlayerName) {
                 elements.waitingPlayerName.textContent = QuizCore.state.displayName;
             }
-            if (elements.waitingRoomCode) {
-                elements.waitingRoomCode.textContent = QuizCore.state.roomCode;
-            }
+            setRoomCodeDisplay(QuizCore.state.roomCode);
             
             // Fetch players list
             fetchPlayersList();
@@ -397,18 +394,12 @@
                 QuizCore.state.roomCode = roomCode;
                 QuizCore.state.websocketToken = data.websocket_token || '';
                 
-                // Update URL
-                const playUrl = '/play/' + roomCode;
-                window.history.pushState({ roomCode: roomCode }, '', playUrl);
-                
                 // Show waiting screen
                 showScreen('quiz-waiting');
                 if (elements.waitingPlayerName) {
                     elements.waitingPlayerName.textContent = displayName;
                 }
-                if (elements.waitingRoomCode) {
-                    elements.waitingRoomCode.textContent = roomCode;
-                }
+                setRoomCodeDisplay(roomCode);
                 
                 // Fetch players list
                 fetchPlayersList();
@@ -713,9 +704,7 @@
         if (elements.waitingPlayerName) {
             elements.waitingPlayerName.textContent = QuizCore.state.displayName || 'Player';
         }
-        if (elements.waitingRoomCode) {
-            elements.waitingRoomCode.textContent = QuizCore.state.roomCode || '';
-        }
+        setRoomCodeDisplay(QuizCore.state.roomCode || '');
         
         // Refresh players list
         fetchPlayersList();

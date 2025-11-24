@@ -55,7 +55,7 @@ $show_title = get_query_var('show_title', 'yes');
                         type="text" 
                         id="room-code" 
                         name="room_code"
-                        value="<?php echo esc_attr(get_query_var('prefill_code', '')); ?>"
+                        value=""
                         placeholder="<?php esc_attr_e('Nhập PIN 6 số...', 'live-quiz'); ?>"
                         required
                         maxlength="6"
@@ -98,7 +98,7 @@ $show_title = get_query_var('show_title', 'yes');
             <h2><?php _e('Đang chờ bắt đầu...', 'live-quiz'); ?></h2>
             <p class="waiting-info">
                 <span id="waiting-player-name"></span><br>
-                <strong><?php _e('Mã phòng:', 'live-quiz'); ?></strong> <span id="waiting-room-code" class="room-code"></span>
+                <strong><?php _e('Mã phòng:', 'live-quiz'); ?></strong> <span id="waiting-room-code" class="room-code clickable-room-code"></span>
             </p>
             <p id="participant-count" class="participant-count"></p>
             

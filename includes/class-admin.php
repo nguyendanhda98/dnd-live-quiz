@@ -350,11 +350,21 @@ class Live_Quiz_Admin {
             wp_send_json_error(array('message' => __('Không tìm thấy thẻ', 'live-quiz')));
         }
         
+        // Remove category from all quizzes that use it
+        $quizzes_updated = self::remove_category_from_quizzes($category_to_delete);
+        
+        // Remove category from the list
         unset($categories_array[$key]);
         update_option('live_quiz_categories', implode(',', array_values($categories_array)));
         
+        $message = sprintf(
+            __('Đã xóa thẻ "%s". Đã cập nhật %d quiz.', 'live-quiz'),
+            $category_to_delete,
+            $quizzes_updated
+        );
+        
         wp_send_json_success(array(
-            'message' => __('Đã xóa thẻ', 'live-quiz'),
+            'message' => $message,
             'categories' => array_values($categories_array)
         ));
     }
@@ -453,6 +463,52 @@ class Live_Quiz_Admin {
                 
                 // Update the quiz meta
                 update_post_meta($quiz->ID, '_live_quiz_categories', implode(',', $categories_array));
+                $quizzes_updated++;
+            }
+        }
+        
+        return $quizzes_updated;
+    }
+    
+    /**
+     * Remove category from all quizzes that use it
+     */
+    private static function remove_category_from_quizzes($category_to_remove) {
+        $quizzes_updated = 0;
+        
+        // Get all quizzes
+        $quizzes = get_posts(array(
+            'post_type' => 'live_quiz',
+            'posts_per_page' => -1,
+            'post_status' => 'any',
+            'meta_query' => array(
+                array(
+                    'key' => '_live_quiz_categories',
+                    'compare' => 'EXISTS'
+                )
+            )
+        ));
+        
+        foreach ($quizzes as $quiz) {
+            $categories = get_post_meta($quiz->ID, '_live_quiz_categories', true);
+            
+            if (empty($categories)) {
+                continue;
+            }
+            
+            // Parse categories (comma-separated string)
+            $categories_array = explode(',', $categories);
+            $categories_array = array_map('trim', $categories_array);
+            
+            // Check if this quiz uses the category to remove
+            $key = array_search($category_to_remove, $categories_array);
+            if ($key !== false) {
+                // Remove the category from array
+                unset($categories_array[$key]);
+                
+                // Update the quiz meta (empty string if no categories left)
+                $updated_categories = !empty($categories_array) ? implode(',', array_values($categories_array)) : '';
+                update_post_meta($quiz->ID, '_live_quiz_categories', $updated_categories);
                 $quizzes_updated++;
             }
         }
