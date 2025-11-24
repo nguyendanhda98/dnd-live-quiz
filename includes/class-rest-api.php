@@ -2074,34 +2074,23 @@ class Live_Quiz_REST_API {
         }
         
         // Save first quiz_id for compatibility (use first selected quiz)
-        update_post_meta($session_id, '_session_quiz_id', $quiz_ids[0]);
+        $primary_quiz_id = (int) $quiz_ids[0];
+        update_post_meta($session_id, '_session_quiz_id', $primary_quiz_id);
         
-        // Save all quiz IDs and merged questions
+        // Save all quiz IDs and merged questions/settings
         update_post_meta($session_id, '_session_quiz_ids', $quiz_ids);
         update_post_meta($session_id, '_session_question_order', $question_order);
+        update_post_meta($session_id, '_session_is_merged', true);
+        update_post_meta($session_id, '_session_merged_questions', $all_questions);
+        update_post_meta($session_id, '_session_alpha', self::get_quiz_alpha_value($primary_quiz_id));
+        update_post_meta($session_id, '_session_max_players', self::get_quiz_max_players_value($primary_quiz_id));
+        update_post_meta($session_id, '_session_question_count', count($all_questions));
         
         // Generate room code
         $room_code = self::generate_room_code();
         update_post_meta($session_id, '_session_room_code', $room_code);
         update_post_meta($session_id, '_session_status', 'lobby');
         update_post_meta($session_id, '_session_current_question', 0);
-        
-        // Save the merged questions to the session's quiz (create a temporary quiz post or save directly)
-        // For simplicity, we'll create a temporary merged quiz
-        $merged_quiz_id = wp_insert_post(array(
-            'post_type' => 'live_quiz',
-            'post_title' => $session_title . ' (Merged)',
-            'post_status' => 'private',
-            'post_author' => get_current_user_id(),
-        ));
-        
-        if (!is_wp_error($merged_quiz_id)) {
-            update_post_meta($merged_quiz_id, '_live_quiz_questions', $all_questions);
-            update_post_meta($session_id, '_session_quiz_id', $merged_quiz_id);
-            update_post_meta($session_id, '_session_is_merged', true);
-            update_post_meta($merged_quiz_id, '_live_quiz_auto_generated', 'yes');
-            update_post_meta($merged_quiz_id, '_live_quiz_parent_session', $session_id);
-        }
         
         // Clear cache
         Live_Quiz_Session_Manager::clear_session_cache($session_id);
@@ -2242,26 +2231,14 @@ class Live_Quiz_REST_API {
             'post_title' => $session_title,
         ));
         
-        // Create or update merged quiz
-        $merged_quiz_id = get_post_meta($session_id, '_session_quiz_id', true);
-        
-        if (!$merged_quiz_id || !get_post($merged_quiz_id)) {
-            // Create new merged quiz
-            $merged_quiz_id = wp_insert_post(array(
-                'post_type' => 'live_quiz',
-                'post_title' => $session_title . ' (Merged)',
-                'post_status' => 'private',
-                'post_author' => get_current_user_id(),
-            ));
-        }
-        
-        if (!is_wp_error($merged_quiz_id)) {
-            update_post_meta($merged_quiz_id, '_live_quiz_questions', $all_questions);
-            update_post_meta($session_id, '_session_quiz_id', $merged_quiz_id);
-            update_post_meta($session_id, '_session_is_merged', true);
-            update_post_meta($merged_quiz_id, '_live_quiz_auto_generated', 'yes');
-            update_post_meta($merged_quiz_id, '_live_quiz_parent_session', $session_id);
-        }
+        // Update merged data stored directly on the session
+        $primary_quiz_id = (int) $quiz_ids[0];
+        update_post_meta($session_id, '_session_quiz_id', $primary_quiz_id);
+        update_post_meta($session_id, '_session_is_merged', true);
+        update_post_meta($session_id, '_session_merged_questions', $all_questions);
+        update_post_meta($session_id, '_session_alpha', self::get_quiz_alpha_value($primary_quiz_id));
+        update_post_meta($session_id, '_session_max_players', self::get_quiz_max_players_value($primary_quiz_id));
+        update_post_meta($session_id, '_session_question_count', count($all_questions));
         
         // Save settings metadata
         update_post_meta($session_id, '_session_quiz_ids', $quiz_ids);
@@ -2545,5 +2522,36 @@ class Live_Quiz_REST_API {
         }
         
         return true;
+    }
+
+    /**
+     * Get alpha for a quiz with sensible defaults
+     */
+    private static function get_quiz_alpha_value($quiz_id) {
+        $alpha = get_post_meta($quiz_id, '_live_quiz_alpha', true);
+        
+        if ($alpha === '' || $alpha === null) {
+            $alpha = get_option('live_quiz_alpha', 0.3);
+        }
+        
+        return (float) $alpha;
+    }
+    
+    /**
+     * Get max players for a quiz with sensible defaults
+     */
+    private static function get_quiz_max_players_value($quiz_id) {
+        $max_players = get_post_meta($quiz_id, '_live_quiz_max_players', true);
+        
+        if ($max_players === '' || $max_players === null) {
+            $max_players = get_option('live_quiz_max_players', 500);
+        }
+        
+        $max_players = (int) $max_players;
+        if ($max_players <= 0) {
+            $max_players = 500;
+        }
+        
+        return $max_players;
     }
 }

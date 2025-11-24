@@ -63,15 +63,53 @@ class Live_Quiz_Session_Manager {
             }
             
             $quiz_id = get_post_meta($session_id, '_session_quiz_id', true);
+            $is_merged = get_post_meta($session_id, '_session_is_merged', true);
             $room_code = get_post_meta($session_id, '_session_room_code', true);
             $status = get_post_meta($session_id, '_session_status', true) ?: self::STATE_LOBBY;
             $current_question = (int)get_post_meta($session_id, '_session_current_question', true);
             $host_id = $post->post_author;
             
             // Get quiz data
-            $questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
-            $alpha = (float)get_post_meta($quiz_id, '_live_quiz_alpha', true) ?: 0.3;
-            $max_players = (int)get_post_meta($quiz_id, '_live_quiz_max_players', true) ?: 500;
+            $questions = array();
+            if ($is_merged) {
+                $questions = get_post_meta($session_id, '_session_merged_questions', true);
+            }
+            if (is_string($questions)) {
+                $questions = json_decode($questions, true);
+            }
+            if (!is_array($questions) || empty($questions)) {
+                $questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
+                if (is_string($questions)) {
+                    $questions = json_decode($questions, true);
+                }
+            }
+            if (!is_array($questions)) {
+                $questions = array();
+            }
+            
+            $alpha_meta = get_post_meta($session_id, '_session_alpha', true);
+            if ($alpha_meta === '' || $alpha_meta === null) {
+                $alpha = (float) get_post_meta($quiz_id, '_live_quiz_alpha', true);
+                if (!$alpha) {
+                    $alpha = (float) get_option('live_quiz_alpha', 0.3);
+                }
+            } else {
+                $alpha = (float) $alpha_meta;
+            }
+            
+            $max_players_meta = get_post_meta($session_id, '_session_max_players', true);
+            if ($max_players_meta === '' || $max_players_meta === null) {
+                $max_players = (int) get_post_meta($quiz_id, '_live_quiz_max_players', true);
+                if (!$max_players) {
+                    $max_players = (int) get_option('live_quiz_max_players', 500);
+                }
+            } else {
+                $max_players = (int) $max_players_meta;
+            }
+            
+            if ($max_players <= 0) {
+                $max_players = 500;
+            }
             
             $session = array(
                 'id' => $session_id,
