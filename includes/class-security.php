@@ -14,7 +14,7 @@ class Live_Quiz_Security {
     /**
      * Rate limit settings
      */
-    const RATE_LIMIT_ANSWER = 10; // Max 10 answers per minute
+    const RATE_LIMIT_ANSWER = 100; // Max 100 answers per minute
     const RATE_LIMIT_JOIN = 5; // Max 5 joins per minute
     const RATE_LIMIT_WINDOW = 60; // 60 seconds window
     
