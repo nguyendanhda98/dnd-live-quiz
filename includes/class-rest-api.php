@@ -15,6 +15,17 @@ class Live_Quiz_REST_API {
      * Namespace
      */
     const NAMESPACE = 'live-quiz/v1';
+
+    /**
+     * Get quiz title without wptexturize filter
+     */
+    private static function get_quiz_title_raw($post_id) {
+        $title = get_post_field('post_title', $post_id, 'raw');
+        if (empty($title)) {
+            return '';
+        }
+        return wp_specialchars_decode($title, ENT_QUOTES);
+    }
     
     /**
      * Initialize
@@ -1736,7 +1747,7 @@ class Live_Quiz_REST_API {
                 
                 $quizzes[] = array(
                     'id' => $post_id,
-                    'title' => get_the_title(),
+                    'title' => self::get_quiz_title_raw($post_id),
                     'question_count' => count($questions),
                     'categories' => $quiz_categories,
                 );
@@ -1864,7 +1875,7 @@ class Live_Quiz_REST_API {
                 
                 $all_quizzes[] = array(
                     'id' => $post_id,
-                    'title' => get_the_title(),
+                    'title' => self::get_quiz_title_raw($post_id),
                     'description' => get_post_meta($post_id, '_live_quiz_description', true),
                     'question_count' => $question_count,
                     'categories' => $quiz_categories,
@@ -1945,7 +1956,7 @@ class Live_Quiz_REST_API {
             'success' => true,
             'quiz' => array(
                 'id' => $quiz_id,
-                'title' => get_the_title($quiz_id),
+                'title' => self::get_quiz_title_raw($quiz_id),
                 'description' => $description,
                 'question_count' => count($questions),
                 'questions' => $questions,
