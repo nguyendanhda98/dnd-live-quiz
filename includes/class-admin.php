@@ -21,6 +21,7 @@ class Live_Quiz_Admin {
         add_action('wp_ajax_live_quiz_search_pages', array(__CLASS__, 'ajax_search_pages'));
         add_action('wp_ajax_live_quiz_add_category', array(__CLASS__, 'ajax_add_category'));
         add_action('wp_ajax_live_quiz_delete_category', array(__CLASS__, 'ajax_delete_category'));
+        add_action('wp_ajax_live_quiz_edit_category', array(__CLASS__, 'ajax_edit_category'));
     }
     
     /**
@@ -356,6 +357,107 @@ class Live_Quiz_Admin {
             'message' => __('Đã xóa thẻ', 'live-quiz'),
             'categories' => array_values($categories_array)
         ));
+    }
+    
+    /**
+     * AJAX handler for editing category
+     */
+    public static function ajax_edit_category() {
+        check_ajax_referer('live_quiz_manage_categories');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Không có quyền', 'live-quiz')));
+        }
+        
+        $old_category = isset($_POST['old_category']) ? sanitize_text_field($_POST['old_category']) : '';
+        $new_category = isset($_POST['new_category']) ? sanitize_text_field($_POST['new_category']) : '';
+        
+        if (empty($old_category) || empty($new_category)) {
+            wp_send_json_error(array('message' => __('Tên thẻ không được để trống', 'live-quiz')));
+        }
+        
+        if ($old_category === $new_category) {
+            wp_send_json_error(array('message' => __('Tên thẻ không thay đổi', 'live-quiz')));
+        }
+        
+        $categories = get_option('live_quiz_categories', '');
+        $categories_array = !empty($categories) ? explode(',', $categories) : array();
+        $categories_array = array_map('trim', $categories_array);
+        
+        // Check if old category exists
+        $old_key = array_search($old_category, $categories_array);
+        if ($old_key === false) {
+            wp_send_json_error(array('message' => __('Không tìm thấy thẻ cũ', 'live-quiz')));
+        }
+        
+        // Check if new category already exists
+        if (in_array($new_category, $categories_array)) {
+            wp_send_json_error(array('message' => __('Thẻ mới đã tồn tại', 'live-quiz')));
+        }
+        
+        // Update category name in the array
+        $categories_array[$old_key] = $new_category;
+        update_option('live_quiz_categories', implode(',', $categories_array));
+        
+        // Update all quizzes that use the old category name
+        $quizzes_updated = self::update_quizzes_category($old_category, $new_category);
+        
+        $message = sprintf(
+            __('Đã sửa tên thẻ từ "%s" thành "%s". Đã cập nhật %d quiz.', 'live-quiz'),
+            $old_category,
+            $new_category,
+            $quizzes_updated
+        );
+        
+        wp_send_json_success(array(
+            'message' => $message,
+            'categories' => $categories_array
+        ));
+    }
+    
+    /**
+     * Update all quizzes that use the old category name to use the new category name
+     */
+    private static function update_quizzes_category($old_category, $new_category) {
+        $quizzes_updated = 0;
+        
+        // Get all quizzes
+        $quizzes = get_posts(array(
+            'post_type' => 'live_quiz',
+            'posts_per_page' => -1,
+            'post_status' => 'any',
+            'meta_query' => array(
+                array(
+                    'key' => '_live_quiz_categories',
+                    'compare' => 'EXISTS'
+                )
+            )
+        ));
+        
+        foreach ($quizzes as $quiz) {
+            $categories = get_post_meta($quiz->ID, '_live_quiz_categories', true);
+            
+            if (empty($categories)) {
+                continue;
+            }
+            
+            // Parse categories (comma-separated string)
+            $categories_array = explode(',', $categories);
+            $categories_array = array_map('trim', $categories_array);
+            
+            // Check if this quiz uses the old category
+            $key = array_search($old_category, $categories_array);
+            if ($key !== false) {
+                // Replace old category with new category
+                $categories_array[$key] = $new_category;
+                
+                // Update the quiz meta
+                update_post_meta($quiz->ID, '_live_quiz_categories', implode(',', $categories_array));
+                $quizzes_updated++;
+            }
+        }
+        
+        return $quizzes_updated;
     }
     
     /**

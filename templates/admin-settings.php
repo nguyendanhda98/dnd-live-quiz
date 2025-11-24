@@ -699,9 +699,14 @@ if (!defined('ABSPATH')) {
                                 <?php foreach ($categories_array as $category): ?>
                                     <li class="live-quiz-category-item" data-category="<?php echo esc_attr($category); ?>">
                                         <span class="category-name"><?php echo esc_html($category); ?></span>
-                                        <button type="button" class="button button-small delete-category-btn" data-category="<?php echo esc_attr($category); ?>">
-                                            <span class="dashicons dashicons-trash"></span> <?php _e('Xóa', 'live-quiz'); ?>
-                                        </button>
+                                        <div class="category-actions">
+                                            <button type="button" class="button button-small edit-category-btn" data-category="<?php echo esc_attr($category); ?>" title="<?php esc_attr_e('Sửa tên thẻ', 'live-quiz'); ?>">
+                                                <span class="dashicons dashicons-edit"></span> <?php _e('Sửa', 'live-quiz'); ?>
+                                            </button>
+                                            <button type="button" class="button button-small delete-category-btn" data-category="<?php echo esc_attr($category); ?>" title="<?php esc_attr_e('Xóa thẻ', 'live-quiz'); ?>">
+                                                <span class="dashicons dashicons-trash"></span> <?php _e('Xóa', 'live-quiz'); ?>
+                                            </button>
+                                        </div>
                                     </li>
                                 <?php endforeach; ?>
                             </ul>
@@ -740,12 +745,56 @@ if (!defined('ABSPATH')) {
             .live-quiz-category-item .category-name {
                 font-weight: 500;
                 font-size: 14px;
+                flex: 1;
+            }
+            .live-quiz-category-item .category-actions {
+                display: flex;
+                gap: 5px;
+            }
+            .live-quiz-category-item .edit-category-btn {
+                color: #2271b1;
+            }
+            .live-quiz-category-item .edit-category-btn:hover {
+                color: #135e96;
             }
             .live-quiz-category-item .delete-category-btn {
                 color: #a00;
             }
             .live-quiz-category-item .delete-category-btn:hover {
                 color: #dc3232;
+            }
+            .live-quiz-category-item.editing .category-name {
+                display: none;
+            }
+            .live-quiz-category-item.editing .category-actions {
+                display: none;
+            }
+            .live-quiz-category-item .category-edit-form {
+                display: none;
+                flex: 1;
+                gap: 5px;
+                align-items: center;
+            }
+            .live-quiz-category-item.editing .category-edit-form {
+                display: flex;
+            }
+            .live-quiz-category-item .category-edit-form input {
+                flex: 1;
+                padding: 5px 8px;
+                border: 1px solid #8c8f94;
+                border-radius: 3px;
+            }
+            .live-quiz-category-item .category-edit-form .save-edit-btn {
+                color: #46b450;
+            }
+            .live-quiz-category-item .category-edit-form .save-edit-btn:hover {
+                color: #00a32a;
+            }
+            .live-quiz-category-item .category-edit-form .cancel-edit-btn {
+                color: #646970;
+            }
+            .live-quiz-category-item .category-edit-form .cancel-edit-btn:hover {
+                color: #1d2327;
             }
             #live-quiz-category-message {
                 min-height: 20px;
@@ -793,6 +842,104 @@ if (!defined('ABSPATH')) {
                     });
                 });
                 
+                // Edit category
+                $(document).on('click', '.edit-category-btn', function() {
+                    const category = $(this).data('category');
+                    const $item = $(this).closest('.live-quiz-category-item');
+                    
+                    // Check if already editing
+                    if ($item.hasClass('editing')) {
+                        return;
+                    }
+                    
+                    // Create edit form
+                    const $editForm = $('<div class="category-edit-form">' +
+                        '<input type="text" class="category-edit-input" value="' + escapeHtml(category) + '">' +
+                        '<button type="button" class="button button-small save-edit-btn" title="<?php esc_js(_e('Lưu', 'live-quiz')); ?>">' +
+                        '<span class="dashicons dashicons-yes"></span> <?php esc_js(_e('Lưu', 'live-quiz')); ?>' +
+                        '</button>' +
+                        '<button type="button" class="button button-small cancel-edit-btn" title="<?php esc_js(_e('Hủy', 'live-quiz')); ?>">' +
+                        '<span class="dashicons dashicons-no"></span> <?php esc_js(_e('Hủy', 'live-quiz')); ?>' +
+                        '</button>' +
+                        '</div>');
+                    
+                    $item.append($editForm);
+                    $item.addClass('editing');
+                    
+                    // Focus on input
+                    $item.find('.category-edit-input').focus().select();
+                });
+                
+                // Save edit
+                $(document).on('click', '.save-edit-btn', function() {
+                    const $item = $(this).closest('.live-quiz-category-item');
+                    const oldCategory = $item.data('category');
+                    const newCategory = $item.find('.category-edit-input').val().trim();
+                    const $message = $('#live-quiz-category-message');
+                    
+                    if (!newCategory) {
+                        $message.html('<div class="notice notice-error"><p><?php esc_js(_e('Tên thẻ không được để trống', 'live-quiz')); ?></p></div>');
+                        return;
+                    }
+                    
+                    if (newCategory === oldCategory) {
+                        // No change, just cancel
+                        $item.removeClass('editing');
+                        $item.find('.category-edit-form').remove();
+                        return;
+                    }
+                    
+                    // Disable button during save
+                    $(this).prop('disabled', true);
+                    
+                    $.ajax({
+                        url: ajaxurl,
+                        method: 'POST',
+                        data: {
+                            action: 'live_quiz_edit_category',
+                            old_category: oldCategory,
+                            new_category: newCategory,
+                            _wpnonce: nonce
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                $message.html('<div class="notice notice-success"><p>' + response.data.message + '</p></div>');
+                                updateCategoriesList(response.data.categories);
+                            } else {
+                                $message.html('<div class="notice notice-error"><p>' + (response.data.message || '<?php esc_js(_e('Có lỗi xảy ra', 'live-quiz')); ?>') + '</p></div>');
+                                $item.find('.save-edit-btn').prop('disabled', false);
+                            }
+                        },
+                        error: function() {
+                            $message.html('<div class="notice notice-error"><p><?php esc_js(_e('Có lỗi xảy ra khi sửa thẻ', 'live-quiz')); ?></p></div>');
+                            $item.find('.save-edit-btn').prop('disabled', false);
+                        }
+                    });
+                });
+                
+                // Cancel edit
+                $(document).on('click', '.cancel-edit-btn', function() {
+                    const $item = $(this).closest('.live-quiz-category-item');
+                    $item.removeClass('editing');
+                    $item.find('.category-edit-form').remove();
+                });
+                
+                // Save on Enter key
+                $(document).on('keypress', '.category-edit-input', function(e) {
+                    if (e.which === 13) {
+                        e.preventDefault();
+                        $(this).closest('.live-quiz-category-item').find('.save-edit-btn').click();
+                    }
+                });
+                
+                // Cancel on Escape key
+                $(document).on('keydown', '.category-edit-input', function(e) {
+                    if (e.which === 27) {
+                        e.preventDefault();
+                        $(this).closest('.live-quiz-category-item').find('.cancel-edit-btn').click();
+                    }
+                });
+                
                 // Delete category
                 $(document).on('click', '.delete-category-btn', function() {
                     if (!confirm('<?php esc_js(_e('Bạn có chắc muốn xóa thẻ này?', 'live-quiz')); ?>')) {
@@ -838,9 +985,14 @@ if (!defined('ABSPATH')) {
                     categories.forEach(function(category) {
                         html += '<li class="live-quiz-category-item" data-category="' + escapeHtml(category) + '">';
                         html += '<span class="category-name">' + escapeHtml(category) + '</span>';
-                        html += '<button type="button" class="button button-small delete-category-btn" data-category="' + escapeHtml(category) + '">';
+                        html += '<div class="category-actions">';
+                        html += '<button type="button" class="button button-small edit-category-btn" data-category="' + escapeHtml(category) + '" title="<?php esc_js(_e('Sửa tên thẻ', 'live-quiz')); ?>">';
+                        html += '<span class="dashicons dashicons-edit"></span> <?php esc_js(_e('Sửa', 'live-quiz')); ?>';
+                        html += '</button>';
+                        html += '<button type="button" class="button button-small delete-category-btn" data-category="' + escapeHtml(category) + '" title="<?php esc_js(_e('Xóa thẻ', 'live-quiz')); ?>">';
                         html += '<span class="dashicons dashicons-trash"></span> <?php esc_js(_e('Xóa', 'live-quiz')); ?>';
                         html += '</button>';
+                        html += '</div>';
                         html += '</li>';
                     });
                     html += '</ul>';
