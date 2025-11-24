@@ -101,8 +101,9 @@
          * Show correct answer and mark selected
          * @param {number} correctAnswer - Index of correct answer
          * @param {HTMLElement} container - Choices container
+         * @param {HTMLElement} answeredPlayersList - Optional: List of answered players to highlight
          */
-        showCorrectAnswer: function(correctAnswer, container) {
+        showCorrectAnswer: function(correctAnswer, container, answeredPlayersList) {
             if (!container) return;
             
             const buttons = container.querySelectorAll('button');
@@ -130,6 +131,36 @@
                     
                     const originalText = button.textContent;
                     button.innerHTML = '✗ ' + originalText;
+                }
+            });
+            
+            // Highlight answered players if list is provided
+            if (answeredPlayersList) {
+                this.highlightAnsweredPlayers(answeredPlayersList);
+            }
+        },
+        
+        /**
+         * Highlight players who answered correctly and dim those who answered incorrectly
+         * @param {HTMLElement} answeredPlayersList - Container with answered player items
+         */
+        highlightAnsweredPlayers: function(answeredPlayersList) {
+            if (!answeredPlayersList) return;
+            
+            const playerItems = answeredPlayersList.querySelectorAll('.answered-player-item');
+            
+            playerItems.forEach(function(item) {
+                const score = parseInt(item.getAttribute('data-score')) || 0;
+                const isCorrect = score > 0;
+                
+                if (isCorrect) {
+                    // Highlight correct answers
+                    item.classList.add('correct-answer');
+                    item.classList.remove('incorrect-answer');
+                } else {
+                    // Dim incorrect answers
+                    item.classList.add('incorrect-answer');
+                    item.classList.remove('correct-answer');
                 }
             });
         },

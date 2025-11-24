@@ -509,7 +509,8 @@
             const self = this;
             setTimeout(function() {
                 // Show correct answer using QuizUI (shared code with player)
-                QuizUI.showCorrectAnswer(data.correct_answer, self.elements.choicesContainer);
+                // Also pass answered players list to highlight correct/incorrect answers
+                QuizUI.showCorrectAnswer(data.correct_answer, self.elements.choicesContainer, self.elements.answeredPlayersList);
                 
                 console.log('[HOST] Correct answer shown');
                 

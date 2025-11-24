@@ -629,7 +629,8 @@
         // Wait 1 second before showing correct answer
         setTimeout(function() {
             // Show correct answer using QuizUI
-            QuizUI.showCorrectAnswer(data.correct_answer, elements.choicesContainer);
+            // Also pass answered players list to highlight correct/incorrect answers
+            QuizUI.showCorrectAnswer(data.correct_answer, elements.choicesContainer, elements.answeredPlayersList);
             
             console.log('[PLAYER] Correct answer shown');
             
