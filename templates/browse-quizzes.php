@@ -112,18 +112,26 @@ $show_filters = get_query_var('show_filters', true);
         </div>
         <div class="live-quiz-preview-modal-body">
             <div class="live-quiz-preview-info live-quiz-preview-info-sticky">
-                <span id="live-quiz-preview-question-count" class="live-quiz-preview-meta"></span>
-                <button type="button" id="live-quiz-toggle-answers" class="live-quiz-toggle-answers">
-                    <?php _e('Hiện đáp án', 'live-quiz'); ?>
-                </button>
+                <div class="live-quiz-preview-info-left">
+                    <span id="live-quiz-preview-question-count" class="live-quiz-preview-meta"></span>
+                    <span id="live-quiz-preview-progress" class="live-quiz-preview-progress"></span>
+                    <div id="live-quiz-preview-result" class="live-quiz-preview-result" style="display: none;"></div>
+                </div>
+                <div class="live-quiz-preview-actions">
+                    <button type="button" id="live-quiz-toggle-answers" class="live-quiz-secondary-btn">
+                        <?php _e('Hiện đáp án', 'live-quiz'); ?>
+                    </button>
+                    <button type="button" id="live-quiz-retake-quiz" class="live-quiz-secondary-btn" style="display: none;">
+                        <?php _e('Làm lại', 'live-quiz'); ?>
+                    </button>
+                    <button type="button" id="live-quiz-submit-quiz" class="live-quiz-primary-btn">
+                        <?php _e('Nộp bài', 'live-quiz'); ?>
+                    </button>
+                </div>
             </div>
             <div id="live-quiz-preview-questions" class="live-quiz-preview-questions">
                 <!-- Questions will be loaded here -->
             </div>
-            <!-- Floating toggle button for easy access when scrolling -->
-            <button type="button" id="live-quiz-toggle-answers-floating" class="live-quiz-toggle-answers-floating" title="<?php esc_attr_e('Hiện/Ẩn đáp án', 'live-quiz'); ?>">
-                <span class="dashicons dashicons-visibility"></span>
-            </button>
         </div>
     </div>
 </div>

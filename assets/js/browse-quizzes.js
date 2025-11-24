@@ -15,8 +15,11 @@
         maxQuestions: null,
         selectedCategories: [],
         allCategories: [],
-        showAnswers: false,
         currentQuiz: null,
+        showAnswers: false,
+        selectedAnswers: {},
+        hasSubmitted: false,
+        score: null,
         
         init: function() {
             this.config = typeof liveQuizBrowse !== 'undefined' ? liveQuizBrowse : {};
@@ -249,14 +252,29 @@
                 this.closePreview();
             });
             
+            // Selecting answers inside preview
+            $(document).on('click', '.live-quiz-preview-choice', function() {
+                const questionIndex = parseInt($(this).data('question-index'), 10);
+                const choiceIndex = parseInt($(this).data('choice-index'), 10);
+                
+                if (!isNaN(questionIndex) && !isNaN(choiceIndex)) {
+                    self.selectAnswer(questionIndex, choiceIndex);
+                }
+            });
+            
+            // Submit quiz answers
+            $('#live-quiz-submit-quiz').on('click', () => {
+                self.submitQuiz();
+            });
+            
             // Toggle answers
             $('#live-quiz-toggle-answers').on('click', () => {
                 self.toggleAnswers();
             });
             
-            // Floating toggle button
-            $(document).on('click', '#live-quiz-toggle-answers-floating', () => {
-                self.toggleAnswers();
+            // Retake quiz
+            $('#live-quiz-retake-quiz').on('click', () => {
+                self.resetQuizProgress();
             });
             
             // Pagination
@@ -520,11 +538,18 @@
             }
             
             $modal.show();
-            $('#live-quiz-toggle-answers-floating').show();
             $('body').css('overflow', 'hidden');
             
-            this.showAnswers = false;
             this.currentQuiz = null;
+            this.showAnswers = false;
+            this.selectedAnswers = {};
+            this.hasSubmitted = false;
+            this.score = null;
+            $('#live-quiz-retake-quiz').hide();
+            $('#live-quiz-submit-quiz').prop('disabled', false).removeClass('disabled');
+            $('#live-quiz-toggle-answers').prop('disabled', false).text(this.config.i18n.showAnswers || 'Hiện đáp án');
+            this.showResultMessage(null);
+            this.updateProgressIndicator();
             
             // Ensure proper URL formatting
             let apiUrl = this.config.restUrl;
@@ -593,20 +618,17 @@
             try {
                 console.log('Rendering preview for quiz:', quiz);
                 
-                // Find elements fresh from DOM
                 const $modal = $('#live-quiz-preview-modal');
                 if (!$modal.length) {
                     console.error('Modal not found in DOM');
                     return;
                 }
                 
-                // Find elements - try direct selectors first (more reliable)
                 let $title = $('#live-quiz-preview-title');
                 let $questionCount = $('#live-quiz-preview-question-count');
                 let $questions = $('#live-quiz-preview-questions');
                 let $toggleBtn = $('#live-quiz-toggle-answers');
                 
-                // If not found, try within modal
                 if (!$title.length) {
                     $title = $modal.find('#live-quiz-preview-title');
                 }
@@ -620,47 +642,46 @@
                     $toggleBtn = $modal.find('#live-quiz-toggle-answers');
                 }
                 
-                console.log('Modal check:', {
-                    modal: $modal.length,
-                    title: $title.length,
-                    questionCount: $questionCount.length,
-                    questions: $questions.length,
-                    toggleBtn: $toggleBtn.length
-                });
-                
-                if (!$title.length) {
-                    console.error('Title element not found');
-                }
-                if (!$questionCount.length) {
-                    console.error('Question count element not found');
-                }
-                if (!$questions.length) {
-                    console.error('Questions container not found');
+                if (!$title.length || !$questionCount.length || !$questions.length) {
+                    console.error('Missing preview elements', {
+                        title: $title.length,
+                        questionCount: $questionCount.length,
+                        questions: $questions.length,
+                        toggleBtn: $toggleBtn.length
+                    });
                     return;
                 }
                 
+                const totalQuestions = quiz.questions ? quiz.questions.length : 0;
                 $title.text(quiz.title || 'Không có tiêu đề');
-                $questionCount.text((quiz.question_count || 0) + ' ' + (this.config.i18n.questions || 'câu hỏi'));
-                $toggleBtn.text(this.config.i18n.showAnswers || 'Hiện đáp án');
+                $questionCount.text(totalQuestions + ' ' + (this.config.i18n.questions || 'câu hỏi'));
+                
+                if ($toggleBtn.length) {
+                    const toggleLabel = this.showAnswers ? (this.config.i18n.hideAnswers || 'Ẩn đáp án') : (this.config.i18n.showAnswers || 'Hiện đáp án');
+                    $toggleBtn
+                        .text(toggleLabel)
+                        .prop('disabled', this.hasSubmitted);
+                }
                 
                 $questions.empty();
                 
-                if (!quiz.questions || quiz.questions.length === 0) {
+                if (!totalQuestions) {
                     console.log('No questions found in quiz');
                     $questions.html('<p>' + (this.config.i18n.noQuizzes || 'Không có câu hỏi') + '</p>');
+                    this.updateProgressIndicator();
                     return;
                 }
                 
-                console.log('Rendering ' + quiz.questions.length + ' questions');
-                
                 quiz.questions.forEach((question, index) => {
                     try {
-                        const $questionDiv = $('<div>').addClass('live-quiz-preview-question');
+                        const $questionDiv = $('<div>')
+                            .addClass('live-quiz-preview-question')
+                            .attr('data-question-index', index);
                         
                         const $header = $('<div>').addClass('live-quiz-preview-question-header');
                         const $number = $('<span>')
                             .addClass('live-quiz-preview-question-number')
-                            .text((this.config.i18n.question || 'Câu hỏi') + ' ' + (index + 1) + ' ' + (this.config.i18n.of || 'của') + ' ' + quiz.questions.length);
+                            .text((this.config.i18n.question || 'Câu hỏi') + ' ' + (index + 1) + ' ' + (this.config.i18n.of || 'của') + ' ' + totalQuestions);
                         const $text = $('<div>')
                             .addClass('live-quiz-preview-question-text')
                             .text(question.text || '');
@@ -673,10 +694,26 @@
                             question.choices.forEach((choice, choiceIndex) => {
                                 const $choice = $('<div>')
                                     .addClass('live-quiz-preview-choice')
+                                    .attr('data-question-index', index)
+                                    .attr('data-choice-index', choiceIndex)
                                     .text(choice.text || '');
                                 
-                                if (this.showAnswers && choice.is_correct) {
+                                const isSelected = this.selectedAnswers[index] === choiceIndex;
+                                if (isSelected) {
+                                    $choice.addClass('selected');
+                                }
+                                
+                                const shouldShowCorrect = this.showAnswers || this.hasSubmitted;
+                                if (shouldShowCorrect && choice.is_correct) {
                                     $choice.addClass('correct');
+                                }
+                                
+                                if (this.hasSubmitted && !choice.is_correct && isSelected) {
+                                    $choice.addClass('incorrect');
+                                }
+                                
+                                if (this.hasSubmitted) {
+                                    $choice.addClass('disabled');
                                 }
                                 
                                 $choices.append($choice);
@@ -687,11 +724,12 @@
                         
                         $questionDiv.append($header).append($choices);
                         $questions.append($questionDiv);
-                    } catch (e) {
-                        console.error('Error rendering question ' + index + ':', e);
+                    } catch (err) {
+                        console.error('Error rendering question ' + index + ':', err);
                     }
                 });
                 
+                this.updateProgressIndicator();
                 console.log('Preview rendered successfully');
             } catch (e) {
                 console.error('Error in renderPreview:', e);
@@ -702,30 +740,145 @@
             }
         },
         
-        toggleAnswers: function() {
-            this.showAnswers = !this.showAnswers;
-            const $toggleBtn = $('#live-quiz-toggle-answers');
-            const $floatingBtn = $('#live-quiz-toggle-answers-floating');
-            
-            if (this.showAnswers) {
-                $toggleBtn.text(this.config.i18n.hideAnswers || 'Ẩn đáp án');
-                $floatingBtn.addClass('showing-answers');
-            } else {
-                $toggleBtn.text(this.config.i18n.showAnswers || 'Hiện đáp án');
-                $floatingBtn.removeClass('showing-answers');
-            }
-            
-            if (this.currentQuiz) {
-                this.renderPreview(this.currentQuiz);
-            }
-        },
-        
         closePreview: function() {
             $('#live-quiz-preview-modal').hide();
-            $('#live-quiz-toggle-answers-floating').hide();
             $('body').css('overflow', '');
-            this.showAnswers = false;
             this.currentQuiz = null;
+            this.showAnswers = false;
+            this.selectedAnswers = {};
+            this.hasSubmitted = false;
+            this.score = null;
+            $('#live-quiz-retake-quiz').hide();
+            $('#live-quiz-submit-quiz').prop('disabled', false).removeClass('disabled');
+            $('#live-quiz-toggle-answers')
+                .prop('disabled', false)
+                .text(this.config.i18n.showAnswers || 'Hiện đáp án');
+            $('#live-quiz-preview-progress').text('');
+            this.showResultMessage(null);
+        },
+        
+        selectAnswer: function(questionIndex, choiceIndex) {
+            if (!this.currentQuiz || this.hasSubmitted) {
+                return;
+            }
+            
+            this.selectedAnswers[questionIndex] = choiceIndex;
+            
+            const $question = $('.live-quiz-preview-question[data-question-index="' + questionIndex + '"]');
+            if ($question.length) {
+                $question.find('.live-quiz-preview-choice').removeClass('selected');
+                $question.find('.live-quiz-preview-choice[data-choice-index="' + choiceIndex + '"]').addClass('selected');
+            }
+            
+            this.updateProgressIndicator();
+        },
+        
+        submitQuiz: function() {
+            if (!this.currentQuiz || this.hasSubmitted) {
+                return;
+            }
+            
+            const totalQuestions = this.currentQuiz.questions.length;
+            
+            let correctAnswers = 0;
+            this.currentQuiz.questions.forEach((question, index) => {
+                const selected = this.selectedAnswers[index];
+                if (typeof selected === 'undefined') {
+                    return;
+                }
+                
+                const choice = question.choices && question.choices[selected];
+                if (choice && choice.is_correct) {
+                    correctAnswers++;
+                }
+            });
+            
+            this.hasSubmitted = true;
+            this.score = correctAnswers;
+            this.renderPreview(this.currentQuiz);
+            
+            const scoreTemplate = this.config.i18n.score || 'Bạn trả lời đúng %correct%/%total% câu';
+            const message = scoreTemplate
+                .replace('%correct%', correctAnswers)
+                .replace('%total%', totalQuestions);
+            
+            this.showResultMessage(message, 'success');
+            $('#live-quiz-retake-quiz').show();
+            $('#live-quiz-submit-quiz').prop('disabled', true).addClass('disabled');
+            $('#live-quiz-toggle-answers').prop('disabled', true);
+        },
+        
+        toggleAnswers: function() {
+            if (!this.currentQuiz || this.hasSubmitted) {
+                return;
+            }
+            
+            this.showAnswers = !this.showAnswers;
+            this.renderPreview(this.currentQuiz);
+        },
+        
+        resetQuizProgress: function() {
+            if (!this.currentQuiz) {
+                return;
+            }
+            
+            this.selectedAnswers = {};
+            this.hasSubmitted = false;
+            this.score = null;
+            this.showAnswers = false;
+            this.showResultMessage(null);
+            $('#live-quiz-retake-quiz').hide();
+            $('#live-quiz-submit-quiz').prop('disabled', false).removeClass('disabled');
+            $('#live-quiz-toggle-answers').prop('disabled', false);
+            this.renderPreview(this.currentQuiz);
+        },
+        
+        updateProgressIndicator: function() {
+            const $progress = $('#live-quiz-preview-progress');
+            
+            if (!$progress.length || !this.currentQuiz) {
+                if ($progress.length) {
+                    $progress.text('');
+                }
+                return;
+            }
+            
+            const totalQuestions = this.currentQuiz.questions ? this.currentQuiz.questions.length : 0;
+            if (!totalQuestions) {
+                $progress.text('');
+                return;
+            }
+            
+            const answered = Object.keys(this.selectedAnswers).length;
+            const template = this.config.i18n.progress || 'Đã chọn %answered%/%total% câu';
+            const progressText = template
+                .replace('%answered%', answered)
+                .replace('%total%', totalQuestions);
+            
+            $progress.text(progressText);
+        },
+        
+        showResultMessage: function(message, type = '') {
+            const $result = $('#live-quiz-preview-result');
+            
+            if (!$result.length) {
+                return;
+            }
+            
+            $result.removeClass('is-success is-warning');
+            
+            if (!message) {
+                $result.hide().text('');
+                return;
+            }
+            
+            if (type === 'success') {
+                $result.addClass('is-success');
+            } else if (type === 'warning') {
+                $result.addClass('is-warning');
+            }
+            
+            $result.text(message).show();
         },
         
         debounce: function(func, wait) {

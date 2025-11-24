@@ -680,6 +680,9 @@ final class Live_Quiz {
                 'sortTitleDesc' => __('Tên Z-A', 'live-quiz'),
                 'sortQuestionsDesc' => __('Nhiều câu hỏi nhất', 'live-quiz'),
                 'sortQuestionsAsc' => __('Ít câu hỏi nhất', 'live-quiz'),
+                'progress' => __('Đã chọn %answered%/%total% câu', 'live-quiz'),
+                'score' => __('Bạn trả lời đúng %correct%/%total% câu', 'live-quiz'),
+                'incomplete' => __('Vui lòng trả lời tất cả câu hỏi trước khi nộp.', 'live-quiz'),
             )
         );
         
