@@ -681,7 +681,7 @@
                         const $header = $('<div>').addClass('live-quiz-preview-question-header');
                         const $number = $('<span>')
                             .addClass('live-quiz-preview-question-number')
-                            .text((this.config.i18n.question || 'Câu hỏi') + ' ' + (index + 1) + ' ' + (this.config.i18n.of || 'của') + ' ' + totalQuestions);
+                            .text((this.config.i18n.question || 'Câu hỏi') + ' ' + (index + 1) + (this.config.i18n.of || '/') + totalQuestions);
                         const $text = $('<div>')
                             .addClass('live-quiz-preview-question-text')
                             .text(question.text || '');

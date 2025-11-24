@@ -671,7 +671,7 @@ final class Live_Quiz {
                 'hideAnswers' => __('Ẩn đáp án', 'live-quiz'),
                 'correctAnswer' => __('Đáp án đúng', 'live-quiz'),
                 'question' => __('Câu hỏi', 'live-quiz'),
-                'of' => __('của', 'live-quiz'),
+                'of' => __('/', 'live-quiz'),
                 'filterByQuestions' => __('Lọc theo số câu hỏi', 'live-quiz'),
                 'sortBy' => __('Sắp xếp theo', 'live-quiz'),
                 'sortDateDesc' => __('Mới nhất', 'live-quiz'),
