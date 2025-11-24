@@ -20,6 +20,8 @@ class Live_Quiz_Post_Types {
         add_action('save_post', array(__CLASS__, 'save_meta_boxes'), 10, 2);
         add_filter('set-screen-option', array(__CLASS__, 'set_screen_option'), 10, 3);
         add_action('pre_get_posts', array(__CLASS__, 'filter_generated_quizzes_from_admin'));
+        add_filter('posts_clauses', array(__CLASS__, 'filter_generated_quizzes_in_clauses'), 10, 2);
+        add_filter('views_edit-live_quiz', array(__CLASS__, 'customize_quiz_views'));
     }
     
     /**
@@ -1043,7 +1045,13 @@ class Live_Quiz_Post_Types {
      * Loại bỏ các quiz tự động merge khỏi danh sách admin
      */
     public static function filter_generated_quizzes_from_admin($query) {
-        if (!is_admin() || !$query->is_main_query()) {
+        if (!is_admin()) {
+            return;
+        }
+        
+        // Check if we're on the edit.php screen for live_quiz post type
+        global $pagenow, $typenow;
+        if ($pagenow !== 'edit.php' && $pagenow !== 'admin-ajax.php') {
             return;
         }
         
@@ -1053,7 +1061,6 @@ class Live_Quiz_Post_Types {
         
         $post_type = $query->get('post_type');
         if (empty($post_type)) {
-            global $typenow;
             $post_type = $typenow;
         }
         
@@ -1061,17 +1068,22 @@ class Live_Quiz_Post_Types {
             return;
         }
         
+        // Allow showing generated quizzes if explicitly requested
         if (isset($_GET['show_generated_quizzes']) && $_GET['show_generated_quizzes'] === '1') {
             return;
         }
         
+        // Backfill flags for existing quizzes
         self::backfill_generated_quiz_flags();
         
+        // Get existing meta_query
         $meta_query = $query->get('meta_query');
         if (!is_array($meta_query)) {
             $meta_query = array();
         }
         
+        // Add filter to exclude auto-generated quizzes
+        // This will exclude quizzes where _live_quiz_auto_generated = 'yes'
         $meta_query[] = array(
             'relation' => 'OR',
             array(
@@ -1086,6 +1098,86 @@ class Live_Quiz_Post_Types {
         );
         
         $query->set('meta_query', $meta_query);
+    }
+    
+    /**
+     * Filter generated quizzes at SQL level (for count queries and other queries)
+     */
+    public static function filter_generated_quizzes_in_clauses($clauses, $query) {
+        if (!is_admin()) {
+            return $clauses;
+        }
+        
+        global $pagenow, $typenow, $wpdb;
+        
+        // Only filter on edit.php for live_quiz post type
+        if ($pagenow !== 'edit.php' && $pagenow !== 'admin-ajax.php') {
+            return $clauses;
+        }
+        
+        if (!current_user_can('manage_options')) {
+            return $clauses;
+        }
+        
+        $post_type = $query->get('post_type');
+        if (empty($post_type)) {
+            $post_type = $typenow;
+        }
+        
+        if ($post_type !== 'live_quiz') {
+            return $clauses;
+        }
+        
+        // Allow showing generated quizzes if explicitly requested
+        if (isset($_GET['show_generated_quizzes']) && $_GET['show_generated_quizzes'] === '1') {
+            return $clauses;
+        }
+        
+        // Check if meta_query already handles this (to avoid double filtering)
+        $meta_query = $query->get('meta_query');
+        if (is_array($meta_query)) {
+            foreach ($meta_query as $meta) {
+                if (isset($meta['key']) && $meta['key'] === '_live_quiz_auto_generated') {
+                    // Already filtered by pre_get_posts
+                    return $clauses;
+                }
+            }
+        }
+        
+        // Add WHERE clause to exclude auto-generated quizzes
+        // This handles count queries and other queries that might bypass pre_get_posts
+        $where = $clauses['where'];
+        
+        // Add exclusion for auto-generated quizzes
+        $exclude_condition = $wpdb->prepare(
+            " AND NOT EXISTS (
+                SELECT 1 FROM {$wpdb->postmeta} pm
+                WHERE pm.post_id = {$wpdb->posts}.ID
+                AND pm.meta_key = %s
+                AND pm.meta_value = %s
+            )",
+            '_live_quiz_auto_generated',
+            'yes'
+        );
+        
+        $clauses['where'] = $where . $exclude_condition;
+        
+        return $clauses;
+    }
+    
+    /**
+     * Tùy chỉnh views trong admin list page - chỉ hiển thị All, Published, Draft, Trash
+     */
+    public static function customize_quiz_views($views) {
+        // Loại bỏ "Mine" và "Private" views
+        if (isset($views['mine'])) {
+            unset($views['mine']);
+        }
+        if (isset($views['private'])) {
+            unset($views['private']);
+        }
+        
+        return $views;
     }
     
     /**
