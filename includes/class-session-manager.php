@@ -257,6 +257,10 @@ class Live_Quiz_Session_Manager {
         // Get total questions count
         $total_questions = count($session['questions']);
         
+        // Get hide leaderboard setting
+        $hide_leaderboard = get_post_meta($session_id, '_session_hide_leaderboard', true);
+        $hide_leaderboard = $hide_leaderboard ? true : false;
+        
         // Shuffle choices and create mapping
         $original_choices = $session['questions'][$question_index]['choices'];
         $shuffled_data = self::shuffle_choices_with_mapping($original_choices);
@@ -282,6 +286,7 @@ class Live_Quiz_Session_Manager {
                 'timer_delay' => $timer_delay,
                 'actual_timer_start' => $actual_timer_start,
                 'total_questions' => $total_questions,
+                'hide_leaderboard' => $hide_leaderboard,
             ));
             
             if ($result) {

@@ -564,6 +564,17 @@
         QuizCore.state.questionStartTime = data.start_time;
         QuizCore.state.timerAccelerated = false;
         
+        // Store hideLeaderboard and totalQuestions from question data
+        if (data.question) {
+            QuizCore.state.hideLeaderboard = data.question.hide_leaderboard || false;
+            QuizCore.state.totalQuestions = data.question.total_questions || data.total_questions || 0;
+        } else {
+            QuizCore.state.hideLeaderboard = data.hide_leaderboard || false;
+            QuizCore.state.totalQuestions = data.total_questions || 0;
+        }
+        
+        console.log('[PLAYER] hideLeaderboard:', QuizCore.state.hideLeaderboard, 'totalQuestions:', QuizCore.state.totalQuestions);
+        
         // Fixed timing: Question displays immediately, choices show after 3 seconds
         const DISPLAY_DELAY = 3;
         QuizCore.state.serverStartTime = data.start_time + DISPLAY_DELAY;
@@ -626,6 +637,22 @@
             clearInterval(QuizCore.state.timerInterval);
         }
         
+        // Check if this is the last question
+        const currentQuestionIndex = QuizCore.state.currentQuestion ? 
+                                    (QuizCore.state.currentQuestion.question_index !== undefined ? 
+                                     QuizCore.state.currentQuestion.question_index : null) : null;
+        const totalQuestions = QuizCore.state.totalQuestions || 0;
+        const isLastQuestion = currentQuestionIndex !== null && 
+                              totalQuestions > 0 && 
+                              (currentQuestionIndex + 1 >= totalQuestions);
+        
+        // Check if we should hide leaderboard (only hide between questions, not on final question)
+        const hideLeaderboard = QuizCore.state.hideLeaderboard || false;
+        const shouldHideLeaderboard = hideLeaderboard && !isLastQuestion;
+        
+        console.log('[PLAYER] Question index:', currentQuestionIndex, 'Total:', totalQuestions, 
+                   'Is last:', isLastQuestion, 'Hide leaderboard:', shouldHideLeaderboard);
+        
         // Wait 1 second before showing correct answer
         setTimeout(function() {
             // Show correct answer using QuizUI
@@ -634,15 +661,21 @@
             
             console.log('[PLAYER] Correct answer shown');
             
-            // After 2 seconds, show leaderboard animation
-            setTimeout(function() {
-                QuizUI.showLeaderboardAnimation(
-                    data,
-                    elements.leaderboardOverlay,
-                    elements.animatedLeaderboard,
-                    QuizCore.state.userId
-                );
-            }, 2000);
+            // If hideLeaderboard is enabled and this is not the last question, skip leaderboard
+            if (shouldHideLeaderboard) {
+                console.log('[PLAYER] Skipping leaderboard (hideLeaderboard enabled, not last question)');
+                // Just wait a bit - the next question will start automatically from the host
+            } else {
+                // Show leaderboard animation
+                setTimeout(function() {
+                    QuizUI.showLeaderboardAnimation(
+                        data,
+                        elements.leaderboardOverlay,
+                        elements.animatedLeaderboard,
+                        QuizCore.state.userId
+                    );
+                }, 2000);
+            }
         }, 1000);
     }
     

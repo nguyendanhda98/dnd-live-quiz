@@ -29,6 +29,10 @@ if ($has_session) {
     // Get quiz questions
     $questions = get_post_meta($quiz_id, '_live_quiz_questions', true);
     $total_questions = is_array($questions) ? count($questions) : 0;
+    
+    // Get hide leaderboard setting
+    $hide_leaderboard = get_post_meta($session_id, '_session_hide_leaderboard', true);
+    $hide_leaderboard = $hide_leaderboard ? true : false;
 }
 
 ?>
@@ -355,6 +359,7 @@ if ($has_session) {
             quizTitle: <?php echo json_encode($quiz_title); ?>,
             totalQuestions: <?php echo json_encode($total_questions); ?>,
             session: <?php echo json_encode($session); ?>,
+            hideLeaderboard: <?php echo json_encode($hide_leaderboard); ?>,
             hostToken: <?php echo json_encode($host_token); ?>,
             hostUserId: <?php echo json_encode($host_user_id); ?>,
             hostName: <?php echo json_encode($host_display_name); ?>,

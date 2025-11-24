@@ -1039,6 +1039,7 @@ app.post('/api/sessions/:id/start-question', async (req, res) => {
             question: question_data,
             start_time,
             total_questions: question_data?.total_questions || 0,
+            hide_leaderboard: question_data?.hide_leaderboard || false,
         };
 
         // Update session in Redis

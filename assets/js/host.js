@@ -28,6 +28,8 @@
         autoNextTimeout: null,
         summaryData: null,
         totalParticipants: 0,
+        hideLeaderboard: false,
+        totalQuestions: 0,
         
         // API config
         apiConfig: null,
@@ -67,6 +69,11 @@
             });
             
             console.log('[HOST] Initialized with session:', QuizCore.state.sessionId);
+            
+            // Store hideLeaderboard setting and total questions
+            this.hideLeaderboard = window.liveQuizHostData.hideLeaderboard || false;
+            this.totalQuestions = window.liveQuizHostData.totalQuestions || 0;
+            console.log('[HOST] hideLeaderboard:', this.hideLeaderboard, 'totalQuestions:', this.totalQuestions);
             
             // Get API config
             this.apiConfig = this.getApiConfig();
@@ -505,6 +512,21 @@
                 clearInterval(QuizCore.state.timerInterval);
             }
             
+            // Check if this is the last question
+            // Get question index from currentQuestion stored in handleQuestionStart
+            const currentQuestionIndex = QuizCore.state.currentQuestion ? 
+                                        (QuizCore.state.currentQuestion.question_index !== undefined ? 
+                                         QuizCore.state.currentQuestion.question_index : null) : null;
+            const isLastQuestion = currentQuestionIndex !== null && 
+                                  this.totalQuestions > 0 && 
+                                  (currentQuestionIndex + 1 >= this.totalQuestions);
+            
+            // Check if we should hide leaderboard (only hide between questions, not on final question)
+            const shouldHideLeaderboard = this.hideLeaderboard && !isLastQuestion;
+            
+            console.log('[HOST] Question index:', currentQuestionIndex, 'Total:', this.totalQuestions, 
+                       'Is last:', isLastQuestion, 'Hide leaderboard:', shouldHideLeaderboard);
+            
             // Wait 1 second before showing correct answer
             const self = this;
             setTimeout(function() {
@@ -514,21 +536,31 @@
                 
                 console.log('[HOST] Correct answer shown');
                 
-                // After 2 seconds, show leaderboard animation (using shared QuizUI - same as player)
-                setTimeout(function() {
-                    QuizUI.showLeaderboardAnimation(
-                        data,
-                        self.elements.leaderboardOverlay,
-                        self.elements.animatedLeaderboard,
-                        QuizCore.state.userId
-                    );
-                    
-                    // Automatically advance to next question after animation
+                // If hideLeaderboard is enabled and this is not the last question, skip leaderboard
+                if (shouldHideLeaderboard) {
+                    console.log('[HOST] Skipping leaderboard (hideLeaderboard enabled, not last question)');
+                    // Wait a bit then advance to next question
                     setTimeout(function() {
-                        console.log('[HOST] Automatically advancing to next question');
+                        console.log('[HOST] Automatically advancing to next question (leaderboard skipped)');
                         self.nextQuestion();
-                    }, 5000);
-                }, 2000);
+                    }, 2000); // Wait 2 seconds after showing correct answer
+                } else {
+                    // Show leaderboard animation (using shared QuizUI - same as player)
+                    setTimeout(function() {
+                        QuizUI.showLeaderboardAnimation(
+                            data,
+                            self.elements.leaderboardOverlay,
+                            self.elements.animatedLeaderboard,
+                            QuizCore.state.userId
+                        );
+                        
+                        // Automatically advance to next question after animation
+                        setTimeout(function() {
+                            console.log('[HOST] Automatically advancing to next question');
+                            self.nextQuestion();
+                        }, 5000);
+                    }, 2000);
+                }
             }, 1000);
         },
         
@@ -649,7 +681,14 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        console.log('[HOST] Settings saved, starting countdown...');
+                        // Update hideLeaderboard setting from checkbox
+                        self.hideLeaderboard = hideLeaderboard;
+                        // Update totalQuestions from API response
+                        if (response.data && response.data.question_count) {
+                            self.totalQuestions = response.data.question_count;
+                        }
+                        console.log('[HOST] Settings saved, hideLeaderboard:', self.hideLeaderboard, 'totalQuestions:', self.totalQuestions);
+                        console.log('[HOST] Starting countdown...');
                         self.showCountdownAndStartQuiz();
                         $('#end-session-btn').show();
                     }
