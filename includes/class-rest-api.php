@@ -688,6 +688,20 @@ class Live_Quiz_REST_API {
         $host_id = $session['host_id'];
         $is_host = ($current_user->ID && $current_user->ID == $host_id);
         
+        // Check if joining is allowed when game has started
+        // Only check for non-host users
+        if (!$is_host) {
+            $session_status = $session['status'] ?? Live_Quiz_Session_Manager::STATE_LOBBY;
+            $joining_open = get_post_meta($session_id, '_session_joining_open', true);
+            $joining_open = $joining_open ? true : false;
+            
+            // If game has started (not in lobby) and joining is not open, reject join
+            if ($session_status !== Live_Quiz_Session_Manager::STATE_LOBBY && !$joining_open) {
+                error_log('[LiveQuiz] User ' . ($current_user->ID ?? 'anonymous') . ' tried to join session ' . $session_id . ' but game has started and joining is closed');
+                return new WP_Error('joining_closed', __('Game đã bắt đầu. Không thể tham gia vào lúc này.', 'live-quiz'), array('status' => 403));
+            }
+        }
+        
         if ($current_user->ID) {
             // Host can always join their own room, skip ban checks
             if (!$is_host) {
@@ -2245,6 +2259,22 @@ class Live_Quiz_REST_API {
         update_post_meta($session_id, '_session_joining_open', $joining_open ? true : false);
         update_post_meta($session_id, '_session_show_pin', $show_pin ? true : false);
         update_post_meta($session_id, '_session_configured', true); // Mark as configured
+        
+        // Update Redis if enabled (for WebSocket server access)
+        // Use try-catch to prevent errors if Redis is not available
+        try {
+            if (class_exists('Live_Quiz_Redis_Manager')) {
+                $redis = Live_Quiz_Redis_Manager::get_instance();
+                if ($redis && method_exists($redis, 'is_enabled') && $redis->is_enabled()) {
+                    if (method_exists($redis, 'update_session_field')) {
+                        $redis->update_session_field($session_id, 'joining_open', $joining_open ? '1' : '0');
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // Log error but don't fail the request
+            error_log('[LiveQuiz] Error updating joining_open in Redis: ' . $e->getMessage());
+        }
         
         // Clear cache
         Live_Quiz_Session_Manager::clear_session_cache($session_id);

@@ -495,6 +495,28 @@ io.on('connection', async (socket) => {
         const session = await RedisHelper.getSession(session_id);
         const is_session_host_by_data = session && session.host_id && String(session.host_id) === String(user_id);
         
+        // Check if joining is allowed when game has started (only for non-host players)
+        if (!is_host && !is_session_host_by_data) {
+            const session_status = session?.status || 'lobby';
+            const joining_open = session?.joining_open === '1' || session?.joining_open === true || session?.joining_open === 'true';
+            
+            // If game has started (not in lobby) and joining is not open, reject join
+            if (session_status !== 'lobby' && !joining_open) {
+                logger.warn('User tried to join session but game has started and joining is closed', {
+                    session_id,
+                    user_id,
+                    display_name,
+                    session_status,
+                    joining_open
+                });
+                socket.emit('error', {
+                    message: 'Game đã bắt đầu. Không thể tham gia vào lúc này.',
+                    code: 'joining_closed'
+                });
+                return;
+            }
+        }
+        
         // User is session host if:
         // - Current connection is host, OR
         // - They have host connection in memory, OR
