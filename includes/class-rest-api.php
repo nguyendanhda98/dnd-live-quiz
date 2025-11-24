@@ -975,8 +975,8 @@ class Live_Quiz_REST_API {
                 return $access_check;
             }
             
-            // Check rate limit
-            $rate_check = Live_Quiz_Security::check_rate_limit('answer', $user_id, 10);
+            // Check rate limit (use default answer limit to avoid blocking normal play)
+            $rate_check = Live_Quiz_Security::check_rate_limit('answer', $user_id);
             if (is_wp_error($rate_check)) {
                 error_log('ERROR: Rate limit failed: ' . $rate_check->get_error_message());
                 return $rate_check;
