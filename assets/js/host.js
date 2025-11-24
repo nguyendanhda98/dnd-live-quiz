@@ -323,6 +323,16 @@
             $(document).on('change', '#lobby-selected-quizzes', function() {
                 self.updateStartButton();
             });
+            
+            // Initialize quiz type selection on page load
+            const initialQuizType = $('input[name="lobby_quiz_type"]:checked').val();
+            if (initialQuizType === 'random') {
+                $('#lobby-random-count').show();
+                self.updateRandomHint();
+            } else if (initialQuizType === 'range') {
+                $('#lobby-range-input').show();
+                self.updateRangeHint();
+            }
         },
         
         /**

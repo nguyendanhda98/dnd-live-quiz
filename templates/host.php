@@ -84,18 +84,18 @@ if ($has_session) {
                     <div class="settings-section">
                         <h4><?php _e('2. Số lượng câu hỏi', 'live-quiz'); ?></h4>
                         <label class="radio-option">
-                            <input type="radio" name="lobby_quiz_type" value="all" checked>
+                            <input type="radio" name="lobby_quiz_type" value="all">
                             <span><?php _e('Toàn bộ câu hỏi', 'live-quiz'); ?></span>
                         </label>
                         <label class="radio-option">
-                            <input type="radio" name="lobby_quiz_type" value="random">
+                            <input type="radio" name="lobby_quiz_type" value="random" checked>
                             <span><?php _e('Ngẫu nhiên', 'live-quiz'); ?></span>
                         </label>
                         <label class="radio-option">
                             <input type="radio" name="lobby_quiz_type" value="range">
                             <span><?php _e('Từ câu x đến câu y', 'live-quiz'); ?></span>
                         </label>
-                        <div id="lobby-random-count" class="random-count-input" style="display:none;">
+                        <div id="lobby-random-count" class="random-count-input" style="display:block;">
                             <input type="number" id="lobby-question-count" min="1" value="10" class="number-input">
                             <span class="hint" id="lobby-question-hint"></span>
                         </div>
