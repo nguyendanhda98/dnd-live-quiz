@@ -520,7 +520,8 @@ class Live_Quiz_Post_Types {
      * Save screen option
      */
     public static function set_screen_option($status, $option, $value) {
-        if ('live_quiz_questions_per_page' === $option) {
+        // Persist per-page settings for quizzes list table and questions meta box
+        if ('live_quiz_questions_per_page' === $option || 'edit_live_quiz_per_page' === $option) {
             return $value;
         }
         return $status;
@@ -1068,8 +1069,11 @@ class Live_Quiz_Post_Types {
             return;
         }
         
-        // Allow showing generated quizzes if explicitly requested
-        if (isset($_GET['show_generated_quizzes']) && $_GET['show_generated_quizzes'] === '1') {
+        // Default: show ALL quizzes (including auto-generated).
+        // Only hide generated quizzes when explicitly requested via URL:
+        // ?hide_generated_quizzes=1
+        $hide_generated = isset($_GET['hide_generated_quizzes']) && $_GET['hide_generated_quizzes'] === '1';
+        if (!$hide_generated) {
             return;
         }
         
@@ -1098,6 +1102,10 @@ class Live_Quiz_Post_Types {
         );
         
         $query->set('meta_query', $meta_query);
+        
+        // Ensure admin list shows all quizzes (no pagination hiding items)
+        // so counters (All/Published) align with the visible rows
+        $query->set('posts_per_page', -1);
     }
     
     /**
@@ -1128,8 +1136,11 @@ class Live_Quiz_Post_Types {
             return $clauses;
         }
         
-        // Allow showing generated quizzes if explicitly requested
-        if (isset($_GET['show_generated_quizzes']) && $_GET['show_generated_quizzes'] === '1') {
+        // Default: show ALL quizzes (including auto-generated).
+        // Only hide generated quizzes when explicitly requested via URL:
+        // ?hide_generated_quizzes=1
+        $hide_generated = isset($_GET['hide_generated_quizzes']) && $_GET['hide_generated_quizzes'] === '1';
+        if (!$hide_generated) {
             return $clauses;
         }
         
